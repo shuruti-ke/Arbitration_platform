@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: arbitration-platform-api
+    env: node
+    plan: standard
+    buildCommand: "npm install"
+    startCommand: "npm start"
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: POSTGRES_HOST
+        value: your-postgres-host
+      - key: POSTGRES_PORT
+        value: 5432
+      - key: POSTGRES_DB
+        value: arbitration_db
+      - key: POSTGRES_USER
+        value: postgres
+      - key: POSTGRES_PASSWORD
+        value: your_password
+      - key: CLOUDFLARE_ACCOUNT_ID
+        value: your_account_id
+      - key: CLOUDFLARE_API_KEY
+        value: your_api_key
+      - key: CLOUDFLARE_R2_BUCKET
+        value: arbitration-docs
+    healthCheckPath: /api/health
+    autoDeploy: true

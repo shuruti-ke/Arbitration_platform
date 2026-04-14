@@ -1,0 +1,26 @@
+{
+  "name": "arbitration_platform",
+  "version": "1.0.0",
+  "description": "Pan-African ODR Arbitration Platform",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node test/basic-test.js",
+    "test:all": "node test/system-test.js",
+    "test:e-signature": "node test/e-signature-test.js",
+    "test:compliance": "node test/compliance-test.js",
+    "test:conflict": "node test/ai-conflict-test.js",
+    "test:comprehensive": "node test/comprehensive-test.js",
+    "test:system": "node test/system-services-test.js",
+    "test:compliance-full": "node test/compliance-services-test.js"
+  },
+  "dependencies": {
+    "elasticsearch": "^16.7.1",
+    "neo4j-driver": "^4.4.1",
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "chai": "^4.3.4",
+    "mocha": "^9.1.3"
+  }
+}
