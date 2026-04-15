@@ -35,7 +35,7 @@ const Cases = () => {
     const fetchCases = async () => {
       try {
         const response = await apiService.getCases();
-        setCases(response.data || []);
+        setCases(response.data.cases || []);
       } catch (err) {
         setError('Could not load cases from server. Showing sample data.');
         setCases([
