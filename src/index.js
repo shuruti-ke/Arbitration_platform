@@ -433,6 +433,152 @@ function createServer(services) {
         return sendJSON(res, 200, { success: true, jitsiUrl, jitsiRoom });
       }
 
+      // =============================================
+      // --- CASES ROUTES ---
+      // =============================================
+
+      // --- GET /api/cases ---
+      if (path === '/api/cases' && method === 'GET') {
+        const user = authenticate(req, res);
+        if (!user) return;
+        const { status } = parsedUrl.query;
+        let sql = 'SELECT * FROM cases ORDER BY created_at DESC';
+        const params = {};
+        if (status) {
+          sql = 'SELECT * FROM cases WHERE status = :status ORDER BY created_at DESC';
+          params.status = status;
+        }
+        const result = await oracleDb.executeQuery(sql, params);
+        return sendJSON(res, 200, { cases: result.rows || [] });
+      }
+
+      // --- GET /api/cases/:caseId ---
+      if (path.match(/^\/api\/cases\/[^/]+$/) && method === 'GET') {
+        const user = authenticate(req, res);
+        if (!user) return;
+        const caseId = path.split('/api/cases/')[1];
+        const result = await oracleDb.executeQuery(
+          'SELECT * FROM cases WHERE case_id = :caseId',
+          { caseId }
+        );
+        if (!result.rows || result.rows.length === 0) return sendJSON(res, 404, { error: 'Case not found' });
+        return sendJSON(res, 200, { case: result.rows[0] });
+      }
+
+      // --- POST /api/cases ---
+      if (path === '/api/cases' && method === 'POST') {
+        const user = authenticate(req, res, ['admin', 'secretariat']);
+        if (!user) return;
+        const body = await parseBody(req);
+        if (!body.title) return sendJSON(res, 400, { error: 'title is required' });
+        const caseId = 'case-' + Date.now();
+        await oracleDb.executeQuery(
+          'INSERT INTO cases (case_id, title, status) VALUES (:caseId, :title, :status)',
+          { caseId, title: body.title, status: body.status || 'active' }
+        );
+        await auditTrail.logEvent({ type: 'case_created', caseId, userId: user.userId, action: 'create' });
+        return sendJSON(res, 201, { success: true, caseId, title: body.title });
+      }
+
+      // --- PUT /api/cases/:caseId ---
+      if (path.match(/^\/api\/cases\/[^/]+$/) && method === 'PUT') {
+        const user = authenticate(req, res, ['admin', 'secretariat']);
+        if (!user) return;
+        const caseId = path.split('/api/cases/')[1];
+        const body = await parseBody(req);
+        await oracleDb.executeQuery(
+          'UPDATE cases SET title = :title, status = :status, updated_at = CURRENT_TIMESTAMP WHERE case_id = :caseId',
+          { title: body.title, status: body.status, caseId }
+        );
+        return sendJSON(res, 200, { success: true });
+      }
+
+      // --- DELETE /api/cases/:caseId ---
+      if (path.match(/^\/api\/cases\/[^/]+$/) && method === 'DELETE') {
+        const user = authenticate(req, res, ['admin']);
+        if (!user) return;
+        const caseId = path.split('/api/cases/')[1];
+        await oracleDb.executeQuery('DELETE FROM cases WHERE case_id = :caseId', { caseId });
+        return sendJSON(res, 200, { success: true });
+      }
+
+      // =============================================
+      // --- DOCUMENTS ROUTES ---
+      // =============================================
+
+      // --- GET /api/documents ---
+      if (path === '/api/documents' && method === 'GET') {
+        const user = authenticate(req, res);
+        if (!user) return;
+        const result = await oracleDb.executeQuery(
+          'SELECT id, case_id, document_name, created_at, updated_at FROM documents ORDER BY created_at DESC',
+          {}
+        );
+        return sendJSON(res, 200, { documents: result.rows || [] });
+      }
+
+      // --- POST /api/documents ---
+      if (path === '/api/documents' && method === 'POST') {
+        const user = authenticate(req, res);
+        if (!user) return;
+        const body = await parseBody(req);
+        if (!body.documentName) return sendJSON(res, 400, { error: 'documentName is required' });
+        await oracleDb.executeQuery(
+          'INSERT INTO documents (case_id, document_name) VALUES (:caseId, :documentName)',
+          { caseId: body.caseId || null, documentName: body.documentName }
+        );
+        return sendJSON(res, 201, { success: true, documentName: body.documentName });
+      }
+
+      // --- GET /api/documents/:id ---
+      if (path.match(/^\/api\/documents\/[^/]+$/) && method === 'GET') {
+        const user = authenticate(req, res);
+        if (!user) return;
+        const id = path.split('/api/documents/')[1];
+        const result = await oracleDb.executeQuery(
+          'SELECT id, case_id, document_name, created_at FROM documents WHERE id = :id',
+          { id }
+        );
+        if (!result.rows || result.rows.length === 0) return sendJSON(res, 404, { error: 'Document not found' });
+        return sendJSON(res, 200, { document: result.rows[0] });
+      }
+
+      // =============================================
+      // --- ANALYTICS ROUTE ---
+      // =============================================
+
+      // --- GET /api/analytics ---
+      if (path === '/api/analytics' && method === 'GET') {
+        const user = authenticate(req, res);
+        if (!user) return;
+        const casesResult = await oracleDb.executeQuery('SELECT status, COUNT(*) AS count FROM cases GROUP BY status', {});
+        const docsResult = await oracleDb.executeQuery('SELECT COUNT(*) AS count FROM documents', {});
+        const hearingsResult = await oracleDb.executeQuery('SELECT status, COUNT(*) AS count FROM hearings GROUP BY status', {});
+        return sendJSON(res, 200, {
+          cases: casesResult.rows || [],
+          documents: docsResult.rows || [],
+          hearings: hearingsResult.rows || []
+        });
+      }
+
+      // =============================================
+      // --- SETTINGS ROUTE ---
+      // =============================================
+
+      // --- GET /api/settings ---
+      if (path === '/api/settings' && method === 'GET') {
+        const user = authenticate(req, res);
+        if (!user) return;
+        return sendJSON(res, 200, { settings: { institution: 'Arbitration Platform', timezone: 'Africa/Nairobi' } });
+      }
+
+      // --- PUT /api/settings ---
+      if (path === '/api/settings' && method === 'PUT') {
+        const user = authenticate(req, res, ['admin']);
+        if (!user) return;
+        return sendJSON(res, 200, { success: true });
+      }
+
       // 404
       return sendJSON(res, 404, { error: 'Not Found' });
 
