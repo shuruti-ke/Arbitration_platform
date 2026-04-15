@@ -797,23 +797,40 @@ function createServer(services) {
           return sendJSON(res, 403, { error: 'Only admin/secretariat can add to the Platform Library' });
         }
         const content = body.content ? Buffer.from(body.content, 'base64') : null;
-        const textContent = await extractTextFromFile(body.content, body.documentName, body.mimeType);
+        const uploadedAt = new Date().toISOString();
+        // Insert immediately with no text_content — respond fast, extract in background
         await oracleDb.executeQuery(
           `INSERT INTO documents (case_id, document_name, document_content, category, description, text_content, access_level, uploaded_by)
-           VALUES (:caseId, :documentName, :content, :category, :description, :textContent, :accessLevel, :uploadedBy)`,
+           VALUES (:caseId, :documentName, :content, :category, :description, NULL, :accessLevel, :uploadedBy)`,
           {
             caseId: body.caseId || null,
             documentName: body.documentName,
             content,
             category: body.category || 'Other',
             description: body.description || null,
-            textContent: textContent || null,
             accessLevel,
             uploadedBy: user.userId,
           }
         );
         await auditTrail.logEvent({ type: 'document_uploaded', caseId: body.caseId, userId: user.userId, action: 'upload', details: JSON.stringify({ documentName: body.documentName, category: body.category, accessLevel }) });
-        return sendJSON(res, 201, { success: true, documentName: body.documentName, accessLevel });
+        // Respond immediately — extract text in background
+        sendJSON(res, 201, { success: true, documentName: body.documentName, accessLevel });
+        // Background: extract text and update the record
+        setImmediate(async () => {
+          try {
+            const textContent = await extractTextFromFile(body.content, body.documentName, body.mimeType);
+            if (textContent) {
+              await oracleDb.executeQuery(
+                `UPDATE documents SET text_content = :textContent
+                 WHERE document_name = :documentName AND uploaded_by = :uploadedBy
+                 AND text_content IS NULL AND ROWNUM = 1`,
+                { textContent, documentName: body.documentName, uploadedBy: user.userId }
+              );
+            }
+          } catch (e) {
+            console.warn('Background text extraction failed:', e.message);
+          }
+        });
       }
 
       // --- GET /api/documents/:id ---
