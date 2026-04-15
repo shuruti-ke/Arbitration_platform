@@ -708,13 +708,21 @@ function createServer(services) {
       // =============================================
 
       // --- GET /api/documents ---
+      // Returns: library docs (access_level='global') + case docs the user can see
+      // Query param: ?level=global|case|all (default all), ?caseId=xxx
       if (path === '/api/documents' && method === 'GET') {
         const user = authenticate(req, res);
         if (!user) return;
-        const result = await oracleDb.executeQuery(
-          'SELECT id, case_id, document_name, category, description, created_at FROM documents ORDER BY created_at DESC',
-          {}
-        );
+        const qs = parsedUrl.query || {};
+        const level = qs.level || 'all';
+        const caseIdFilter = qs.caseId || null;
+        let sql = 'SELECT id, case_id, document_name, category, description, access_level, uploaded_by, created_at FROM documents WHERE 1=1';
+        const params = {};
+        if (level === 'global') { sql += ' AND access_level = \'global\''; }
+        else if (level === 'case') { sql += ' AND access_level = \'case\''; }
+        if (caseIdFilter) { sql += ' AND case_id = :caseId'; params.caseId = caseIdFilter; }
+        sql += ' ORDER BY created_at DESC';
+        const result = await oracleDb.executeQuery(sql, params);
         return sendJSON(res, 200, { documents: result.rows || [] });
       }
 
@@ -724,15 +732,19 @@ function createServer(services) {
         if (!user) return;
         const body = await parseBody(req);
         if (!body.documentName) return sendJSON(res, 400, { error: 'documentName is required' });
+        const accessLevel = body.accessLevel || (body.caseId ? 'case' : 'global');
+        // Only admins/secretariat can add to the global library
+        if (accessLevel === 'global' && !['admin', 'secretariat'].includes(user.role)) {
+          return sendJSON(res, 403, { error: 'Only admin/secretariat can add to the Platform Library' });
+        }
         const content = body.content ? Buffer.from(body.content, 'base64') : null;
-        // Extract text content for AI analysis (text files only)
         let textContent = null;
-        if (body.content && body.mimeType && (body.mimeType.includes('text') || body.documentName.match(/\.(txt|md|csv)$/i))) {
-          try { textContent = Buffer.from(body.content, 'base64').toString('utf8').slice(0, 50000); } catch (_) {}
+        if (body.content && (body.mimeType || '').includes('text') || (body.documentName || '').match(/\.(txt|md|csv)$/i)) {
+          try { textContent = Buffer.from(body.content || '', 'base64').toString('utf8').slice(0, 50000); } catch (_) {}
         }
         await oracleDb.executeQuery(
-          `INSERT INTO documents (case_id, document_name, document_content, category, description, text_content)
-           VALUES (:caseId, :documentName, :content, :category, :description, :textContent)`,
+          `INSERT INTO documents (case_id, document_name, document_content, category, description, text_content, access_level, uploaded_by)
+           VALUES (:caseId, :documentName, :content, :category, :description, :textContent, :accessLevel, :uploadedBy)`,
           {
             caseId: body.caseId || null,
             documentName: body.documentName,
@@ -740,10 +752,12 @@ function createServer(services) {
             category: body.category || 'Other',
             description: body.description || null,
             textContent: textContent || null,
+            accessLevel,
+            uploadedBy: user.userId,
           }
         );
-        await auditTrail.logEvent({ type: 'document_uploaded', caseId: body.caseId, userId: user.userId, action: 'upload', details: JSON.stringify({ documentName: body.documentName, category: body.category }) });
-        return sendJSON(res, 201, { success: true, documentName: body.documentName });
+        await auditTrail.logEvent({ type: 'document_uploaded', caseId: body.caseId, userId: user.userId, action: 'upload', details: JSON.stringify({ documentName: body.documentName, category: body.category, accessLevel }) });
+        return sendJSON(res, 201, { success: true, documentName: body.documentName, accessLevel });
       }
 
       // --- GET /api/documents/:id ---
@@ -752,7 +766,7 @@ function createServer(services) {
         if (!user) return;
         const id = path.split('/api/documents/')[1];
         const result = await oracleDb.executeQuery(
-          'SELECT id, case_id, document_name, category, description, created_at FROM documents WHERE id = :id',
+          'SELECT id, case_id, document_name, category, description, access_level, created_at FROM documents WHERE id = :id',
           { id }
         );
         if (!result.rows || result.rows.length === 0) return sendJSON(res, 404, { error: 'Document not found' });
@@ -760,15 +774,15 @@ function createServer(services) {
       }
 
       // --- POST /api/documents/:id/analyze ---
+      // Uses the document's own text + global library docs as AI context
       if (path.match(/^\/api\/documents\/[^/]+\/analyze$/) && method === 'POST') {
         const user = authenticate(req, res);
         if (!user) return;
         const id = path.split('/')[3];
         const body = await parseBody(req);
         if (!body.prompt) return sendJSON(res, 400, { error: 'prompt is required' });
-        // Fetch document metadata + text content
         const result = await oracleDb.executeQuery(
-          'SELECT document_name, category, description, text_content FROM documents WHERE id = :id',
+          'SELECT document_name, category, description, text_content, access_level, case_id FROM documents WHERE id = :id',
           { id }
         );
         if (!result.rows || result.rows.length === 0) return sendJSON(res, 404, { error: 'Document not found' });
@@ -777,13 +791,45 @@ function createServer(services) {
         const docCategory = doc.CATEGORY || doc.category || '';
         const docDesc = doc.DESCRIPTION || doc.description || '';
         const textContent = doc.TEXT_CONTENT || doc.text_content || '';
-        const contextSection = textContent
-          ? `Document content (excerpt):\n---\n${textContent.slice(0, 30000)}\n---\n\n`
-          : `Note: Binary document (PDF/Word) — analysis based on metadata only.\n\n`;
-        const aiPrompt = `You are an expert arbitration lawyer and legal analyst.\n\nDocument: "${docName}"\nCategory: ${docCategory}\n${docDesc ? `Description: ${docDesc}\n` : ''}${contextSection}User request: ${body.prompt}\n\nProvide a concise, professional legal analysis.`;
+        const docCaseId = doc.CASE_ID || doc.case_id || null;
+
+        // Fetch global library context (up to 3 relevant docs with text)
+        let libraryContext = '';
+        const libResult = await oracleDb.executeQuery(
+          'SELECT document_name, text_content FROM documents WHERE access_level = \'global\' AND text_content IS NOT NULL AND ROWNUM <= 3 ORDER BY created_at DESC',
+          {}
+        );
+        if (libResult.rows && libResult.rows.length > 0) {
+          libraryContext = '\n\nPlatform Library context:\n' + libResult.rows.map(r => {
+            const name = r.DOCUMENT_NAME || r.document_name || '';
+            const txt = (r.TEXT_CONTENT || r.text_content || '').slice(0, 5000);
+            return `[${name}]:\n${txt}`;
+          }).join('\n---\n');
+        }
+
+        // If case document, also pull sibling case docs for context
+        let caseContext = '';
+        if (docCaseId) {
+          const caseDocsResult = await oracleDb.executeQuery(
+            'SELECT document_name, text_content FROM documents WHERE case_id = :caseId AND access_level = \'case\' AND text_content IS NOT NULL AND id != :id AND ROWNUM <= 2',
+            { caseId: docCaseId, id }
+          );
+          if (caseDocsResult.rows && caseDocsResult.rows.length > 0) {
+            caseContext = '\n\nOther documents in this case:\n' + caseDocsResult.rows.map(r => {
+              const name = r.DOCUMENT_NAME || r.document_name || '';
+              const txt = (r.TEXT_CONTENT || r.text_content || '').slice(0, 3000);
+              return `[${name}]:\n${txt}`;
+            }).join('\n---\n');
+          }
+        }
+
+        const docSection = textContent
+          ? `Document content:\n---\n${textContent.slice(0, 20000)}\n---`
+          : `Note: Binary document — analysis based on metadata and library context only.`;
+        const aiPrompt = `You are an expert arbitration lawyer and legal analyst.\n\nDocument being analyzed: "${docName}"\nCategory: ${docCategory}\n${docDesc ? `Description: ${docDesc}\n` : ''}${docSection}${libraryContext}${caseContext}\n\nUser request: ${body.prompt}\n\nProvide a concise, professional legal analysis referencing relevant laws and documents where applicable.`;
         const analysis = await callAI(aiPrompt);
-        if (!analysis) return sendJSON(res, 503, { error: 'AI service not configured. Add GROQ_API_KEY or GEMINI_API_KEY to .env.oracle' });
-        await auditTrail.logEvent({ type: 'document_analyzed', caseId: null, userId: user.userId, action: 'ai_analyze', details: JSON.stringify({ documentId: id, documentName: docName }) });
+        if (!analysis) return sendJSON(res, 503, { error: 'AI not configured. Add GROQ_API_KEY to .env.oracle' });
+        await auditTrail.logEvent({ type: 'document_analyzed', caseId: docCaseId, userId: user.userId, action: 'ai_analyze', details: JSON.stringify({ documentId: id, documentName: docName }) });
         return sendJSON(res, 200, { analysis });
       }
 

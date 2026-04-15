@@ -216,6 +216,9 @@ class OracleDatabaseService {
     await this._addColumnSafe('documents', 'category', 'VARCHAR2(100) DEFAULT \'Other\'');
     await this._addColumnSafe('documents', 'description', 'VARCHAR2(500)');
     await this._addColumnSafe('documents', 'text_content', 'CLOB');
+    // access_level: 'global' = Platform Library (all users + AI), 'case' = case-specific
+    await this._addColumnSafe('documents', 'access_level', 'VARCHAR2(20) DEFAULT \'case\'');
+    await this._addColumnSafe('documents', 'uploaded_by', 'VARCHAR2(100)');
 
     // Parties table
     await this._createTableSafe('PARTIES', `
