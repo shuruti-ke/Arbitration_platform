@@ -40,7 +40,7 @@ const Navigation = () => {
           Hearings
         </Button>
         <Button color="inherit" component={Link} to="/documents" startIcon={<DocumentsIcon />}>
-          Documents
+          Document Library
         </Button>
         <Button color="inherit" component={Link} to="/analytics" startIcon={<AnalyticsIcon />}>
           Analytics

@@ -5,9 +5,9 @@ import {
   FormControl, InputLabel, Select, MenuItem, Chip,
   InputAdornment, Alert, CircularProgress, Dialog,
   DialogTitle, DialogContent, DialogActions, Step,
-  Stepper, StepLabel, Grid, Tabs, Tab, Tooltip
+  Stepper, StepLabel, Grid, Tabs, Tab, Tooltip, IconButton
 } from '@mui/material';
-import { Add as AddIcon, Search as SearchIcon, FilterList as FilterIcon, AutoAwesome as AiIcon } from '@mui/icons-material';
+import { Add as AddIcon, Search as SearchIcon, FilterList as FilterIcon, AutoAwesome as AiIcon, Edit as EditIcon, OpenInNew as OpenIcon } from '@mui/icons-material';
 import { DataGrid } from '@mui/x-data-grid';
 import { useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
@@ -194,6 +194,23 @@ const Cases = () => {
     { field: 'caseStage', headerName: 'Stage', width: 130 },
     { field: 'disputeAmount', headerName: 'Amount', width: 110 },
     { field: 'createdAt', headerName: 'Filed', width: 110 },
+    {
+      field: 'actions', headerName: '', width: 90, sortable: false,
+      renderCell: (params) => (
+        <Box sx={{ display: 'flex', gap: 0.5 }}>
+          <Tooltip title="Open case">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); navigate(`/cases/${params.row.caseId}`); }}>
+              <OpenIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Edit case">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); navigate(`/cases/${params.row.caseId}`); }}>
+              <EditIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      )
+    },
   ];
 
   return (
