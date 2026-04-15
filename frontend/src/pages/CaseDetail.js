@@ -143,7 +143,7 @@ const CaseDetail = () => {
 
   const submissionStatus = c.SUBMISSION_STATUS || c.submissionStatus || 'draft';
 
-  // NCIA Compliance Checklist
+  // Arbitration Filing Checklist
   const claimant = claimants[0];
   const respondent = respondents[0];
   const nciaChecks = [
@@ -314,7 +314,7 @@ const CaseDetail = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                 <GavelIcon color="primary" />
                 <Typography variant="subtitle1" fontWeight="bold">
-                  NCIA Request for Arbitration — Compliance Checklist
+                  Request for Arbitration — Filing Checklist
                 </Typography>
                 <Box sx={{ flex: 1 }} />
                 <Chip
@@ -339,18 +339,20 @@ const CaseDetail = () => {
               </List>
               {!allChecksPass && (
                 <Alert severity="warning" sx={{ mt: 2 }}>
-                  Complete all checklist items before submitting to the NCIA Registrar. Edit the case to fill in missing information.
+                  Complete all checklist items before submitting to the Registrar. Edit the case to fill in missing information.
                 </Alert>
               )}
               {allChecksPass && submissionStatus === 'draft' && (
                 <Alert severity="success" sx={{ mt: 2 }}>
-                  All NCIA requirements are met. You can now Submit to Registrar. Remember to include <strong>{requiredCopies} physical copies</strong> when filing in person.
+                  All filing requirements are met. You can now submit the Request for Arbitration to the Registrar.
+                  {parseInt(numArbitrators) > 1
+                    ? ` Remember to include ${requiredCopies} physical copies when filing in person.`
+                    : ` Remember to include ${requiredCopies} copies when filing in person.`}
                 </Alert>
               )}
               {submissionStatus === 'submitted' && (
                 <Alert severity="success" sx={{ mt: 2 }}>
-                  This case has been submitted to the NCIA Registrar. Arbitration commences upon receipt of filing fees.
-                  NCIA contact: <strong>registrar@ncia.or.ke</strong> | 8th Floor, Cooperative Bank House, Nairobi.
+                  This case has been formally submitted. Arbitration commences upon receipt of filing fees by the Registrar.
                 </Alert>
               )}
             </Paper>
@@ -655,17 +657,15 @@ const CaseDetail = () => {
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <SendIcon color="primary" />
-            Submit Request for Arbitration to NCIA Registrar
+            Submit Request for Arbitration to Registrar
           </Box>
         </DialogTitle>
         <DialogContent>
           {submitSuccess ? (
             <Alert severity="success" sx={{ mt: 1 }}>
               <strong>Case submitted successfully!</strong><br />
-              The case has been marked as submitted to the NCIA Registrar.
-              Please also send physical copies ({requiredCopies} copies required) to:<br />
-              <strong>NCIA Registrar, 8th Floor, Cooperative Bank House, Nairobi</strong><br />
-              or email: <strong>registrar@ncia.or.ke</strong>
+              The case has been marked as submitted to the Registrar.
+              Please ensure physical copies ({requiredCopies} copies required) are delivered to the relevant arbitration institution together with proof of filing fee payment.
             </Alert>
           ) : (
             <>
@@ -685,7 +685,7 @@ const CaseDetail = () => {
               </List>
               {allChecksPass ? (
                 <Alert severity="success" sx={{ mt: 2 }}>
-                  All requirements met. Remember to submit <strong>{requiredCopies} physical copies</strong> to the NCIA Registrar (or email registrar@ncia.or.ke).
+                  All requirements met. Remember to submit <strong>{requiredCopies} physical copies</strong> to the Registrar together with proof of filing fee payment.
                   Filing fees are <strong>non-refundable</strong>.
                 </Alert>
               ) : (

@@ -579,7 +579,7 @@ const Cases = () => {
               {/* NCIA Checklist preview */}
               <Grid item xs={12}>
                 <Alert severity="info" sx={{ mb: 1 }}>
-                  <strong>NCIA Requirements Checklist</strong> — Items needed for a valid Request for Arbitration
+                  <strong>Arbitration Filing Checklist</strong> — Items needed for a valid Request for Arbitration
                 </Alert>
                 <Paper variant="outlined" sx={{ p: 2 }}>
                   <Grid container spacing={1}>
@@ -666,8 +666,7 @@ const Cases = () => {
               </Grid>
               <Grid item xs={12}>
                 <Alert severity="info" sx={{ mt: 1 }}>
-                  <strong>NCIA Submission Options:</strong> Physical submission at 8th Floor, Cooperative Bank House, Nairobi |
-                  Email: <em>registrar@ncia.or.ke</em>. After creating the case, use the "Submit to Registrar" button on the case details page.
+                  After creating the case, use the <strong>"Submit to Registrar"</strong> button on the case details page to formally submit to the relevant arbitration institution. Ensure you also deliver the required physical copies together with proof of filing fee payment.
                 </Alert>
               </Grid>
             </Grid>
