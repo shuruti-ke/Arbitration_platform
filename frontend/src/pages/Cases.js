@@ -14,7 +14,11 @@ import {
   Chip,
   InputAdornment,
   Alert,
-  CircularProgress
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -30,30 +34,57 @@ const Cases = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [cases, setCases] = useState([]);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState(null);
+  const [newCase, setNewCase] = useState({ title: '', status: 'active', description: '' });
 
-  useEffect(() => {
-    const fetchCases = async () => {
-      try {
-        const response = await apiService.getCases();
-        setCases(response.data.cases || []);
-      } catch (err) {
-        setError('Could not load cases from server. Showing sample data.');
-        setCases([
-          { id: 1, caseId: 'CASE-2026-001', title: 'Commercial Dispute ABC Corp', status: 'active', parties: 2, createdAt: '2026-04-01', updatedAt: '2026-04-10' },
-          { id: 2, caseId: 'CASE-2026-002', title: 'Contract Dispute XYZ Ltd', status: 'completed', parties: 3, createdAt: '2026-03-15', updatedAt: '2026-04-05' },
-          { id: 3, caseId: 'CASE-2026-003', title: 'IP Dispute Tech Innovations', status: 'pending', parties: 2, createdAt: '2026-04-08', updatedAt: '2026-04-12' },
-          { id: 4, caseId: 'CASE-2026-004', title: 'Employment Dispute Global Corp', status: 'active', parties: 2, createdAt: '2026-04-02', updatedAt: '2026-04-11' }
-        ]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchCases();
-  }, []);
+  const fetchCases = async () => {
+    try {
+      const response = await apiService.getCases();
+      const rows = (response.data.cases || []).map((c) => ({
+        id: c.ID || c.id,
+        caseId: c.CASE_ID || c.caseId || '',
+        title: c.TITLE || c.title || '',
+        status: c.STATUS || c.status || '',
+        createdAt: c.CREATED_AT ? new Date(c.CREATED_AT).toLocaleDateString() : '',
+        updatedAt: c.UPDATED_AT ? new Date(c.UPDATED_AT).toLocaleDateString() : '',
+      }));
+      setCases(rows);
+      setError(null);
+    } catch (err) {
+      setError('Could not load cases from server.');
+      setCases([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchCases(); }, []);
+
+  const handleSubmit = async () => {
+    if (!newCase.title.trim()) {
+      setFormError('Title is required.');
+      return;
+    }
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      await apiService.createCase({ title: newCase.title, status: newCase.status });
+      setDialogOpen(false);
+      setNewCase({ title: '', status: 'active', description: '' });
+      await fetchCases();
+    } catch (err) {
+      setFormError(err.response?.data?.error || 'Failed to create case.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const filteredCases = cases.filter((c) => {
-    const matchesSearch = c.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.caseId.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch =
+      (c.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (c.caseId || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = filterStatus === 'all' || c.status === filterStatus;
     return matchesSearch && matchesStatus;
   });
@@ -77,7 +108,6 @@ const Cases = () => {
         />
       )
     },
-    { field: 'parties', headerName: 'Parties', width: 100 },
     { field: 'createdAt', headerName: 'Created', width: 120 },
     { field: 'updatedAt', headerName: 'Updated', width: 120 }
   ];
@@ -91,7 +121,7 @@ const Cases = () => {
         <Button
           variant="contained"
           startIcon={<AddIcon />}
-          onClick={() => alert('New case form coming soon')}
+          onClick={() => setDialogOpen(true)}
         >
           New Case
         </Button>
@@ -115,7 +145,7 @@ const Cases = () => {
             }}
             sx={{ flex: 1 }}
           />
-          <FormControl sx={{ minWidth: 120 }}>
+          <FormControl sx={{ minWidth: 150 }}>
             <InputLabel>Status Filter</InputLabel>
             <Select
               value={filterStatus}
@@ -156,6 +186,41 @@ const Cases = () => {
           />
         )}
       </Paper>
+
+      {/* New Case Dialog */}
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>New Case</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            {formError && <Alert severity="error">{formError}</Alert>}
+            <TextField
+              label="Case Title"
+              required
+              fullWidth
+              value={newCase.title}
+              onChange={(e) => setNewCase({ ...newCase, title: e.target.value })}
+            />
+            <FormControl fullWidth>
+              <InputLabel>Status</InputLabel>
+              <Select
+                value={newCase.status}
+                label="Status"
+                onChange={(e) => setNewCase({ ...newCase, status: e.target.value })}
+              >
+                <MenuItem value="active">Active</MenuItem>
+                <MenuItem value="pending">Pending</MenuItem>
+                <MenuItem value="completed">Completed</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDialogOpen(false)} disabled={submitting}>Cancel</Button>
+          <Button variant="contained" onClick={handleSubmit} disabled={submitting}>
+            {submitting ? 'Creating...' : 'Create Case'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };
