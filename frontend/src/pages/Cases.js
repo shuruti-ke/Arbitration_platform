@@ -5,9 +5,9 @@ import {
   FormControl, InputLabel, Select, MenuItem, Chip,
   InputAdornment, Alert, CircularProgress, Dialog,
   DialogTitle, DialogContent, DialogActions, Step,
-  Stepper, StepLabel, Grid
+  Stepper, StepLabel, Grid, Tabs, Tab, Tooltip
 } from '@mui/material';
-import { Add as AddIcon, Search as SearchIcon, FilterList as FilterIcon } from '@mui/icons-material';
+import { Add as AddIcon, Search as SearchIcon, FilterList as FilterIcon, AutoAwesome as AiIcon } from '@mui/icons-material';
 import { DataGrid } from '@mui/x-data-grid';
 import { useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
@@ -32,6 +32,7 @@ const EMPTY_FORM = {
 
 const Cases = () => {
   const navigate = useNavigate();
+  const [mainTab, setMainTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [loading, setLoading] = useState(true);
@@ -42,6 +43,8 @@ const Cases = () => {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState(null);
 
   const fetchCases = async () => {
     try {
@@ -141,7 +144,33 @@ const Cases = () => {
     }
   };
 
-  const filteredCases = cases.filter((c) => {
+  const handleAiSuggest = async () => {
+    if (!form.seatOfArbitration) { setFormError('Enter a seat of arbitration first.'); return; }
+    setAiLoading(true);
+    setFormError(null);
+    try {
+      const res = await apiService.getGoverningLaw({
+        seatOfArbitration: form.seatOfArbitration,
+        caseType: form.caseType
+      });
+      const s = res.data;
+      setAiSuggestion(s);
+      setForm(prev => ({
+        ...prev,
+        governingLaw: s.governingLaw || prev.governingLaw,
+        arbitrationRules: s.arbitrationRules || prev.arbitrationRules,
+      }));
+    } catch (err) {
+      setFormError('AI suggestion failed. Check ANTHROPIC_API_KEY on the server.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const activeCases = cases.filter((c) => c.status !== 'completed');
+  const repositoryCases = cases.filter((c) => c.status === 'completed');
+
+  const displayCases = (mainTab === 0 ? activeCases : repositoryCases).filter((c) => {
     const matchesSearch =
       (c.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (c.caseId || '').toLowerCase().includes(searchTerm.toLowerCase());
@@ -178,6 +207,13 @@ const Cases = () => {
 
       {error && <Alert severity="warning" sx={{ mb: 2 }}>{error}</Alert>}
 
+      <Paper sx={{ mb: 2 }}>
+        <Tabs value={mainTab} onChange={(_, v) => setMainTab(v)}>
+          <Tab label={`Active Cases (${activeCases.length})`} />
+          <Tab label={`Repository (${repositoryCases.length})`} />
+        </Tabs>
+      </Paper>
+
       <Paper sx={{ p: 2, mb: 3 }}>
         <Box sx={{ display: 'flex', gap: 2 }}>
           <TextField label="Search Cases" variant="outlined" value={searchTerm}
@@ -203,7 +239,7 @@ const Cases = () => {
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}><CircularProgress /></Box>
         ) : (
-          <DataGrid rows={filteredCases} columns={columns}
+          <DataGrid rows={displayCases} columns={columns}
             initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
             pageSizeOptions={[10, 25]}
             onRowClick={(params) => navigate(`/cases/${params.row.caseId}`)}
@@ -384,6 +420,24 @@ const Cases = () => {
           {/* Step 3: Procedural */}
           {activeStep === 2 && (
             <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1.5, bgcolor: 'primary.50', borderRadius: 1, border: '1px solid', borderColor: 'primary.200' }}>
+                  <AiIcon color="primary" />
+                  <Typography variant="body2" sx={{ flex: 1 }}>
+                    Enter the seat of arbitration below, then let AI suggest the applicable laws and rules.
+                  </Typography>
+                  <Button size="small" variant="outlined" startIcon={<AiIcon />}
+                    onClick={handleAiSuggest} disabled={aiLoading}>
+                    {aiLoading ? 'Thinking...' : 'AI Suggest'}
+                  </Button>
+                </Box>
+                {aiSuggestion && (
+                  <Alert severity="success" sx={{ mt: 1 }}>
+                    <strong>AI Suggestion:</strong> {aiSuggestion.notes || ''}<br />
+                    Law: {aiSuggestion.arbitrationLaw || '—'} | Institutions: {(aiSuggestion.institutions || []).join(', ')}
+                  </Alert>
+                )}
+              </Grid>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
                   <InputLabel>Arbitration Rules</InputLabel>

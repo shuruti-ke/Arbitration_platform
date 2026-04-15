@@ -51,6 +51,9 @@ export const apiService = {
   addCounsel: (caseId, counselData) => api.post(`/cases/${caseId}/counsel`, counselData),
   updateMilestone: (caseId, milestoneId, data) => api.put(`/cases/${caseId}/milestones/${milestoneId}`, data),
 
+  // AI
+  getGoverningLaw: (data) => api.post('/ai/governing-law', data),
+
   // Authentication
   login: (credentials) => api.post('/auth/login', credentials),
   logout: () => api.post('/auth/logout'),

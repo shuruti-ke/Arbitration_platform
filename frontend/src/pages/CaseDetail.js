@@ -2,18 +2,16 @@
 import React, { useState, useEffect } from 'react';
 import {
   Container, Typography, Box, Paper, Tabs, Tab, Chip, Grid,
-  CircularProgress, Alert, Button, Divider, Card, CardContent,
+  CircularProgress, Alert, Button, Divider,
   Table, TableBody, TableCell, TableHead, TableRow, Stepper,
-  Step, StepLabel, StepContent, IconButton, Tooltip
+  Step, StepLabel, IconButton, Dialog, DialogTitle,
+  DialogContent, DialogActions, TextField, FormControl,
+  InputLabel, Select, MenuItem
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
   Person as PersonIcon,
-  Gavel as GavelIcon,
   Description as DocIcon,
-  VideoCall as HearingIcon,
-  Timeline as TimelineIcon,
-  History as AuditIcon,
   Edit as EditIcon
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -35,20 +33,64 @@ const CaseDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [data, setData] = useState(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await apiService.getCase(caseId);
-        setData(res.data);
-      } catch (err) {
-        setError('Failed to load case details.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, [caseId]);
+  const load = async () => {
+    try {
+      const res = await apiService.getCase(caseId);
+      setData(res.data);
+    } catch (err) {
+      setError('Failed to load case details.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [caseId]);
+
+  const openEdit = () => {
+    const c = data.case;
+    setEditForm({
+      title: c.TITLE || c.title || '',
+      status: c.STATUS || c.status || 'active',
+      caseType: c.CASE_TYPE || c.caseType || '',
+      sector: c.SECTOR || c.sector || '',
+      disputeCategory: c.DISPUTE_CATEGORY || c.disputeCategory || '',
+      description: c.DESCRIPTION || c.description || '',
+      disputeAmount: c.DISPUTE_AMOUNT || c.disputeAmount || '',
+      currency: c.CURRENCY || c.currency || 'USD',
+      governingLaw: c.GOVERNING_LAW || c.governingLaw || '',
+      seatOfArbitration: c.SEAT_OF_ARBITRATION || c.seatOfArbitration || '',
+      arbitrationRules: c.ARBITRATION_RULES || c.arbitrationRules || '',
+      languageOfProceedings: c.LANGUAGE_OF_PROCEEDINGS || c.languageOfProceedings || 'English',
+      numArbitrators: c.NUM_ARBITRATORS || c.numArbitrators || 1,
+      confidentialityLevel: c.CONFIDENTIALITY_LEVEL || c.confidentialityLevel || 'confidential',
+      thirdPartyFunding: !!(c.THIRD_PARTY_FUNDING || c.thirdPartyFunding),
+      caseStage: c.CASE_STAGE || c.caseStage || 'filing',
+      institutionRef: c.INSTITUTION_REF || c.institutionRef || '',
+      responseDeadline: c.RESPONSE_DEADLINE ? new Date(c.RESPONSE_DEADLINE).toISOString().split('T')[0] : '',
+    });
+    setEditOpen(true);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await apiService.updateCase(caseId, editForm);
+      setEditOpen(false);
+      await load();
+    } catch (err) {
+      setSaveError(err.response?.data?.error || 'Failed to save changes.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const setF = (field) => (e) => setEditForm({ ...editForm, [field]: e.target.value });
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}><CircularProgress /></Box>;
   if (error) return <Container sx={{ mt: 4 }}><Alert severity="error">{error}</Alert></Container>;
@@ -75,7 +117,10 @@ const CaseDetail = () => {
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
         <IconButton onClick={() => navigate('/cases')}><BackIcon /></IconButton>
         <Box sx={{ flex: 1 }}>
-          <Typography variant="h5" fontWeight="bold">{c.TITLE || c.title}</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="h5" fontWeight="bold">{c.TITLE || c.title}</Typography>
+            <IconButton size="small" onClick={openEdit} title="Edit Case"><EditIcon fontSize="small" /></IconButton>
+          </Box>
           <Box sx={{ display: 'flex', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
             <Chip label={c.CASE_ID || c.caseId} size="small" variant="outlined" />
             <Chip label={c.STATUS || c.status} size="small" color={statusColor(c.STATUS || c.status)} />
@@ -362,6 +407,68 @@ const CaseDetail = () => {
           }
         </Paper>
       )}
+      {/* Edit Case Dialog */}
+      <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Edit Case</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 0.5 }}>
+            {saveError && <Grid item xs={12}><Alert severity="error">{saveError}</Alert></Grid>}
+            <Grid item xs={12}><TextField label="Title" fullWidth value={editForm.title || ''} onChange={setF('title')} /></Grid>
+            <Grid item xs={6}>
+              <FormControl fullWidth><InputLabel>Status</InputLabel>
+                <Select value={editForm.status || 'active'} label="Status" onChange={setF('status')}>
+                  <MenuItem value="active">Active</MenuItem>
+                  <MenuItem value="pending">Pending</MenuItem>
+                  <MenuItem value="completed">Completed</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={6}>
+              <FormControl fullWidth><InputLabel>Stage</InputLabel>
+                <Select value={editForm.caseStage || 'filing'} label="Stage" onChange={setF('caseStage')}>
+                  {['filing','response','arbitrator_appointment','terms_of_reference','hearing','deliberation','award','closed'].map(s =>
+                    <MenuItem key={s} value={s}>{s.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase())}</MenuItem>
+                  )}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={6}><TextField label="Case Type" fullWidth value={editForm.caseType || ''} onChange={setF('caseType')} /></Grid>
+            <Grid item xs={6}><TextField label="Sector" fullWidth value={editForm.sector || ''} onChange={setF('sector')} /></Grid>
+            <Grid item xs={6}><TextField label="Dispute Amount" type="number" fullWidth value={editForm.disputeAmount || ''} onChange={setF('disputeAmount')} /></Grid>
+            <Grid item xs={6}><TextField label="Currency" fullWidth value={editForm.currency || 'USD'} onChange={setF('currency')} /></Grid>
+            <Grid item xs={12}><TextField label="Description" fullWidth multiline rows={2} value={editForm.description || ''} onChange={setF('description')} /></Grid>
+            <Grid item xs={6}><TextField label="Governing Law" fullWidth value={editForm.governingLaw || ''} onChange={setF('governingLaw')} /></Grid>
+            <Grid item xs={6}><TextField label="Seat of Arbitration" fullWidth value={editForm.seatOfArbitration || ''} onChange={setF('seatOfArbitration')} /></Grid>
+            <Grid item xs={6}><TextField label="Arbitration Rules" fullWidth value={editForm.arbitrationRules || ''} onChange={setF('arbitrationRules')} /></Grid>
+            <Grid item xs={6}><TextField label="Language" fullWidth value={editForm.languageOfProceedings || 'English'} onChange={setF('languageOfProceedings')} /></Grid>
+            <Grid item xs={6}><TextField label="Institution Reference" fullWidth value={editForm.institutionRef || ''} onChange={setF('institutionRef')} /></Grid>
+            <Grid item xs={6}><TextField label="Response Deadline" type="date" fullWidth value={editForm.responseDeadline || ''} onChange={setF('responseDeadline')} InputLabelProps={{ shrink: true }} /></Grid>
+            <Grid item xs={6}>
+              <FormControl fullWidth><InputLabel>Confidentiality</InputLabel>
+                <Select value={editForm.confidentialityLevel || 'confidential'} label="Confidentiality" onChange={setF('confidentialityLevel')}>
+                  <MenuItem value="confidential">Confidential</MenuItem>
+                  <MenuItem value="restricted">Restricted</MenuItem>
+                  <MenuItem value="public">Public</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={6}>
+              <FormControl fullWidth><InputLabel>Number of Arbitrators</InputLabel>
+                <Select value={editForm.numArbitrators || 1} label="Number of Arbitrators" onChange={setF('numArbitrators')}>
+                  <MenuItem value={1}>1 (Sole Arbitrator)</MenuItem>
+                  <MenuItem value={3}>3 (Tribunal)</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving...' : 'Save Changes'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };

@@ -5,6 +5,24 @@ require('dotenv').config({ path: '.env.oracle' });
 const http = require('http');
 const url = require('url');
 
+// AI client — uses Google Gemini (free tier: 1M tokens/day)
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+async function callAI(prompt) {
+  if (!GEMINI_API_KEY) return null;
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+    }
+  );
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  return data.candidates[0].content.parts[0].text;
+}
+
 // Configuration
 const config = require('./config/app-config');
 
@@ -619,9 +637,40 @@ function createServer(services) {
         const caseId = path.split('/api/cases/')[1];
         const body = await parseBody(req);
         await oracleDb.executeQuery(
-          'UPDATE cases SET title = :title, status = :status, updated_at = CURRENT_TIMESTAMP WHERE case_id = :caseId',
-          { title: body.title, status: body.status, caseId }
+          `UPDATE cases SET
+            title = :title, status = :status, case_type = :caseType, sector = :sector,
+            dispute_category = :disputeCategory, description = :description,
+            dispute_amount = :disputeAmount, currency = :currency,
+            governing_law = :governingLaw, seat_of_arbitration = :seatOfArbitration,
+            arbitration_rules = :arbitrationRules, language_of_proceedings = :languageOfProceedings,
+            institution_ref = :institutionRef, response_deadline = :responseDeadline,
+            case_stage = :caseStage, num_arbitrators = :numArbitrators,
+            confidentiality_level = :confidentialityLevel, third_party_funding = :thirdPartyFunding,
+            updated_at = CURRENT_TIMESTAMP
+           WHERE case_id = :caseId`,
+          {
+            caseId,
+            title: body.title,
+            status: body.status || 'active',
+            caseType: body.caseType || null,
+            sector: body.sector || null,
+            disputeCategory: body.disputeCategory || null,
+            description: body.description || null,
+            disputeAmount: body.disputeAmount || null,
+            currency: body.currency || 'USD',
+            governingLaw: body.governingLaw || null,
+            seatOfArbitration: body.seatOfArbitration || null,
+            arbitrationRules: body.arbitrationRules || null,
+            languageOfProceedings: body.languageOfProceedings || 'English',
+            institutionRef: body.institutionRef || null,
+            responseDeadline: body.responseDeadline ? new Date(body.responseDeadline) : null,
+            caseStage: body.caseStage || 'filing',
+            numArbitrators: body.numArbitrators || 1,
+            confidentialityLevel: body.confidentialityLevel || 'confidential',
+            thirdPartyFunding: body.thirdPartyFunding ? 1 : 0
+          }
         );
+        await auditTrail.logEvent({ type: 'case_updated', caseId, userId: user.userId, action: 'update' });
         return sendJSON(res, 200, { success: true });
       }
 
@@ -655,10 +704,12 @@ function createServer(services) {
         if (!user) return;
         const body = await parseBody(req);
         if (!body.documentName) return sendJSON(res, 400, { error: 'documentName is required' });
+        const content = body.content ? Buffer.from(body.content, 'base64') : null;
         await oracleDb.executeQuery(
-          'INSERT INTO documents (case_id, document_name) VALUES (:caseId, :documentName)',
-          { caseId: body.caseId || null, documentName: body.documentName }
+          'INSERT INTO documents (case_id, document_name, document_content) VALUES (:caseId, :documentName, :content)',
+          { caseId: body.caseId || null, documentName: body.documentName, content }
         );
+        await auditTrail.logEvent({ type: 'document_uploaded', caseId: body.caseId, userId: user.userId, action: 'upload', details: JSON.stringify({ documentName: body.documentName }) });
         return sendJSON(res, 201, { success: true, documentName: body.documentName });
       }
 
@@ -709,6 +760,38 @@ function createServer(services) {
         const user = authenticate(req, res, ['admin']);
         if (!user) return;
         return sendJSON(res, 200, { success: true });
+      }
+
+      // =============================================
+      // --- AI ROUTES ---
+      // =============================================
+
+      // --- POST /api/ai/governing-law ---
+      if (path === '/api/ai/governing-law' && method === 'POST') {
+        const user = authenticate(req, res);
+        if (!user) return;
+        const { seatOfArbitration, caseType } = await parseBody(req);
+        if (!GROQ_API_KEY && !ANTHROPIC_API_KEY) {
+          return sendJSON(res, 200, { success: false, message: 'AI not configured. Add GROQ_API_KEY to .env.oracle (free at console.groq.com)' });
+        }
+        const jurisdiction = seatOfArbitration || 'Kenya';
+        const prompt = `For a ${caseType || 'commercial'} arbitration with seat in ${jurisdiction}, provide a JSON object with:
+- governingLaw: standard substantive law (e.g., "Laws of Kenya")
+- arbitrationLaw: primary arbitration statute with year
+- arbitrationRules: top recommended institutional rules for this jurisdiction
+- institutions: array of top 3 arbitration institutions
+- notes: one sentence on the legal framework
+
+Respond ONLY with valid JSON, no markdown, no extra text.`;
+        const text = await callAI(prompt);
+        if (!text) return sendJSON(res, 500, { error: 'AI call failed' });
+        try {
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          const data = jsonMatch ? JSON.parse(jsonMatch[0]) : { notes: text };
+          return sendJSON(res, 200, { success: true, ...data });
+        } catch {
+          return sendJSON(res, 200, { success: true, notes: text });
+        }
       }
 
       // 404
