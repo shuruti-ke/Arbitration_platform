@@ -55,10 +55,22 @@ async function extractTextFromFile(base64Content, fileName, mimeType) {
     }
     // PDF
     if (ext === 'pdf' || mimeType === 'application/pdf') {
-      const _pdf = require('pdf-parse');
-      const pdfParse = typeof _pdf === 'function' ? _pdf : (_pdf.default || _pdf);
-      const data = await pdfParse(buffer);
-      return (data.text || '').slice(0, 100000);
+      const PDFParser = require('pdf2json');
+      const text = await new Promise((resolve, reject) => {
+        const parser = new PDFParser(null, 1);
+        parser.on('pdfParser_dataReady', (data) => {
+          try {
+            const pages = (data.Pages || []);
+            const extracted = pages.map(page =>
+              (page.Texts || []).map(t => decodeURIComponent(t.R.map(r => r.T).join(' '))).join(' ')
+            ).join('\n');
+            resolve(extracted);
+          } catch (e) { resolve(''); }
+        });
+        parser.on('pdfParser_dataError', (e) => reject(e.parserError || e));
+        parser.parseBuffer(buffer);
+      });
+      return text.slice(0, 100000);
     }
     // DOCX
     if (ext === 'docx' || mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
