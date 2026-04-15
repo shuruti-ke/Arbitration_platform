@@ -811,12 +811,12 @@ function createServer(services) {
       if (path === '/api/ai/governing-law' && method === 'POST') {
         const user = authenticate(req, res);
         if (!user) return;
-        const { seatOfArbitration, caseType } = await parseBody(req);
-        if (!GROQ_API_KEY && !ANTHROPIC_API_KEY) {
-          return sendJSON(res, 200, { success: false, message: 'AI not configured. Add GROQ_API_KEY to .env.oracle (free at console.groq.com)' });
+        const { seatOfArbitration, caseType, jurisdiction } = await parseBody(req);
+        if (!GEMINI_API_KEY) {
+          return sendJSON(res, 200, { success: false, message: 'AI not configured. Add GEMINI_API_KEY to .env.oracle' });
         }
-        const jurisdiction = seatOfArbitration || 'Kenya';
-        const prompt = `For a ${caseType || 'commercial'} arbitration with seat in ${jurisdiction}, provide a JSON object with:
+        const seat = jurisdiction || seatOfArbitration || 'Kenya';
+        const prompt = `For a ${caseType || 'commercial'} arbitration with seat in ${seat}, provide a JSON object with:
 - governingLaw: standard substantive law (e.g., "Laws of Kenya")
 - arbitrationLaw: primary arbitration statute with year
 - arbitrationRules: top recommended institutional rules for this jurisdiction
