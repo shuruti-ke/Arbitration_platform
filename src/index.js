@@ -55,7 +55,7 @@ async function extractTextFromFile(base64Content, fileName, mimeType) {
     }
     // PDF
     if (ext === 'pdf' || mimeType === 'application/pdf') {
-      const pdfParse = require('pdf-parse');
+      const pdfParse = require('pdf-parse/lib/pdf-parse.js');
       const data = await pdfParse(buffer);
       return (data.text || '').slice(0, 100000);
     }
