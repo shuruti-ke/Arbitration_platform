@@ -2,67 +2,121 @@
 // Consent management service for PII handling and compliance
 
 class ConsentService {
-  constructor() {
-    this.consents = new Map();
+  /**
+   * @param {object|null} dbService - OracleDatabaseService instance (optional)
+   */
+  constructor(dbService = null) {
+    this.dbService = dbService;
+    this.consents = new Map(); // in-memory store / cache
   }
 
   /**
-   * Record consent for data processing
-   * @param {string} userId - User identifier
-   * @param {object} consentData - Consent data
-   * @returns {string} Consent ID
+   * Record consent for data processing.
+   * Persists to Oracle DB when connected.
+   * @param {string} userId
+   * @param {object} consentData
+   * @returns {Promise<string>} Consent ID
    */
-  recordConsent(userId, consentData) {
-    const consentId = 'consent-' + Math.random().toString(36).substr(2, 9);
-    
-    this.consents.set(consentId, {
-      userId: userId,
-      consentData: consentData,
+  async recordConsent(userId, consentData) {
+    const consentId = 'consent-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    const purpose = consentData.purpose || 'e-signature';
+
+    const entry = {
+      userId,
+      consentData,
+      purpose,
       timestamp: new Date().toISOString(),
-      purpose: consentData.purpose || 'e-signature'
-    });
-    
+      revoked: false
+    };
+
+    this.consents.set(consentId, entry);
+
+    if (this.dbService && this.dbService.isConnected()) {
+      try {
+        await this.dbService.recordConsent(consentId, userId, purpose, consentData);
+      } catch (error) {
+        console.error(`Consent DB write failed for ${consentId}:`, error.message);
+      }
+    }
+
     console.log(`Consent recorded for user ${userId}: ${consentId}`);
     return consentId;
   }
 
   /**
-   * Check if user has given consent
-   * @param {string} userId - User identifier
-   * @param {string} purpose - Purpose of consent
-   * @returns {boolean} Whether consent exists
+   * Check if a user has active consent for a given purpose.
+   * Uses Oracle DB when connected; falls back to in-memory Map.
+   * @param {string} userId
+   * @param {string} purpose
+   * @returns {Promise<boolean>}
    */
-  hasConsent(userId, purpose) {
-    // In a real implementation, this would check against stored consents
-    // For now, we'll simulate a check
-    return true;
-  }
+  async hasConsent(userId, purpose) {
+    if (this.dbService && this.dbService.isConnected()) {
+      try {
+        return await this.dbService.hasConsent(userId, purpose);
+      } catch (error) {
+        console.error('Consent DB check failed, using in-memory fallback:', error.message);
+      }
+    }
 
-  /**
-   * Revoke consent
-   * @param {string} consentId - Consent identifier
-   * @returns {boolean} Revocation result
-   */
-  revokeConsent(consentId) {
-    const consent = this.consents.get(consentId);
-    if (consent) {
-      consent.revoked = true;
-      consent.revokedAt = new Date().toISOString();
-      this.consents.set(consentId, consent);
-      return true;
+    // In-memory fallback: check the Map
+    for (const entry of this.consents.values()) {
+      if (
+        entry.userId === userId &&
+        (entry.purpose === purpose || !purpose) &&
+        !entry.revoked
+      ) {
+        return true;
+      }
     }
     return false;
   }
 
   /**
-   * Get all consents for a user
-   * @param {string} userId - User identifier
-   * @returns {Array} User consents
+   * Revoke consent by ID.
+   * @param {string} consentId
+   * @returns {Promise<boolean>}
    */
-  getUserConsents(userId) {
-    // In a real implementation, this would query the database
-    // For now, we'll return a simulated result
-    return [];
+  async revokeConsent(consentId) {
+    const entry = this.consents.get(consentId);
+    if (entry) {
+      entry.revoked = true;
+      entry.revokedAt = new Date().toISOString();
+      this.consents.set(consentId, entry);
+    }
+
+    if (this.dbService && this.dbService.isConnected()) {
+      try {
+        return await this.dbService.revokeConsent(consentId);
+      } catch (error) {
+        console.error(`Consent revocation DB write failed for ${consentId}:`, error.message);
+      }
+    }
+
+    return entry !== undefined;
+  }
+
+  /**
+   * Get all consents for a user.
+   * @param {string} userId
+   * @returns {Promise<Array>}
+   */
+  async getUserConsents(userId) {
+    if (this.dbService && this.dbService.isConnected()) {
+      try {
+        return await this.dbService.getUserConsents(userId);
+      } catch (error) {
+        console.error('Consent DB read failed, using in-memory fallback:', error.message);
+      }
+    }
+
+    const results = [];
+    for (const [consentId, entry] of this.consents) {
+      if (entry.userId === userId) {
+        results.push({ consentId, ...entry });
+      }
+    }
+    return results;
   }
 }
 

@@ -1,72 +1,72 @@
 // src/components/Navigation.js
 import React from 'react';
-import { AppBar, Toolbar, Typography, Button, IconButton } from '@mui/material';
-import { 
+import { AppBar, Toolbar, Typography, Button, IconButton, Chip, Box } from '@mui/material';
+import {
   Dashboard as DashboardIcon,
   Gavel as CasesIcon,
   Description as DocumentsIcon,
   Analytics as AnalyticsIcon,
   Settings as SettingsIcon,
-  Menu as MenuIcon
+  VideoCall as HearingsIcon,
+  Logout as LogoutIcon
 } from '@mui/icons-material';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+
+const roleColors = {
+  admin: 'error',
+  arbitrator: 'warning',
+  secretariat: 'info',
+  counsel: 'secondary',
+  party: 'default'
+};
 
 const Navigation = () => {
+  const { user, logout } = useAuth();
+
   return (
     <AppBar position="static">
       <Toolbar>
-        <IconButton
-          size="large"
-          edge="start"
-          color="inherit"
-          aria-label="menu"
-          sx={{ mr: 2 }}
-        >
-          <MenuIcon />
-        </IconButton>
-        <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+        <Typography variant="h6" component="div" sx={{ mr: 2 }}>
           Arbitration Platform
         </Typography>
-        <Button 
-          color="inherit" 
-          component={Link} 
-          to="/"
-          startIcon={<DashboardIcon />}
-        >
+        <Button color="inherit" component={Link} to="/" startIcon={<DashboardIcon />}>
           Dashboard
         </Button>
-        <Button 
-          color="inherit" 
-          component={Link} 
-          to="/cases"
-          startIcon={<CasesIcon />}
-        >
+        <Button color="inherit" component={Link} to="/cases" startIcon={<CasesIcon />}>
           Cases
         </Button>
-        <Button 
-          color="inherit" 
-          component={Link} 
-          to="/documents"
-          startIcon={<DocumentsIcon />}
-        >
+        <Button color="inherit" component={Link} to="/hearings" startIcon={<HearingsIcon />}>
+          Hearings
+        </Button>
+        <Button color="inherit" component={Link} to="/documents" startIcon={<DocumentsIcon />}>
           Documents
         </Button>
-        <Button 
-          color="inherit" 
-          component={Link} 
-          to="/analytics"
-          startIcon={<AnalyticsIcon />}
-        >
+        <Button color="inherit" component={Link} to="/analytics" startIcon={<AnalyticsIcon />}>
           Analytics
         </Button>
-        <Button 
-          color="inherit" 
-          component={Link} 
-          to="/settings"
-          startIcon={<SettingsIcon />}
-        >
+        <Button color="inherit" component={Link} to="/settings" startIcon={<SettingsIcon />}>
           Settings
         </Button>
+
+        <Box sx={{ flexGrow: 1 }} />
+
+        {user && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="body2" sx={{ opacity: 0.9 }}>
+              {user.firstName} {user.lastName}
+            </Typography>
+            <Chip
+              label={user.role}
+              size="small"
+              color={roleColors[user.role] || 'default'}
+              sx={{ color: 'white', fontWeight: 'bold' }}
+            />
+            <IconButton color="inherit" onClick={logout} title="Logout">
+              <LogoutIcon />
+            </IconButton>
+          </Box>
+        )}
       </Toolbar>
     </AppBar>
   );

@@ -1,0 +1,30 @@
+name: Deploy to Oracle Cloud
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '16'
+    
+    - name: Install dependencies
+      run: npm install
+    
+    - name: Run tests
+      run: npm test
+    
+    - name: Deploy to Oracle Cloud
+      env:
+        ORACLE_CONFIG: ${{ secrets.ORACLE_CONFIG }}
+      run: |
+        echo "Deploying to Oracle Cloud..."
+        # Deployment commands here

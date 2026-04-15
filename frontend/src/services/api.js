@@ -11,30 +11,36 @@ const api = axios.create({
   },
 });
 
-// API functions for various endpoints
 export const apiService = {
-  // Cases API
+  // Health
+  getHealth: () => api.get('/health'),
+
+  // Cases
   getCases: () => api.get('/cases'),
   getCase: (id) => api.get(`/cases/${id}`),
   createCase: (caseData) => api.post('/cases', caseData),
   updateCase: (id, caseData) => api.put(`/cases/${id}`, caseData),
   deleteCase: (id) => api.delete(`/cases/${id}`),
 
-  // Documents API
+  // Documents
   getDocuments: () => api.get('/documents'),
   uploadDocument: (documentData) => api.post('/documents', documentData),
   getDocument: (id) => api.get(`/documents/${id}`),
 
-  // Analytics API
+  // Analytics
   getAnalytics: () => api.get('/analytics'),
 
-  // Authentication API
-  login: (credentials) => api.post('/auth/login', credentials),
-  logout: () => api.post('/auth/logout'),
+  // Consent
+  recordConsent: (userId, consentData) => api.post('/consent/record', { userId, consentData }),
+  checkConsent: (userId, purpose) => api.get(`/consent/check?userId=${userId}&purpose=${purpose}`),
 
-  // Settings API
+  // Settings
   getSettings: () => api.get('/settings'),
   updateSettings: (settings) => api.put('/settings', settings),
+
+  // Authentication
+  login: (credentials) => api.post('/auth/login', credentials),
+  logout: () => api.post('/auth/logout'),
 };
 
 export default apiService;
