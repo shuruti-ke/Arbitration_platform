@@ -59,6 +59,12 @@ export const apiService = {
   // Case submission
   submitCase: (caseId, data) => api.post(`/cases/${caseId}/submit`, data || {}),
 
+  // User management
+  getUsers: (role) => api.get(`/users${role ? `?role=${role}` : ''}`),
+  registerUser: (userData) => api.post('/auth/register', userData),
+  updateUser: (userId, data) => api.put(`/users/${userId}`, data),
+  deactivateUser: (userId) => api.delete(`/users/${userId}`),
+
   // Authentication
   login: (credentials) => api.post('/auth/login', credentials),
   logout: () => api.post('/auth/logout'),

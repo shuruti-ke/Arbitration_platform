@@ -8,7 +8,8 @@ import {
   Analytics as AnalyticsIcon,
   Settings as SettingsIcon,
   VideoCall as HearingsIcon,
-  Logout as LogoutIcon
+  Logout as LogoutIcon,
+  ManageAccounts as UsersIcon
 } from '@mui/icons-material';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -22,7 +23,8 @@ const roleColors = {
 };
 
 const Navigation = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, hasRole } = useAuth();
+  const canManageUsers = hasRole && hasRole('admin', 'secretariat');
 
   return (
     <AppBar position="static">
@@ -45,6 +47,11 @@ const Navigation = () => {
         <Button color="inherit" component={Link} to="/analytics" startIcon={<AnalyticsIcon />}>
           Analytics
         </Button>
+        {canManageUsers && (
+          <Button color="inherit" component={Link} to="/users" startIcon={<UsersIcon />}>
+            Users
+          </Button>
+        )}
         <Button color="inherit" component={Link} to="/settings" startIcon={<SettingsIcon />}>
           Settings
         </Button>

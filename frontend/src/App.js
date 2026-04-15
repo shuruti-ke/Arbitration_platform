@@ -11,6 +11,7 @@ import Documents from './pages/Documents';
 import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
 import Hearings from './pages/Hearings';
+import Users from './pages/Users';
 import Login from './pages/Login';
 import Navigation from './components/Navigation';
 import './styles/App.css';
@@ -52,6 +53,7 @@ const AppRoutes = () => {
         <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
         <Route path="/hearings" element={<ProtectedRoute><Hearings /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+        <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>

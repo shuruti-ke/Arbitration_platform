@@ -417,6 +417,28 @@ function createServer(services) {
         return sendJSON(res, 200, { users });
       }
 
+      // --- PUT /api/users/:userId ---
+      if (path.startsWith('/api/users/') && method === 'PUT') {
+        const user = authenticate(req, res, ['admin', 'secretariat']);
+        if (!user) return;
+        const targetId = path.split('/api/users/')[1];
+        const body = await parseBody(req);
+        // Only admin can change roles
+        if (body.role && user.role !== 'admin') {
+          return sendJSON(res, 403, { error: 'Only admin can change user roles' });
+        }
+        let sql = 'UPDATE users SET first_name = :firstName, last_name = :lastName';
+        const params = { firstName: body.firstName || null, lastName: body.lastName || null, userId: targetId };
+        if (body.role && user.role === 'admin') {
+          sql += ', role = :role';
+          params.role = body.role;
+        }
+        sql += ' WHERE user_id = :userId';
+        await oracleDb.executeQuery(sql, params);
+        await auditTrail.logEvent({ type: 'user_updated', userId: user.userId, action: 'update', details: { targetId } });
+        return sendJSON(res, 200, { success: true });
+      }
+
       // --- DELETE /api/users/:userId ---
       if (path.startsWith('/api/users/') && method === 'DELETE') {
         const user = authenticate(req, res, ['admin']);
