@@ -4,6 +4,7 @@
 
 const oracledb = require('oracledb');
 // oracledb v6+ defaults to Thin mode (no Oracle Instant Client required).
+oracledb.fetchAsString = [oracledb.CLOB];
 
 class OracleDatabaseService {
   constructor(config) {
