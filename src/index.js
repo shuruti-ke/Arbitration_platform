@@ -692,7 +692,7 @@ function createServer(services) {
         const user = authenticate(req, res);
         if (!user) return;
         const result = await oracleDb.executeQuery(
-          'SELECT id, case_id, document_name, created_at, updated_at FROM documents ORDER BY created_at DESC',
+          'SELECT id, case_id, document_name, category, description, created_at FROM documents ORDER BY created_at DESC',
           {}
         );
         return sendJSON(res, 200, { documents: result.rows || [] });
@@ -705,11 +705,24 @@ function createServer(services) {
         const body = await parseBody(req);
         if (!body.documentName) return sendJSON(res, 400, { error: 'documentName is required' });
         const content = body.content ? Buffer.from(body.content, 'base64') : null;
+        // Extract text content for AI analysis (text files only)
+        let textContent = null;
+        if (body.content && body.mimeType && (body.mimeType.includes('text') || body.documentName.match(/\.(txt|md|csv)$/i))) {
+          try { textContent = Buffer.from(body.content, 'base64').toString('utf8').slice(0, 50000); } catch (_) {}
+        }
         await oracleDb.executeQuery(
-          'INSERT INTO documents (case_id, document_name, document_content) VALUES (:caseId, :documentName, :content)',
-          { caseId: body.caseId || null, documentName: body.documentName, content }
+          `INSERT INTO documents (case_id, document_name, document_content, category, description, text_content)
+           VALUES (:caseId, :documentName, :content, :category, :description, :textContent)`,
+          {
+            caseId: body.caseId || null,
+            documentName: body.documentName,
+            content,
+            category: body.category || 'Other',
+            description: body.description || null,
+            textContent: textContent || null,
+          }
         );
-        await auditTrail.logEvent({ type: 'document_uploaded', caseId: body.caseId, userId: user.userId, action: 'upload', details: JSON.stringify({ documentName: body.documentName }) });
+        await auditTrail.logEvent({ type: 'document_uploaded', caseId: body.caseId, userId: user.userId, action: 'upload', details: JSON.stringify({ documentName: body.documentName, category: body.category }) });
         return sendJSON(res, 201, { success: true, documentName: body.documentName });
       }
 
@@ -719,11 +732,39 @@ function createServer(services) {
         if (!user) return;
         const id = path.split('/api/documents/')[1];
         const result = await oracleDb.executeQuery(
-          'SELECT id, case_id, document_name, created_at FROM documents WHERE id = :id',
+          'SELECT id, case_id, document_name, category, description, created_at FROM documents WHERE id = :id',
           { id }
         );
         if (!result.rows || result.rows.length === 0) return sendJSON(res, 404, { error: 'Document not found' });
         return sendJSON(res, 200, { document: result.rows[0] });
+      }
+
+      // --- POST /api/documents/:id/analyze ---
+      if (path.match(/^\/api\/documents\/[^/]+\/analyze$/) && method === 'POST') {
+        const user = authenticate(req, res);
+        if (!user) return;
+        const id = path.split('/')[3];
+        const body = await parseBody(req);
+        if (!body.prompt) return sendJSON(res, 400, { error: 'prompt is required' });
+        // Fetch document metadata + text content
+        const result = await oracleDb.executeQuery(
+          'SELECT document_name, category, description, text_content FROM documents WHERE id = :id',
+          { id }
+        );
+        if (!result.rows || result.rows.length === 0) return sendJSON(res, 404, { error: 'Document not found' });
+        const doc = result.rows[0];
+        const docName = doc.DOCUMENT_NAME || doc.document_name || '';
+        const docCategory = doc.CATEGORY || doc.category || '';
+        const docDesc = doc.DESCRIPTION || doc.description || '';
+        const textContent = doc.TEXT_CONTENT || doc.text_content || '';
+        const contextSection = textContent
+          ? `Document content (excerpt):\n---\n${textContent.slice(0, 30000)}\n---\n\n`
+          : `Note: Binary document (PDF/Word) — analysis based on metadata only.\n\n`;
+        const aiPrompt = `You are an expert arbitration lawyer and legal analyst.\n\nDocument: "${docName}"\nCategory: ${docCategory}\n${docDesc ? `Description: ${docDesc}\n` : ''}${contextSection}User request: ${body.prompt}\n\nProvide a concise, professional legal analysis.`;
+        const analysis = await callAI(aiPrompt);
+        if (!analysis) return sendJSON(res, 503, { error: 'AI service not configured. Add GEMINI_API_KEY to .env.oracle' });
+        await auditTrail.logEvent({ type: 'document_analyzed', caseId: null, userId: user.userId, action: 'ai_analyze', details: JSON.stringify({ documentId: id, documentName: docName }) });
+        return sendJSON(res, 200, { analysis });
       }
 
       // =============================================

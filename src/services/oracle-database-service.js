@@ -212,6 +212,11 @@ class OracleDatabaseService {
     await this._addColumnSafe('cases', 'confidentiality_level', 'VARCHAR2(50) DEFAULT \'confidential\'');
     await this._addColumnSafe('cases', 'third_party_funding', 'NUMBER(1) DEFAULT 0');
 
+    // Expand DOCUMENTS table with category, description, text_content for AI
+    await this._addColumnSafe('documents', 'category', 'VARCHAR2(100) DEFAULT \'Other\'');
+    await this._addColumnSafe('documents', 'description', 'VARCHAR2(500)');
+    await this._addColumnSafe('documents', 'text_content', 'CLOB');
+
     // Parties table
     await this._createTableSafe('PARTIES', `
       CREATE TABLE parties (
