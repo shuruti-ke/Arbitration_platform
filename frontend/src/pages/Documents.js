@@ -159,8 +159,9 @@ const Documents = () => {
 
   const canDelete = (doc) => {
     if (!user) return false;
-    if (doc.accessLevel === 'global') return user.role === 'admin';
-    return ['admin', 'secretariat'].includes(user.role);
+    const role = (user.role || user.ROLE || '').toLowerCase();
+    if (doc.accessLevel === 'global') return role === 'admin';
+    return ['admin', 'secretariat'].includes(role);
   };
 
   const openAnalyze = (doc) => {
