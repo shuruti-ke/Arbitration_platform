@@ -833,6 +833,33 @@ function createServer(services) {
         return sendJSON(res, 200, { analysis });
       }
 
+      // --- DELETE /api/documents/:id ---
+      // Admin can delete any doc. Other users can delete their own case docs only.
+      if (path.match(/^\/api\/documents\/[^/]+$/) && method === 'DELETE') {
+        const user = authenticate(req, res);
+        if (!user) return;
+        const id = path.split('/api/documents/')[1];
+        const result = await oracleDb.executeQuery(
+          'SELECT access_level, uploaded_by FROM documents WHERE id = :id',
+          { id }
+        );
+        if (!result.rows || result.rows.length === 0) return sendJSON(res, 404, { error: 'Document not found' });
+        const doc = result.rows[0];
+        const accessLevel = doc.ACCESS_LEVEL || doc.access_level;
+        const uploadedBy = doc.UPLOADED_BY || doc.uploaded_by;
+        // Platform Library: admin only
+        if (accessLevel === 'global' && user.role !== 'admin') {
+          return sendJSON(res, 403, { error: 'Only admin can delete Platform Library documents' });
+        }
+        // Case documents: owner or admin/secretariat
+        if (accessLevel === 'case' && user.role !== 'admin' && user.role !== 'secretariat' && uploadedBy !== user.userId) {
+          return sendJSON(res, 403, { error: 'You can only delete documents you uploaded' });
+        }
+        await oracleDb.executeQuery('DELETE FROM documents WHERE id = :id', { id });
+        await auditTrail.logEvent({ type: 'document_deleted', caseId: null, userId: user.userId, action: 'delete', details: JSON.stringify({ documentId: id }) });
+        return sendJSON(res, 200, { success: true });
+      }
+
       // =============================================
       // --- ANALYTICS ROUTE ---
       // =============================================

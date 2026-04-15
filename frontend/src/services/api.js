@@ -35,6 +35,7 @@ export const apiService = {
   uploadDocument: (documentData) => api.post('/documents', documentData),
   getDocument: (id) => api.get(`/documents/${id}`),
   analyzeDocument: (id, prompt) => api.post(`/documents/${id}/analyze`, { prompt }),
+  deleteDocument: (id) => api.delete(`/documents/${id}`),
 
   // Analytics
   getAnalytics: () => api.get('/analytics'),

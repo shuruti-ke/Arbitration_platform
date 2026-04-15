@@ -19,8 +19,10 @@ import {
   LibraryBooks as LibraryIcon,
   Folder as CaseIcon,
   Lock as PrivateIcon,
-  Public as GlobalIcon
+  Public as GlobalIcon,
+  Delete as DeleteIcon
 } from '@mui/icons-material';
+import { useAuth } from '../context/AuthContext';
 import { apiService } from '../services/api';
 
 const DOC_CATEGORIES = [
@@ -49,6 +51,7 @@ const getFileIcon = (name) => {
 };
 
 const Documents = () => {
+  const { user } = useAuth();
   const [libraryDocs, setLibraryDocs] = useState([]);
   const [caseDocs, setCaseDocs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -141,6 +144,25 @@ const Documents = () => {
     reader.readAsDataURL(selectedFile);
   };
 
+  const handleDelete = async (doc) => {
+    const msg = doc.accessLevel === 'global'
+      ? `Delete "${doc.name}" from the Platform Library?`
+      : `Delete "${doc.name}"?`;
+    if (!window.confirm(msg)) return;
+    try {
+      await apiService.deleteDocument(doc.id);
+      await fetchDocuments();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Delete failed.');
+    }
+  };
+
+  const canDelete = (doc) => {
+    if (!user) return false;
+    if (doc.accessLevel === 'global') return user.role === 'admin';
+    return ['admin', 'secretariat'].includes(user.role);
+  };
+
   const openAnalyze = (doc) => {
     setAnalyzeDoc(doc);
     setAnalyzePrompt('');
@@ -216,6 +238,13 @@ const Documents = () => {
                     AI Analyze
                   </Button>
                 </Tooltip>
+                {canDelete(doc) && (
+                  <Tooltip title="Delete document">
+                    <IconButton size="small" color="error" onClick={() => handleDelete(doc)} sx={{ ml: 'auto' }}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                )}
               </CardActions>
             </Card>
           </Grid>
