@@ -5,22 +5,42 @@ require('dotenv').config({ path: '.env.oracle' });
 const http = require('http');
 const url = require('url');
 
-// AI client — uses Google Gemini (free tier: 1M tokens/day)
+// AI client — uses Groq (free: 14,400 req/day) with Gemini as fallback
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 async function callAI(prompt) {
-  if (!GEMINI_API_KEY) return null;
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-    {
+  // Try Groq first
+  if (GROQ_API_KEY) {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-    }
-  );
-  const data = await res.json();
-  if (data.error) throw new Error(data.error.message);
-  return data.candidates[0].content.parts[0].text;
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 2048,
+        temperature: 0.3
+      })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    return data.choices[0].message.content;
+  }
+  // Fallback to Gemini
+  if (GEMINI_API_KEY) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+      }
+    );
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    return data.candidates[0].content.parts[0].text;
+  }
+  return null;
 }
 
 // Configuration
@@ -762,7 +782,7 @@ function createServer(services) {
           : `Note: Binary document (PDF/Word) — analysis based on metadata only.\n\n`;
         const aiPrompt = `You are an expert arbitration lawyer and legal analyst.\n\nDocument: "${docName}"\nCategory: ${docCategory}\n${docDesc ? `Description: ${docDesc}\n` : ''}${contextSection}User request: ${body.prompt}\n\nProvide a concise, professional legal analysis.`;
         const analysis = await callAI(aiPrompt);
-        if (!analysis) return sendJSON(res, 503, { error: 'AI service not configured. Add GEMINI_API_KEY to .env.oracle' });
+        if (!analysis) return sendJSON(res, 503, { error: 'AI service not configured. Add GROQ_API_KEY or GEMINI_API_KEY to .env.oracle' });
         await auditTrail.logEvent({ type: 'document_analyzed', caseId: null, userId: user.userId, action: 'ai_analyze', details: JSON.stringify({ documentId: id, documentName: docName }) });
         return sendJSON(res, 200, { analysis });
       }
@@ -812,8 +832,8 @@ function createServer(services) {
         const user = authenticate(req, res);
         if (!user) return;
         const { seatOfArbitration, caseType, jurisdiction } = await parseBody(req);
-        if (!GEMINI_API_KEY) {
-          return sendJSON(res, 200, { success: false, message: 'AI not configured. Add GEMINI_API_KEY to .env.oracle' });
+        if (!GROQ_API_KEY && !GEMINI_API_KEY) {
+          return sendJSON(res, 200, { success: false, message: 'AI not configured. Add GROQ_API_KEY or GEMINI_API_KEY to .env.oracle' });
         }
         const seat = jurisdiction || seatOfArbitration || 'Kenya';
         const prompt = `For a ${caseType || 'commercial'} arbitration with seat in ${seat}, provide a JSON object with:
