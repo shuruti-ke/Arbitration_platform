@@ -43,6 +43,52 @@ async function callAI(prompt) {
   return null;
 }
 
+// Document text extraction (PDF, DOCX, XLSX, CSV, TXT)
+async function extractTextFromFile(base64Content, fileName, mimeType) {
+  if (!base64Content) return null;
+  const buffer = Buffer.from(base64Content, 'base64');
+  const ext = (fileName || '').split('.').pop().toLowerCase();
+  try {
+    // Plain text / CSV / Markdown
+    if (['txt', 'md', 'csv', 'tsv'].includes(ext) || (mimeType || '').startsWith('text/')) {
+      return buffer.toString('utf8').slice(0, 100000);
+    }
+    // PDF
+    if (ext === 'pdf' || mimeType === 'application/pdf') {
+      const pdfParse = require('pdf-parse');
+      const data = await pdfParse(buffer);
+      return (data.text || '').slice(0, 100000);
+    }
+    // DOCX
+    if (ext === 'docx' || mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      const mammoth = require('mammoth');
+      const result = await mammoth.extractRawText({ buffer });
+      return (result.value || '').slice(0, 100000);
+    }
+    // DOC (older Word — extract what we can)
+    if (ext === 'doc' || mimeType === 'application/msword') {
+      // Basic extraction: strip binary, keep printable ASCII runs
+      const text = buffer.toString('binary').replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/ {3,}/g, ' ').slice(0, 100000);
+      return text;
+    }
+    // XLSX / XLS
+    if (['xlsx', 'xls'].includes(ext) || mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+      const XLSX = require('xlsx');
+      const workbook = XLSX.read(buffer, { type: 'buffer' });
+      const lines = [];
+      workbook.SheetNames.forEach((sheetName) => {
+        lines.push(`=== Sheet: ${sheetName} ===`);
+        const csv = XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]);
+        lines.push(csv);
+      });
+      return lines.join('\n').slice(0, 100000);
+    }
+  } catch (err) {
+    console.warn(`Text extraction failed for ${fileName}: ${err.message}`);
+  }
+  return null;
+}
+
 // Configuration
 const config = require('./config/app-config');
 
@@ -738,10 +784,7 @@ function createServer(services) {
           return sendJSON(res, 403, { error: 'Only admin/secretariat can add to the Platform Library' });
         }
         const content = body.content ? Buffer.from(body.content, 'base64') : null;
-        let textContent = null;
-        if (body.content && (body.mimeType || '').includes('text') || (body.documentName || '').match(/\.(txt|md|csv)$/i)) {
-          try { textContent = Buffer.from(body.content || '', 'base64').toString('utf8').slice(0, 50000); } catch (_) {}
-        }
+        const textContent = await extractTextFromFile(body.content, body.documentName, body.mimeType);
         await oracleDb.executeQuery(
           `INSERT INTO documents (case_id, document_name, document_content, category, description, text_content, access_level, uploaded_by)
            VALUES (:caseId, :documentName, :content, :category, :description, :textContent, :accessLevel, :uploadedBy)`,

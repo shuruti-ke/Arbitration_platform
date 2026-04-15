@@ -362,10 +362,10 @@ const Documents = () => {
               onClick={() => fileInputRef.current.click()}
             >
               <input type="file" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileSelect}
-                accept=".pdf,.doc,.docx,.txt,.md,.jpg,.jpeg,.png" />
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.rtf,.jpg,.jpeg,.png" />
               <UploadIcon sx={{ fontSize: 40, color: 'text.secondary' }} />
               <Typography color="text.secondary" sx={{ mt: 1 }}>
-                {selectedFile ? selectedFile.name : 'Click to select file (PDF, Word, TXT, Image)'}
+                {selectedFile ? selectedFile.name : 'PDF, Word, Excel, CSV, TXT, Images'}
               </Typography>
               {selectedFile && (
                 <Typography variant="caption" color="text.secondary">
