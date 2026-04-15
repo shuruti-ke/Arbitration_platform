@@ -272,6 +272,16 @@ class OracleDatabaseService {
         created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // NCIA / Submission fields
+    await this._addColumnSafe('cases', 'arbitrator_nominee', 'VARCHAR2(255)');
+    await this._addColumnSafe('cases', 'nominee_qualifications', 'CLOB');
+    await this._addColumnSafe('cases', 'relief_sought', 'CLOB');
+    await this._addColumnSafe('cases', 'service_confirmed', 'NUMBER(1) DEFAULT 0');
+    await this._addColumnSafe('cases', 'filing_fee', 'NUMBER');
+    await this._addColumnSafe('cases', 'filing_fee_currency', "VARCHAR2(10) DEFAULT 'KES'");
+    await this._addColumnSafe('cases', 'submission_status', "VARCHAR2(50) DEFAULT 'draft'");
+    await this._addColumnSafe('cases', 'submitted_at', 'TIMESTAMP');
   }
 
   // --- Cases ---

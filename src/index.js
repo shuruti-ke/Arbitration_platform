@@ -659,11 +659,15 @@ function createServer(services) {
           `INSERT INTO cases (case_id, title, status, case_type, sector, dispute_category,
             description, dispute_amount, currency, governing_law, seat_of_arbitration,
             arbitration_rules, language_of_proceedings, institution_ref, filing_date,
-            response_deadline, case_stage, num_arbitrators, confidentiality_level, third_party_funding)
+            response_deadline, case_stage, num_arbitrators, confidentiality_level, third_party_funding,
+            relief_sought, arbitrator_nominee, nominee_qualifications,
+            filing_fee, filing_fee_currency, service_confirmed)
            VALUES (:caseId, :title, :status, :caseType, :sector, :disputeCategory,
             :description, :disputeAmount, :currency, :governingLaw, :seatOfArbitration,
             :arbitrationRules, :languageOfProceedings, :institutionRef, :filingDate,
-            :responseDeadline, :caseStage, :numArbitrators, :confidentialityLevel, :thirdPartyFunding)`,
+            :responseDeadline, :caseStage, :numArbitrators, :confidentialityLevel, :thirdPartyFunding,
+            :reliefSought, :arbitratorNominee, :nomineeQualifications,
+            :filingFee, :filingFeeCurrency, :serviceConfirmed)`,
           {
             caseId,
             title: body.title,
@@ -684,7 +688,13 @@ function createServer(services) {
             caseStage: body.caseStage || 'filing',
             numArbitrators: body.numArbitrators || 1,
             confidentialityLevel: body.confidentialityLevel || 'confidential',
-            thirdPartyFunding: body.thirdPartyFunding ? 1 : 0
+            thirdPartyFunding: body.thirdPartyFunding ? 1 : 0,
+            reliefSought: body.reliefSought || null,
+            arbitratorNominee: body.arbitratorNominee || null,
+            nomineeQualifications: body.nomineeQualifications || null,
+            filingFee: body.filingFee || null,
+            filingFeeCurrency: body.filingFeeCurrency || 'KES',
+            serviceConfirmed: body.serviceConfirmed ? 1 : 0
           }
         );
 
@@ -725,6 +735,9 @@ function createServer(services) {
             institution_ref = :institutionRef, response_deadline = :responseDeadline,
             case_stage = :caseStage, num_arbitrators = :numArbitrators,
             confidentiality_level = :confidentialityLevel, third_party_funding = :thirdPartyFunding,
+            relief_sought = :reliefSought, arbitrator_nominee = :arbitratorNominee,
+            nominee_qualifications = :nomineeQualifications, filing_fee = :filingFee,
+            filing_fee_currency = :filingFeeCurrency, service_confirmed = :serviceConfirmed,
             updated_at = CURRENT_TIMESTAMP
            WHERE case_id = :caseId`,
           {
@@ -746,11 +759,44 @@ function createServer(services) {
             caseStage: body.caseStage || 'filing',
             numArbitrators: body.numArbitrators || 1,
             confidentialityLevel: body.confidentialityLevel || 'confidential',
-            thirdPartyFunding: body.thirdPartyFunding ? 1 : 0
+            thirdPartyFunding: body.thirdPartyFunding ? 1 : 0,
+            reliefSought: body.reliefSought || null,
+            arbitratorNominee: body.arbitratorNominee || null,
+            nomineeQualifications: body.nomineeQualifications || null,
+            filingFee: body.filingFee || null,
+            filingFeeCurrency: body.filingFeeCurrency || 'KES',
+            serviceConfirmed: body.serviceConfirmed ? 1 : 0
           }
         );
         await auditTrail.logEvent({ type: 'case_updated', caseId, userId: user.userId, action: 'update' });
         return sendJSON(res, 200, { success: true });
+      }
+
+      // --- POST /api/cases/:caseId/submit ---
+      if (path.match(/^\/api\/cases\/[^/]+\/submit$/) && method === 'POST') {
+        const user = authenticate(req, res, ['admin', 'secretariat']);
+        if (!user) return;
+        const caseId = path.split('/')[3];
+        const caseResult = await oracleDb.executeQuery('SELECT * FROM cases WHERE case_id = :caseId', { caseId });
+        if (!caseResult.rows || caseResult.rows.length === 0) return sendJSON(res, 404, { error: 'Case not found' });
+        const c = caseResult.rows[0];
+        // Validate minimum requirements
+        const missing = [];
+        if (!(c.DESCRIPTION || c.description)) missing.push('dispute description');
+        if (!(c.RELIEF_SOUGHT || c.reliefSought)) missing.push('relief sought');
+        if (!(c.SEAT_OF_ARBITRATION || c.seatOfArbitration)) missing.push('seat of arbitration');
+        // Warn but allow submission even if not all items present
+        await oracleDb.executeQuery(
+          `UPDATE cases SET submission_status = 'submitted', submitted_at = CURRENT_TIMESTAMP,
+            case_stage = CASE WHEN (case_stage = 'filing' OR case_stage IS NULL) THEN 'response' ELSE case_stage END,
+            updated_at = CURRENT_TIMESTAMP WHERE case_id = :caseId`,
+          { caseId }
+        );
+        await auditTrail.logEvent({
+          type: 'case_submitted', caseId, userId: user.userId, action: 'submit_to_registrar',
+          details: { missingItems: missing, submittedAt: new Date().toISOString() }
+        });
+        return sendJSON(res, 200, { success: true, missingItems: missing, message: 'Case submitted to registrar' });
       }
 
       // --- DELETE /api/cases/:caseId ---

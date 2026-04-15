@@ -2,7 +2,14 @@
   "permissions": {
     "allow": [
       "Bash(cd:*)",
-      "WebSearch"
+      "WebSearch",
+      "WebFetch(domain:arbitration-platform.vercel.app)",
+      "WebFetch(domain:github.com)",
+      "Skill(claude-api)",
+      "Bash(git add:*)",
+      "Bash(git push:*)",
+      "Bash(find:*)",
+      "Bash(python:*)"
     ]
   }
 }

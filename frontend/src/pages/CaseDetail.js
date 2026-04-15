@@ -6,13 +6,17 @@ import {
   Table, TableBody, TableCell, TableHead, TableRow, Stepper,
   Step, StepLabel, IconButton, Dialog, DialogTitle,
   DialogContent, DialogActions, TextField, FormControl,
-  InputLabel, Select, MenuItem
+  InputLabel, Select, MenuItem, FormControlLabel, Checkbox, List, ListItem, ListItemIcon, ListItemText
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
   Person as PersonIcon,
   Description as DocIcon,
-  Edit as EditIcon
+  Edit as EditIcon,
+  Send as SendIcon,
+  CheckCircle as CheckCircleIcon,
+  Cancel as CancelIcon,
+  Gavel as GavelIcon
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
@@ -37,6 +41,10 @@ const CaseDetail = () => {
   const [editForm, setEditForm] = useState({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  const [submitOpen, setSubmitOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
 
   const load = async () => {
     try {
@@ -72,6 +80,13 @@ const CaseDetail = () => {
       caseStage: c.CASE_STAGE || c.caseStage || 'filing',
       institutionRef: c.INSTITUTION_REF || c.institutionRef || '',
       responseDeadline: c.RESPONSE_DEADLINE ? new Date(c.RESPONSE_DEADLINE).toISOString().split('T')[0] : '',
+      // Submission fields
+      reliefSought: c.RELIEF_SOUGHT || c.reliefSought || '',
+      arbitratorNominee: c.ARBITRATOR_NOMINEE || c.arbitratorNominee || '',
+      nomineeQualifications: c.NOMINEE_QUALIFICATIONS || c.nomineeQualifications || '',
+      filingFee: c.FILING_FEE || c.filingFee || '',
+      filingFeeCurrency: c.FILING_FEE_CURRENCY || c.filingFeeCurrency || 'KES',
+      serviceConfirmed: !!(c.SERVICE_CONFIRMED || c.serviceConfirmed),
     });
     setEditOpen(true);
   };
@@ -90,7 +105,22 @@ const CaseDetail = () => {
     }
   };
 
+  const handleSubmitToRegistrar = async () => {
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      await apiService.submitCase(caseId);
+      setSubmitSuccess(true);
+      await load();
+    } catch (err) {
+      setSubmitError(err.response?.data?.error || 'Submission failed.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const setF = (field) => (e) => setEditForm({ ...editForm, [field]: e.target.value });
+  const setFCheck = (field) => (e) => setEditForm({ ...editForm, [field]: e.target.checked });
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}><CircularProgress /></Box>;
   if (error) return <Container sx={{ mt: 4 }}><Alert severity="error">{error}</Alert></Container>;
@@ -111,6 +141,56 @@ const CaseDetail = () => {
   const currentStage = c.CASE_STAGE || c.caseStage || 'filing';
   const stageIndex = STAGE_ORDER.indexOf(currentStage);
 
+  const submissionStatus = c.SUBMISSION_STATUS || c.submissionStatus || 'draft';
+
+  // NCIA Compliance Checklist
+  const claimant = claimants[0];
+  const respondent = respondents[0];
+  const nciaChecks = [
+    {
+      label: 'Claimant details provided (name, address, nature of business)',
+      ok: !!(claimant && (claimant.FULL_NAME || claimant.fullName))
+    },
+    {
+      label: 'Claimant contact details (phone/email)',
+      ok: !!(claimant && ((claimant.EMAIL || claimant.email) || (claimant.PHONE || claimant.phone)))
+    },
+    {
+      label: 'Respondent details provided',
+      ok: !!(respondent && (respondent.FULL_NAME || respondent.fullName))
+    },
+    {
+      label: 'Contract / arbitration clause (document uploaded)',
+      ok: documents.length > 0
+    },
+    {
+      label: 'Statement of dispute / nature of claim',
+      ok: !!(c.DESCRIPTION || c.description)
+    },
+    {
+      label: 'Relief sought stated',
+      ok: !!(c.RELIEF_SOUGHT || c.reliefSought)
+    },
+    {
+      label: 'Seat and language of proceedings specified',
+      ok: !!(c.SEAT_OF_ARBITRATION || c.seatOfArbitration) && !!(c.LANGUAGE_OF_PROCEEDINGS || c.languageOfProceedings)
+    },
+    {
+      label: 'Arbitrator nominee name & qualifications provided',
+      ok: !!(c.ARBITRATOR_NOMINEE || c.arbitratorNominee)
+    },
+    {
+      label: 'Service on all parties confirmed',
+      ok: !!(c.SERVICE_CONFIRMED || c.serviceConfirmed)
+    },
+  ];
+
+  const allChecksPass = nciaChecks.every(ch => ch.ok);
+  const passCount = nciaChecks.filter(ch => ch.ok).length;
+
+  const numArbitrators = c.NUM_ARBITRATORS || c.numArbitrators || 1;
+  const requiredCopies = parseInt(numArbitrators) === 1 ? 2 : 4;
+
   return (
     <Container maxWidth="lg" sx={{ mt: 3, mb: 5 }}>
       {/* Header */}
@@ -128,8 +208,23 @@ const CaseDetail = () => {
             {(c.CASE_TYPE || c.caseType) && <Chip label={c.CASE_TYPE || c.caseType} size="small" />}
             {(c.CONFIDENTIALITY_LEVEL || c.confidentialityLevel) &&
               <Chip label={c.CONFIDENTIALITY_LEVEL || c.confidentialityLevel} size="small" color="warning" />}
+            <Chip
+              label={`Submission: ${submissionStatus}`}
+              size="small"
+              color={submissionStatus === 'submitted' ? 'success' : submissionStatus === 'commenced' ? 'info' : 'default'}
+              icon={submissionStatus === 'submitted' ? <CheckCircleIcon /> : undefined}
+            />
           </Box>
         </Box>
+        {submissionStatus === 'draft' && (
+          <Button variant="contained" color="success" startIcon={<SendIcon />}
+            onClick={() => { setSubmitOpen(true); setSubmitSuccess(false); setSubmitError(null); }}>
+            Submit to Registrar
+          </Button>
+        )}
+        {submissionStatus === 'submitted' && (
+          <Chip label="Submitted to Registrar" color="success" icon={<CheckCircleIcon />} />
+        )}
       </Box>
 
       <Paper sx={{ mb: 3 }}>
@@ -158,20 +253,28 @@ const CaseDetail = () => {
               <Field label="Status" value={c.STATUS || c.status} />
               <Field label="Current Stage" value={c.CASE_STAGE || c.caseStage} />
               <Field label="Description" value={c.DESCRIPTION || c.description} />
+              {(c.RELIEF_SOUGHT || c.reliefSought) && (
+                <Field label="Relief Sought" value={c.RELIEF_SOUGHT || c.reliefSought} />
+              )}
             </Paper>
           </Grid>
           <Grid item xs={12} md={6}>
             <Paper sx={{ p: 3 }}>
-              <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2 }}>Financial</Typography>
+              <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2 }}>Financial & Dates</Typography>
               <Field label="Dispute Amount"
                 value={(c.DISPUTE_AMOUNT || c.disputeAmount)
                   ? `${c.CURRENCY || c.currency || 'USD'} ${Number(c.DISPUTE_AMOUNT || c.disputeAmount).toLocaleString()}`
                   : null} />
-              <Field label="Currency" value={c.CURRENCY || c.currency} />
-              <Divider sx={{ my: 2 }} />
-              <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2 }}>Key Dates</Typography>
+              <Field label="Filing Fee"
+                value={(c.FILING_FEE || c.filingFee)
+                  ? `${c.FILING_FEE_CURRENCY || c.filingFeeCurrency || 'KES'} ${Number(c.FILING_FEE || c.filingFee).toLocaleString()}`
+                  : null} />
+              <Divider sx={{ my: 1.5 }} />
               <Field label="Filing Date" value={c.FILING_DATE ? new Date(c.FILING_DATE).toLocaleDateString() : null} />
               <Field label="Response Deadline" value={c.RESPONSE_DEADLINE ? new Date(c.RESPONSE_DEADLINE).toLocaleDateString() : null} />
+              {(c.SUBMITTED_AT || c.submittedAt) && (
+                <Field label="Submitted to Registrar" value={new Date(c.SUBMITTED_AT || c.submittedAt).toLocaleDateString()} />
+              )}
               <Field label="Created At" value={c.CREATED_AT ? new Date(c.CREATED_AT).toLocaleDateString() : null} />
             </Paper>
           </Grid>
@@ -185,11 +288,16 @@ const CaseDetail = () => {
               <Field label="Number of Arbitrators" value={c.NUM_ARBITRATORS || c.numArbitrators} />
               <Field label="Institution Reference" value={c.INSTITUTION_REF || c.institutionRef} />
               <Field label="Third Party Funding" value={(c.THIRD_PARTY_FUNDING || c.thirdPartyFunding) ? 'Yes' : 'No'} />
+              <Divider sx={{ my: 1.5 }} />
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Arbitrator Nomination</Typography>
+              <Field label="Nominated Arbitrator" value={c.ARBITRATOR_NOMINEE || c.arbitratorNominee} />
+              <Field label="Qualifications" value={c.NOMINEE_QUALIFICATIONS || c.nomineeQualifications} />
+              <Field label="Service Confirmed" value={(c.SERVICE_CONFIRMED || c.serviceConfirmed) ? 'Yes — copies served on all parties' : 'Not yet confirmed'} />
             </Paper>
           </Grid>
           <Grid item xs={12} md={6}>
             <Paper sx={{ p: 3 }}>
-              <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2 }}>Case Progression</Typography>
+              <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>Case Progression</Typography>
               <Stepper activeStep={stageIndex} orientation="vertical">
                 {STAGE_ORDER.map((stage) => (
                   <Step key={stage} completed={STAGE_ORDER.indexOf(stage) < stageIndex}>
@@ -197,6 +305,54 @@ const CaseDetail = () => {
                   </Step>
                 ))}
               </Stepper>
+            </Paper>
+          </Grid>
+
+          {/* NCIA Compliance Checklist */}
+          <Grid item xs={12}>
+            <Paper sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                <GavelIcon color="primary" />
+                <Typography variant="subtitle1" fontWeight="bold">
+                  NCIA Request for Arbitration — Compliance Checklist
+                </Typography>
+                <Box sx={{ flex: 1 }} />
+                <Chip
+                  label={`${passCount}/${nciaChecks.length} complete`}
+                  color={allChecksPass ? 'success' : passCount >= 6 ? 'warning' : 'error'}
+                  size="small"
+                />
+              </Box>
+              <List dense>
+                {nciaChecks.map((chk, i) => (
+                  <ListItem key={i} disablePadding sx={{ py: 0.3 }}>
+                    <ListItemIcon sx={{ minWidth: 36 }}>
+                      {chk.ok
+                        ? <CheckCircleIcon color="success" fontSize="small" />
+                        : <CancelIcon color="error" fontSize="small" />}
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={<Typography variant="body2" color={chk.ok ? 'text.primary' : 'error.main'}>{chk.label}</Typography>}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+              {!allChecksPass && (
+                <Alert severity="warning" sx={{ mt: 2 }}>
+                  Complete all checklist items before submitting to the NCIA Registrar. Edit the case to fill in missing information.
+                </Alert>
+              )}
+              {allChecksPass && submissionStatus === 'draft' && (
+                <Alert severity="success" sx={{ mt: 2 }}>
+                  All NCIA requirements are met. You can now Submit to Registrar. Remember to include <strong>{requiredCopies} physical copies</strong> when filing in person.
+                </Alert>
+              )}
+              {submissionStatus === 'submitted' && (
+                <Alert severity="success" sx={{ mt: 2 }}>
+                  This case has been submitted to the NCIA Registrar. Arbitration commences upon receipt of filing fees.
+                  NCIA contact: <strong>registrar@ncia.or.ke</strong> | 8th Floor, Cooperative Bank House, Nairobi.
+                </Alert>
+              )}
             </Paper>
           </Grid>
         </Grid>
@@ -286,7 +442,7 @@ const CaseDetail = () => {
       {tab === 3 && (
         <Paper>
           {documents.length === 0
-            ? <Box sx={{ p: 3 }}><Alert severity="info">No documents uploaded yet.</Alert></Box>
+            ? <Box sx={{ p: 3 }}><Alert severity="info">No documents uploaded yet. Use the Document Library to upload the contract/arbitration clause and other supporting documents.</Alert></Box>
             : <Table>
                 <TableHead>
                   <TableRow>
@@ -407,6 +563,7 @@ const CaseDetail = () => {
           }
         </Paper>
       )}
+
       {/* Edit Case Dialog */}
       <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>Edit Case</DialogTitle>
@@ -437,10 +594,19 @@ const CaseDetail = () => {
             <Grid item xs={6}><TextField label="Dispute Amount" type="number" fullWidth value={editForm.disputeAmount || ''} onChange={setF('disputeAmount')} /></Grid>
             <Grid item xs={6}><TextField label="Currency" fullWidth value={editForm.currency || 'USD'} onChange={setF('currency')} /></Grid>
             <Grid item xs={12}><TextField label="Description" fullWidth multiline rows={2} value={editForm.description || ''} onChange={setF('description')} /></Grid>
+            <Grid item xs={12}><TextField label="Relief Sought" fullWidth multiline rows={2} value={editForm.reliefSought || ''} onChange={setF('reliefSought')} /></Grid>
             <Grid item xs={6}><TextField label="Governing Law" fullWidth value={editForm.governingLaw || ''} onChange={setF('governingLaw')} /></Grid>
             <Grid item xs={6}><TextField label="Seat of Arbitration" fullWidth value={editForm.seatOfArbitration || ''} onChange={setF('seatOfArbitration')} /></Grid>
             <Grid item xs={6}><TextField label="Arbitration Rules" fullWidth value={editForm.arbitrationRules || ''} onChange={setF('arbitrationRules')} /></Grid>
             <Grid item xs={6}><TextField label="Language" fullWidth value={editForm.languageOfProceedings || 'English'} onChange={setF('languageOfProceedings')} /></Grid>
+            <Grid item xs={6}>
+              <FormControl fullWidth><InputLabel>Number of Arbitrators</InputLabel>
+                <Select value={editForm.numArbitrators || 1} label="Number of Arbitrators" onChange={setF('numArbitrators')}>
+                  <MenuItem value={1}>1 (Sole Arbitrator)</MenuItem>
+                  <MenuItem value={3}>3 (Tribunal)</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
             <Grid item xs={6}><TextField label="Institution Reference" fullWidth value={editForm.institutionRef || ''} onChange={setF('institutionRef')} /></Grid>
             <Grid item xs={6}><TextField label="Response Deadline" type="date" fullWidth value={editForm.responseDeadline || ''} onChange={setF('responseDeadline')} InputLabelProps={{ shrink: true }} /></Grid>
             <Grid item xs={6}>
@@ -452,13 +618,27 @@ const CaseDetail = () => {
                 </Select>
               </FormControl>
             </Grid>
+
+            {/* Submission fields */}
+            <Grid item xs={12}><Divider><Typography variant="caption">Arbitrator Nomination & Submission</Typography></Divider></Grid>
+            <Grid item xs={6}><TextField label="Nominated Arbitrator" fullWidth value={editForm.arbitratorNominee || ''} onChange={setF('arbitratorNominee')} /></Grid>
+            <Grid item xs={6}><TextField label="Nominee Qualifications" fullWidth value={editForm.nomineeQualifications || ''} onChange={setF('nomineeQualifications')} /></Grid>
+            <Grid item xs={6}><TextField label="Filing Fee" type="number" fullWidth value={editForm.filingFee || ''} onChange={setF('filingFee')} /></Grid>
             <Grid item xs={6}>
-              <FormControl fullWidth><InputLabel>Number of Arbitrators</InputLabel>
-                <Select value={editForm.numArbitrators || 1} label="Number of Arbitrators" onChange={setF('numArbitrators')}>
-                  <MenuItem value={1}>1 (Sole Arbitrator)</MenuItem>
-                  <MenuItem value={3}>3 (Tribunal)</MenuItem>
+              <FormControl fullWidth><InputLabel>Fee Currency</InputLabel>
+                <Select value={editForm.filingFeeCurrency || 'KES'} label="Fee Currency" onChange={setF('filingFeeCurrency')}>
+                  <MenuItem value="KES">KES</MenuItem>
+                  <MenuItem value="USD">USD</MenuItem>
+                  <MenuItem value="EUR">EUR</MenuItem>
+                  <MenuItem value="GBP">GBP</MenuItem>
                 </Select>
               </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={<Checkbox checked={!!editForm.serviceConfirmed} onChange={setFCheck('serviceConfirmed')} />}
+                label="I confirm copies have been served on all parties"
+              />
             </Grid>
           </Grid>
         </DialogContent>
@@ -467,6 +647,65 @@ const CaseDetail = () => {
           <Button variant="contained" onClick={handleSave} disabled={saving}>
             {saving ? 'Saving...' : 'Save Changes'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Submit to Registrar Dialog */}
+      <Dialog open={submitOpen} onClose={() => { if (!submitting) setSubmitOpen(false); }} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <SendIcon color="primary" />
+            Submit Request for Arbitration to NCIA Registrar
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {submitSuccess ? (
+            <Alert severity="success" sx={{ mt: 1 }}>
+              <strong>Case submitted successfully!</strong><br />
+              The case has been marked as submitted to the NCIA Registrar.
+              Please also send physical copies ({requiredCopies} copies required) to:<br />
+              <strong>NCIA Registrar, 8th Floor, Cooperative Bank House, Nairobi</strong><br />
+              or email: <strong>registrar@ncia.or.ke</strong>
+            </Alert>
+          ) : (
+            <>
+              {submitError && <Alert severity="error" sx={{ mb: 2 }}>{submitError}</Alert>}
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                NCIA Requirements Checklist ({passCount}/{nciaChecks.length} complete):
+              </Typography>
+              <List dense>
+                {nciaChecks.map((chk, i) => (
+                  <ListItem key={i} disablePadding sx={{ py: 0.2 }}>
+                    <ListItemIcon sx={{ minWidth: 32 }}>
+                      {chk.ok ? <CheckCircleIcon color="success" fontSize="small" /> : <CancelIcon color="error" fontSize="small" />}
+                    </ListItemIcon>
+                    <ListItemText primary={<Typography variant="body2" color={chk.ok ? 'text.primary' : 'error.main'}>{chk.label}</Typography>} />
+                  </ListItem>
+                ))}
+              </List>
+              {allChecksPass ? (
+                <Alert severity="success" sx={{ mt: 2 }}>
+                  All requirements met. Remember to submit <strong>{requiredCopies} physical copies</strong> to the NCIA Registrar (or email registrar@ncia.or.ke).
+                  Filing fees are <strong>non-refundable</strong>.
+                </Alert>
+              ) : (
+                <Alert severity="warning" sx={{ mt: 2 }}>
+                  {nciaChecks.length - passCount} requirement(s) not yet met. You can still proceed, but the Registrar may request the missing information.
+                </Alert>
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSubmitOpen(false)} disabled={submitting}>
+            {submitSuccess ? 'Close' : 'Cancel'}
+          </Button>
+          {!submitSuccess && (
+            <Button variant="contained" color="success" startIcon={<SendIcon />}
+              onClick={handleSubmitToRegistrar} disabled={submitting}>
+              {submitting ? 'Submitting...' : 'Confirm Submission'}
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
     </Container>

@@ -5,14 +5,19 @@ import {
   FormControl, InputLabel, Select, MenuItem, Chip,
   InputAdornment, Alert, CircularProgress, Dialog,
   DialogTitle, DialogContent, DialogActions, Step,
-  Stepper, StepLabel, Grid, Tabs, Tab, Tooltip, IconButton
+  Stepper, StepLabel, Grid, Tabs, Tab, Tooltip, IconButton,
+  FormControlLabel, Checkbox, Divider
 } from '@mui/material';
-import { Add as AddIcon, Search as SearchIcon, FilterList as FilterIcon, AutoAwesome as AiIcon, Edit as EditIcon, OpenInNew as OpenIcon } from '@mui/icons-material';
+import {
+  Add as AddIcon, Search as SearchIcon, FilterList as FilterIcon,
+  AutoAwesome as AiIcon, Edit as EditIcon, OpenInNew as OpenIcon,
+  CheckCircle as CheckIcon, Cancel as CancelIcon
+} from '@mui/icons-material';
 import { DataGrid } from '@mui/x-data-grid';
 import { useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
 
-const STEPS = ['Case Details', 'Parties', 'Procedural'];
+const STEPS = ['Case Details', 'Parties', 'Procedural', 'Submission'];
 
 const EMPTY_FORM = {
   // Step 1 - Case Details
@@ -27,7 +32,11 @@ const EMPTY_FORM = {
   governingLaw: '', seatOfArbitration: '', arbitrationRules: '',
   languageOfProceedings: 'English', numArbitrators: '1',
   confidentialityLevel: 'confidential', thirdPartyFunding: false,
-  responseDeadline: ''
+  responseDeadline: '',
+  // Step 4 - Submission
+  reliefSought: '', arbitratorNominee: '', nomineeQualifications: '',
+  filingFee: '', filingFeeCurrency: 'KES',
+  serviceConfirmed: false, feeAcknowledged: false,
 };
 
 const Cases = () => {
@@ -59,6 +68,7 @@ const Cases = () => {
         disputeAmount: c.DISPUTE_AMOUNT || c.disputeAmount || '',
         currency: c.CURRENCY || c.currency || 'USD',
         caseStage: c.CASE_STAGE || c.caseStage || '',
+        submissionStatus: c.SUBMISSION_STATUS || c.submissionStatus || 'draft',
         createdAt: c.CREATED_AT ? new Date(c.CREATED_AT).toLocaleDateString() : '',
       }));
       setCases(rows);
@@ -74,6 +84,7 @@ const Cases = () => {
   useEffect(() => { fetchCases(); }, []);
 
   const set = (field) => (e) => setForm({ ...form, [field]: e.target.value });
+  const setCheck = (field) => (e) => setForm({ ...form, [field]: e.target.checked });
 
   const validateStep = () => {
     if (activeStep === 0 && !form.title.trim()) {
@@ -82,6 +93,10 @@ const Cases = () => {
     }
     if (activeStep === 1 && (!form.claimantName.trim() || !form.respondentName.trim())) {
       setFormError('Claimant and Respondent names are required.');
+      return false;
+    }
+    if (activeStep === 3 && !form.reliefSought.trim()) {
+      setFormError('Relief Sought is required — describe the remedy you seek from the Tribunal.');
       return false;
     }
     setFormError(null);
@@ -108,12 +123,18 @@ const Cases = () => {
         confidentialityLevel: form.confidentialityLevel,
         thirdPartyFunding: form.thirdPartyFunding,
         responseDeadline: form.responseDeadline || null,
-        filingDate: new Date().toISOString()
+        filingDate: new Date().toISOString(),
+        // Submission fields
+        reliefSought: form.reliefSought || null,
+        arbitratorNominee: form.arbitratorNominee || null,
+        nomineeQualifications: form.nomineeQualifications || null,
+        filingFee: form.filingFee || null,
+        filingFeeCurrency: form.filingFeeCurrency || 'KES',
+        serviceConfirmed: form.serviceConfirmed,
       });
 
       const newCaseId = res.data.caseId;
 
-      // Add claimant party
       if (form.claimantName) {
         await apiService.addParty(newCaseId, {
           partyType: 'claimant', fullName: form.claimantName,
@@ -122,7 +143,6 @@ const Cases = () => {
           address: form.claimantAddress, entityType: form.claimantEntityType
         });
       }
-      // Add respondent party
       if (form.respondentName) {
         await apiService.addParty(newCaseId, {
           partyType: 'respondent', fullName: form.respondentName,
@@ -161,7 +181,7 @@ const Cases = () => {
         arbitrationRules: s.arbitrationRules || prev.arbitrationRules,
       }));
     } catch (err) {
-      setFormError('AI suggestion failed. Check ANTHROPIC_API_KEY on the server.');
+      setFormError('AI suggestion failed. Check server configuration.');
     } finally {
       setAiLoading(false);
     }
@@ -180,20 +200,28 @@ const Cases = () => {
 
   const columns = [
     { field: 'caseId', headerName: 'Case ID', width: 160 },
-    { field: 'title', headerName: 'Title', width: 260 },
-    { field: 'caseType', headerName: 'Type', width: 120 },
-    { field: 'sector', headerName: 'Sector', width: 120 },
+    { field: 'title', headerName: 'Title', width: 240 },
+    { field: 'caseType', headerName: 'Type', width: 110 },
+    { field: 'sector', headerName: 'Sector', width: 110 },
     {
-      field: 'status', headerName: 'Status', width: 110,
+      field: 'status', headerName: 'Status', width: 100,
       renderCell: (params) => (
         <Chip label={params.value}
           color={params.value === 'active' ? 'primary' : params.value === 'completed' ? 'success' : 'warning'}
           size="small" variant="outlined" />
       )
     },
-    { field: 'caseStage', headerName: 'Stage', width: 130 },
-    { field: 'disputeAmount', headerName: 'Amount', width: 110 },
-    { field: 'createdAt', headerName: 'Filed', width: 110 },
+    {
+      field: 'submissionStatus', headerName: 'Submission', width: 110,
+      renderCell: (params) => (
+        <Chip label={params.value || 'draft'}
+          color={params.value === 'submitted' ? 'success' : params.value === 'commenced' ? 'info' : 'default'}
+          size="small" />
+      )
+    },
+    { field: 'caseStage', headerName: 'Stage', width: 120 },
+    { field: 'disputeAmount', headerName: 'Amount', width: 100 },
+    { field: 'createdAt', headerName: 'Filed', width: 100 },
     {
       field: 'actions', headerName: '', width: 90, sortable: false,
       renderCell: (params) => (
@@ -211,6 +239,19 @@ const Cases = () => {
         </Box>
       )
     },
+  ];
+
+  // NCIA checklist for Step 4 preview
+  const nciaChecks = [
+    { label: 'Case title provided', ok: !!form.title.trim() },
+    { label: 'Dispute description provided', ok: !!form.description.trim() },
+    { label: 'Claimant details provided', ok: !!form.claimantName.trim() },
+    { label: 'Respondent details provided', ok: !!form.respondentName.trim() },
+    { label: 'Seat of arbitration specified', ok: !!form.seatOfArbitration.trim() },
+    { label: 'Language of proceedings specified', ok: !!form.languageOfProceedings },
+    { label: 'Relief sought stated', ok: !!form.reliefSought.trim() },
+    { label: 'Arbitrator nominee provided', ok: !!form.arbitratorNominee.trim() },
+    { label: 'Service on all parties confirmed', ok: !!form.serviceConfirmed },
   ];
 
   return (
@@ -268,7 +309,7 @@ const Cases = () => {
       {/* New Case Dialog */}
       <Dialog open={dialogOpen} onClose={() => { setDialogOpen(false); setActiveStep(0); setForm(EMPTY_FORM); }}
         maxWidth="md" fullWidth>
-        <DialogTitle>New Case</DialogTitle>
+        <DialogTitle>New Arbitration Case</DialogTitle>
         <DialogContent>
           <Stepper activeStep={activeStep} sx={{ mb: 3, mt: 1 }}>
             {STEPS.map((label) => <Step key={label}><StepLabel>{label}</StepLabel></Step>)}
@@ -359,7 +400,7 @@ const Cases = () => {
                 </FormControl>
               </Grid>
               <Grid item xs={12}>
-                <TextField label="Description of Dispute" fullWidth multiline rows={3}
+                <TextField label="Description of Dispute / Nature of Claim" fullWidth multiline rows={3}
                   value={form.description} onChange={set('description')} />
               </Grid>
             </Grid>
@@ -400,7 +441,7 @@ const Cases = () => {
                 <TextField label="Address" fullWidth multiline rows={2} value={form.claimantAddress} onChange={set('claimantAddress')} />
               </Grid>
 
-              <Grid item xs={12} sx={{ mt: 1 }}><Typography variant="subtitle1" fontWeight="bold">Respondent</Typography></Grid>
+              <Grid item xs={12} sx={{ mt: 1 }}><Divider /><Typography variant="subtitle1" fontWeight="bold" sx={{ mt: 1 }}>Respondent</Typography></Grid>
               <Grid item xs={12} sm={6}>
                 <TextField label="Full Name *" fullWidth value={form.respondentName} onChange={set('respondentName')} />
               </Grid>
@@ -441,7 +482,7 @@ const Cases = () => {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1.5, bgcolor: 'primary.50', borderRadius: 1, border: '1px solid', borderColor: 'primary.200' }}>
                   <AiIcon color="primary" />
                   <Typography variant="body2" sx={{ flex: 1 }}>
-                    Enter the seat of arbitration below, then let AI suggest the applicable laws and rules.
+                    Enter the seat of arbitration below, then let AI suggest applicable laws and rules.
                   </Typography>
                   <Button size="small" variant="outlined" startIcon={<AiIcon />}
                     onClick={handleAiSuggest} disabled={aiLoading}>
@@ -454,6 +495,10 @@ const Cases = () => {
                     Law: {aiSuggestion.arbitrationLaw || '—'} | Institutions: {(aiSuggestion.institutions || []).join(', ')}
                   </Alert>
                 )}
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Seat of Arbitration" fullWidth value={form.seatOfArbitration}
+                  onChange={set('seatOfArbitration')} placeholder="e.g. Nairobi, Kenya" />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
@@ -473,10 +518,6 @@ const Cases = () => {
                     <MenuItem value="Ad Hoc">Ad Hoc</MenuItem>
                   </Select>
                 </FormControl>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField label="Seat of Arbitration" fullWidth value={form.seatOfArbitration}
-                  onChange={set('seatOfArbitration')} placeholder="e.g. Nairobi, Kenya" />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField label="Governing Law" fullWidth value={form.governingLaw}
@@ -528,6 +569,106 @@ const Cases = () => {
                     <MenuItem value={true}>Yes</MenuItem>
                   </Select>
                 </FormControl>
+              </Grid>
+            </Grid>
+          )}
+
+          {/* Step 4: Submission Details */}
+          {activeStep === 3 && (
+            <Grid container spacing={2}>
+              {/* NCIA Checklist preview */}
+              <Grid item xs={12}>
+                <Alert severity="info" sx={{ mb: 1 }}>
+                  <strong>NCIA Requirements Checklist</strong> — Items needed for a valid Request for Arbitration
+                </Alert>
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  <Grid container spacing={1}>
+                    {nciaChecks.map((chk, i) => (
+                      <Grid item xs={12} sm={6} key={i}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          {chk.ok
+                            ? <CheckIcon fontSize="small" color="success" />
+                            : <CancelIcon fontSize="small" color="error" />}
+                          <Typography variant="body2" color={chk.ok ? 'text.primary' : 'error.main'}>
+                            {chk.label}
+                          </Typography>
+                        </Box>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Divider><Typography variant="caption" color="text.secondary">Relief & Claim</Typography></Divider>
+              </Grid>
+
+              <Grid item xs={12}>
+                <TextField label="Relief Sought / Statement of Claim *" fullWidth multiline rows={3}
+                  value={form.reliefSought} onChange={set('reliefSought')}
+                  placeholder="Describe the specific relief or remedy you are seeking from the Tribunal (monetary amount, specific performance, declaratory relief, etc.)" />
+              </Grid>
+
+              <Grid item xs={12}>
+                <Divider><Typography variant="caption" color="text.secondary">Arbitrator Nomination</Typography></Divider>
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <TextField label="Nominated Arbitrator Name" fullWidth value={form.arbitratorNominee}
+                  onChange={set('arbitratorNominee')} placeholder="Full name of nominated arbitrator" />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Required Copies" fullWidth disabled
+                  value={form.numArbitrators === '1' ? '2 copies required (Sole Arbitrator)' : '4 copies required (Three-Member Tribunal)'}
+                  helperText="Physical copies to submit to NCIA Registrar" />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField label="Arbitrator Qualifications & Experience" fullWidth multiline rows={2}
+                  value={form.nomineeQualifications} onChange={set('nomineeQualifications')}
+                  placeholder="State nominee's professional qualifications, relevant experience, and confirmed availability" />
+              </Grid>
+
+              <Grid item xs={12}>
+                <Divider><Typography variant="caption" color="text.secondary">Filing Fee</Typography></Divider>
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <TextField label="Filing Fee Amount" fullWidth type="number"
+                  value={form.filingFee} onChange={set('filingFee')}
+                  helperText="Per NCIA Schedule of Fees" />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Fee Currency</InputLabel>
+                  <Select value={form.filingFeeCurrency} label="Fee Currency" onChange={set('filingFeeCurrency')}>
+                    <MenuItem value="KES">KES (Kenya Shillings)</MenuItem>
+                    <MenuItem value="USD">USD</MenuItem>
+                    <MenuItem value="EUR">EUR</MenuItem>
+                    <MenuItem value="GBP">GBP</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12}>
+                <Alert severity="warning">
+                  Filing fees paid to NCIA are <strong>non-refundable</strong>. Arbitration commences only upon receipt of filing fees by the Centre.
+                </Alert>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Divider><Typography variant="caption" color="text.secondary">Service Confirmation</Typography></Divider>
+              </Grid>
+
+              <Grid item xs={12}>
+                <FormControlLabel
+                  control={<Checkbox checked={form.serviceConfirmed} onChange={setCheck('serviceConfirmed')} color="primary" />}
+                  label="I confirm that copies of this Request for Arbitration and all attached documents have been served on all parties to the arbitration"
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <Alert severity="info" sx={{ mt: 1 }}>
+                  <strong>NCIA Submission Options:</strong> Physical submission at 8th Floor, Cooperative Bank House, Nairobi |
+                  Email: <em>registrar@ncia.or.ke</em>. After creating the case, use the "Submit to Registrar" button on the case details page.
+                </Alert>
               </Grid>
             </Grid>
           )}

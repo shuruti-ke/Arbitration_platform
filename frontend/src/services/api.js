@@ -56,6 +56,9 @@ export const apiService = {
   // AI
   getGoverningLaw: (data) => api.post('/ai/governing-law', data),
 
+  // Case submission
+  submitCase: (caseId, data) => api.post(`/cases/${caseId}/submit`, data || {}),
+
   // Authentication
   login: (credentials) => api.post('/auth/login', credentials),
   logout: () => api.post('/auth/logout'),
