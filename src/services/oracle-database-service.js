@@ -63,6 +63,15 @@ class OracleDatabaseService {
     }
   }
 
+  // Add column safely — catches ORA-01430 (column already exists)
+  async _addColumnSafe(table, column, definition) {
+    try {
+      await this.executeQuery(`ALTER TABLE ${table} ADD (${column} ${definition})`);
+    } catch (error) {
+      if (error.errorNum !== 1430) throw error;
+    }
+  }
+
   // Create tables — Oracle 19c does not support IF NOT EXISTS, so we catch ORA-00955
   async _createTableSafe(name, ddl) {
     try {
@@ -180,6 +189,78 @@ class OracleDatabaseService {
         revoked      NUMBER(1)   DEFAULT 0,
         revoked_at   TIMESTAMP,
         created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Expand CASES table with comprehensive arbitration fields
+    await this._addColumnSafe('cases', 'case_type', 'VARCHAR2(100)');
+    await this._addColumnSafe('cases', 'sector', 'VARCHAR2(100)');
+    await this._addColumnSafe('cases', 'dispute_category', 'VARCHAR2(100)');
+    await this._addColumnSafe('cases', 'description', 'CLOB');
+    await this._addColumnSafe('cases', 'dispute_amount', 'NUMBER');
+    await this._addColumnSafe('cases', 'currency', 'VARCHAR2(10)');
+    await this._addColumnSafe('cases', 'governing_law', 'VARCHAR2(255)');
+    await this._addColumnSafe('cases', 'seat_of_arbitration', 'VARCHAR2(255)');
+    await this._addColumnSafe('cases', 'arbitration_rules', 'VARCHAR2(100)');
+    await this._addColumnSafe('cases', 'language_of_proceedings', 'VARCHAR2(100)');
+    await this._addColumnSafe('cases', 'institution_ref', 'VARCHAR2(100)');
+    await this._addColumnSafe('cases', 'filing_date', 'DATE');
+    await this._addColumnSafe('cases', 'response_deadline', 'DATE');
+    await this._addColumnSafe('cases', 'case_stage', 'VARCHAR2(50) DEFAULT \'filing\'');
+    await this._addColumnSafe('cases', 'num_arbitrators', 'NUMBER(1) DEFAULT 1');
+    await this._addColumnSafe('cases', 'confidentiality_level', 'VARCHAR2(50) DEFAULT \'confidential\'');
+    await this._addColumnSafe('cases', 'third_party_funding', 'NUMBER(1) DEFAULT 0');
+
+    // Parties table
+    await this._createTableSafe('PARTIES', `
+      CREATE TABLE parties (
+        id                NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        party_id          VARCHAR2(100) UNIQUE NOT NULL,
+        case_id           VARCHAR2(50) NOT NULL,
+        party_type        VARCHAR2(20) NOT NULL,
+        entity_type       VARCHAR2(50),
+        full_name         VARCHAR2(255) NOT NULL,
+        organization_name VARCHAR2(255),
+        nationality       VARCHAR2(100),
+        address           CLOB,
+        email             VARCHAR2(255),
+        phone             VARCHAR2(50),
+        tax_id            VARCHAR2(100),
+        created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Case counsel table
+    await this._createTableSafe('CASE_COUNSEL', `
+      CREATE TABLE case_counsel (
+        id         NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        counsel_id VARCHAR2(100) UNIQUE NOT NULL,
+        case_id    VARCHAR2(50) NOT NULL,
+        party_id   VARCHAR2(100),
+        full_name  VARCHAR2(255) NOT NULL,
+        law_firm   VARCHAR2(255),
+        email      VARCHAR2(255),
+        phone      VARCHAR2(50),
+        bar_number VARCHAR2(100),
+        role       VARCHAR2(50),
+        languages  VARCHAR2(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Case milestones table
+    await this._createTableSafe('CASE_MILESTONES', `
+      CREATE TABLE case_milestones (
+        id             NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        milestone_id   VARCHAR2(100) UNIQUE NOT NULL,
+        case_id        VARCHAR2(50) NOT NULL,
+        milestone_type VARCHAR2(100),
+        title          VARCHAR2(255),
+        due_date       DATE,
+        completed_date DATE,
+        status         VARCHAR2(50) DEFAULT 'pending',
+        notes          CLOB,
+        created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
   }

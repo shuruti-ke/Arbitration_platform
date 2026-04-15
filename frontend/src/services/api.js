@@ -46,6 +46,11 @@ export const apiService = {
   getSettings: () => api.get('/settings'),
   updateSettings: (settings) => api.put('/settings', settings),
 
+  // Parties & Counsel
+  addParty: (caseId, partyData) => api.post(`/cases/${caseId}/parties`, partyData),
+  addCounsel: (caseId, counselData) => api.post(`/cases/${caseId}/counsel`, counselData),
+  updateMilestone: (caseId, milestoneId, data) => api.put(`/cases/${caseId}/milestones/${milestoneId}`, data),
+
   // Authentication
   login: (credentials) => api.post('/auth/login', credentials),
   logout: () => api.post('/auth/logout'),

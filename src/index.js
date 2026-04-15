@@ -457,12 +457,98 @@ function createServer(services) {
         const user = authenticate(req, res);
         if (!user) return;
         const caseId = path.split('/api/cases/')[1];
-        const result = await oracleDb.executeQuery(
-          'SELECT * FROM cases WHERE case_id = :caseId',
-          { caseId }
+        const caseResult = await oracleDb.executeQuery('SELECT * FROM cases WHERE case_id = :caseId', { caseId });
+        if (!caseResult.rows || caseResult.rows.length === 0) return sendJSON(res, 404, { error: 'Case not found' });
+        const partiesResult = await oracleDb.executeQuery('SELECT * FROM parties WHERE case_id = :caseId ORDER BY party_type', { caseId });
+        const counselResult = await oracleDb.executeQuery('SELECT * FROM case_counsel WHERE case_id = :caseId', { caseId });
+        const milestonesResult = await oracleDb.executeQuery('SELECT * FROM case_milestones WHERE case_id = :caseId ORDER BY created_at', { caseId });
+        const docsResult = await oracleDb.executeQuery('SELECT id, case_id, document_name, created_at FROM documents WHERE case_id = :caseId ORDER BY created_at DESC', { caseId });
+        const hearingsResult = await oracleDb.executeQuery('SELECT * FROM hearings WHERE case_id = :caseId ORDER BY start_time', { caseId });
+        const auditResult = await oracleDb.getAuditLogs({ caseId });
+        return sendJSON(res, 200, {
+          case: caseResult.rows[0],
+          parties: partiesResult.rows || [],
+          counsel: counselResult.rows || [],
+          milestones: milestonesResult.rows || [],
+          documents: docsResult.rows || [],
+          hearings: hearingsResult.rows || [],
+          auditLog: auditResult || []
+        });
+      }
+
+      // --- POST /api/cases/:caseId/parties ---
+      if (path.match(/^\/api\/cases\/[^/]+\/parties$/) && method === 'POST') {
+        const user = authenticate(req, res, ['admin', 'secretariat']);
+        if (!user) return;
+        const caseId = path.split('/')[3];
+        const body = await parseBody(req);
+        if (!body.fullName || !body.partyType) return sendJSON(res, 400, { error: 'fullName and partyType are required' });
+        const partyId = 'party-' + Date.now();
+        await oracleDb.executeQuery(
+          `INSERT INTO parties (party_id, case_id, party_type, entity_type, full_name, organization_name, nationality, address, email, phone, tax_id)
+           VALUES (:partyId, :caseId, :partyType, :entityType, :fullName, :organizationName, :nationality, :address, :email, :phone, :taxId)`,
+          {
+            partyId, caseId,
+            partyType: body.partyType,
+            entityType: body.entityType || null,
+            fullName: body.fullName,
+            organizationName: body.organizationName || null,
+            nationality: body.nationality || null,
+            address: body.address || null,
+            email: body.email || null,
+            phone: body.phone || null,
+            taxId: body.taxId || null
+          }
         );
-        if (!result.rows || result.rows.length === 0) return sendJSON(res, 404, { error: 'Case not found' });
-        return sendJSON(res, 200, { case: result.rows[0] });
+        await auditTrail.logEvent({ type: 'party_added', caseId, userId: user.userId, action: 'add_party' });
+        return sendJSON(res, 201, { success: true, partyId });
+      }
+
+      // --- POST /api/cases/:caseId/counsel ---
+      if (path.match(/^\/api\/cases\/[^/]+\/counsel$/) && method === 'POST') {
+        const user = authenticate(req, res, ['admin', 'secretariat']);
+        if (!user) return;
+        const caseId = path.split('/')[3];
+        const body = await parseBody(req);
+        if (!body.fullName) return sendJSON(res, 400, { error: 'fullName is required' });
+        const counselId = 'counsel-' + Date.now();
+        await oracleDb.executeQuery(
+          `INSERT INTO case_counsel (counsel_id, case_id, party_id, full_name, law_firm, email, phone, bar_number, role, languages)
+           VALUES (:counselId, :caseId, :partyId, :fullName, :lawFirm, :email, :phone, :barNumber, :role, :languages)`,
+          {
+            counselId, caseId,
+            partyId: body.partyId || null,
+            fullName: body.fullName,
+            lawFirm: body.lawFirm || null,
+            email: body.email || null,
+            phone: body.phone || null,
+            barNumber: body.barNumber || null,
+            role: body.role || 'lead_counsel',
+            languages: body.languages || null
+          }
+        );
+        return sendJSON(res, 201, { success: true, counselId });
+      }
+
+      // --- PUT /api/cases/:caseId/milestones/:milestoneId ---
+      if (path.match(/^\/api\/cases\/[^/]+\/milestones\/[^/]+$/) && method === 'PUT') {
+        const user = authenticate(req, res, ['admin', 'secretariat', 'arbitrator']);
+        if (!user) return;
+        const parts = path.split('/');
+        const milestoneId = parts[5];
+        const body = await parseBody(req);
+        await oracleDb.executeQuery(
+          `UPDATE case_milestones SET status = :status, completed_date = :completedDate, due_date = :dueDate, notes = :notes
+           WHERE milestone_id = :milestoneId`,
+          {
+            status: body.status || 'pending',
+            completedDate: body.completedDate ? new Date(body.completedDate) : null,
+            dueDate: body.dueDate ? new Date(body.dueDate) : null,
+            notes: body.notes || null,
+            milestoneId
+          }
+        );
+        return sendJSON(res, 200, { success: true });
       }
 
       // --- POST /api/cases ---
@@ -473,9 +559,55 @@ function createServer(services) {
         if (!body.title) return sendJSON(res, 400, { error: 'title is required' });
         const caseId = 'case-' + Date.now();
         await oracleDb.executeQuery(
-          'INSERT INTO cases (case_id, title, status) VALUES (:caseId, :title, :status)',
-          { caseId, title: body.title, status: body.status || 'active' }
+          `INSERT INTO cases (case_id, title, status, case_type, sector, dispute_category,
+            description, dispute_amount, currency, governing_law, seat_of_arbitration,
+            arbitration_rules, language_of_proceedings, institution_ref, filing_date,
+            response_deadline, case_stage, num_arbitrators, confidentiality_level, third_party_funding)
+           VALUES (:caseId, :title, :status, :caseType, :sector, :disputeCategory,
+            :description, :disputeAmount, :currency, :governingLaw, :seatOfArbitration,
+            :arbitrationRules, :languageOfProceedings, :institutionRef, :filingDate,
+            :responseDeadline, :caseStage, :numArbitrators, :confidentialityLevel, :thirdPartyFunding)`,
+          {
+            caseId,
+            title: body.title,
+            status: body.status || 'active',
+            caseType: body.caseType || null,
+            sector: body.sector || null,
+            disputeCategory: body.disputeCategory || null,
+            description: body.description || null,
+            disputeAmount: body.disputeAmount || null,
+            currency: body.currency || 'USD',
+            governingLaw: body.governingLaw || null,
+            seatOfArbitration: body.seatOfArbitration || null,
+            arbitrationRules: body.arbitrationRules || null,
+            languageOfProceedings: body.languageOfProceedings || 'English',
+            institutionRef: body.institutionRef || null,
+            filingDate: body.filingDate ? new Date(body.filingDate) : new Date(),
+            responseDeadline: body.responseDeadline ? new Date(body.responseDeadline) : null,
+            caseStage: body.caseStage || 'filing',
+            numArbitrators: body.numArbitrators || 1,
+            confidentialityLevel: body.confidentialityLevel || 'confidential',
+            thirdPartyFunding: body.thirdPartyFunding ? 1 : 0
+          }
         );
+
+        // Create default milestones
+        const milestones = [
+          { type: 'filing', title: 'Notice of Arbitration Filed', status: 'completed' },
+          { type: 'response', title: 'Response to Notice of Arbitration Due', status: 'pending' },
+          { type: 'arbitrator_appointment', title: 'Arbitrator Appointment', status: 'pending' },
+          { type: 'terms_of_reference', title: 'Terms of Reference', status: 'pending' },
+          { type: 'hearing', title: 'Hearing', status: 'pending' },
+          { type: 'award', title: 'Award', status: 'pending' }
+        ];
+        for (const m of milestones) {
+          await oracleDb.executeQuery(
+            `INSERT INTO case_milestones (milestone_id, case_id, milestone_type, title, status)
+             VALUES (:milestoneId, :caseId, :milestoneType, :title, :status)`,
+            { milestoneId: `ms-${caseId}-${m.type}`, caseId, milestoneType: m.type, title: m.title, status: m.status }
+          );
+        }
+
         await auditTrail.logEvent({ type: 'case_created', caseId, userId: user.userId, action: 'create' });
         return sendJSON(res, 201, { success: true, caseId, title: body.title });
       }
