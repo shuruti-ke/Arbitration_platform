@@ -23,8 +23,8 @@ const roleColors = {
 };
 
 const Navigation = () => {
-  const { user, logout, hasRole } = useAuth();
-  const canManageUsers = hasRole && hasRole('admin', 'secretariat');
+  const { user, logout } = useAuth();
+  const canManageUsers = user && (user.role === 'admin' || user.role === 'secretariat');
 
   return (
     <AppBar position="static">
