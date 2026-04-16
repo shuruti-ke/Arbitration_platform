@@ -24,6 +24,9 @@ class AuthService {
     const isActive = user.isActive !== undefined ? user.isActive : user.IS_ACTIVE;
     if (!isActive) throw new Error('Account is deactivated');
 
+    const hash = user.passwordHash || user.PASSWORD_HASH;
+    if (!hash) throw new Error('Invalid credentials');
+
     const valid = await this.userService.verifyPassword(user, password);
     if (!valid) throw new Error('Invalid credentials');
 

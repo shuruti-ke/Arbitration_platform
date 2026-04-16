@@ -117,6 +117,7 @@ class UserService {
 
   async verifyPassword(user, password) {
     const hash = user.passwordHash || user.PASSWORD_HASH;
+    if (!hash) return false;
     return bcrypt.compare(password, hash);
   }
 
