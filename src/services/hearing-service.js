@@ -255,6 +255,8 @@ class HearingService {
   generateJaaSJwt({ appId, apiKeyId, privateKey, user, room, isModerator = false }) {
     if (!appId || !apiKeyId || !privateKey) return null;
     try {
+      const normalizedAppId = String(appId || '').trim().split('/').filter(Boolean)[0] || '';
+      const normalizedApiKeyId = String(apiKeyId || '').trim().split('/').filter(Boolean).pop() || '';
       const now = Math.floor(Date.now() / 1000);
       const payload = {
         iss: 'chat',
@@ -262,7 +264,7 @@ class HearingService {
         exp: now + 7200,
         nbf: now - 10,
         aud: 'jitsi',
-        sub: appId,
+        sub: normalizedAppId,
         room: '*',
         context: {
           user: {
@@ -281,7 +283,7 @@ class HearingService {
       };
       const pem = this._normalizeJaaSPrivateKey(privateKey);
       const key = crypto.createPrivateKey({ key: pem, format: 'pem' });
-      return jwt.sign(payload, key, { algorithm: 'RS256', header: { kid: apiKeyId, alg: 'RS256' } });
+      return jwt.sign(payload, key, { algorithm: 'RS256', header: { kid: normalizedApiKeyId, alg: 'RS256' } });
     } catch (err) {
       console.error('JaaS JWT error:', err.message);
       return null;
@@ -290,7 +292,8 @@ class HearingService {
 
   getJaaSRoomUrl({ appId, apiKeyId, privateKey, jitsiRoom, user, isModerator }) {
     const token = this.generateJaaSJwt({ appId, apiKeyId, privateKey, user, room: jitsiRoom, isModerator });
-    const baseUrl = `https://8x8.vc/${appId}/${jitsiRoom}`;
+    const normalizedAppId = String(appId || '').trim().split('/').filter(Boolean)[0] || '';
+    const baseUrl = `https://8x8.vc/${normalizedAppId}/${jitsiRoom}`;
     return token ? `${baseUrl}?jwt=${token}` : baseUrl;
   }
 
