@@ -50,8 +50,11 @@ const Hearings = () => {
 
   const fetchHearings = async () => {
     try {
-      // Fetch hearings for a default case — in production this would be per-case
-      setHearings([]);
+      const token = localStorage.getItem('accessToken');
+      const res = await axios.get(`${API_BASE_URL}/hearings`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setHearings(res.data.hearings || []);
     } catch (err) {
       setError('Could not load hearings.');
     } finally {
@@ -136,40 +139,46 @@ const Hearings = () => {
         </Paper>
       ) : (
         <Grid container spacing={3}>
-          {hearings.map((h) => (
-            <Grid item xs={12} md={6} key={h.hearingId}>
+          {hearings.map((h, i) => {
+            const hId     = h.HEARING_ID  || h.hearingId;
+            const title   = h.TITLE       || h.title;
+            const status  = h.STATUS      || h.status;
+            const caseId  = h.CASE_ID     || h.caseId;
+            const start   = h.START_TIME  || h.startTime;
+            const end     = h.END_TIME    || h.endTime;
+            const agenda  = h.AGENDA      || h.agenda;
+            const type    = h.TYPE        || h.type;
+            return (
+            <Grid item xs={12} md={6} key={hId || i}>
               <Card>
                 <CardContent>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="h6">{h.title}</Typography>
-                    <Chip label={h.status} color={statusColor(h.status)} size="small" />
+                    <Typography variant="h6">{title}</Typography>
+                    <Chip label={status} color={statusColor(status)} size="small" />
                   </Box>
-                  <Typography variant="body2" color="textSecondary">Case: {h.caseId}</Typography>
+                  <Typography variant="body2" color="textSecondary">Case: {caseId}</Typography>
                   <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
                     <TimeIcon fontSize="small" sx={{ mr: 0.5, color: 'text.secondary' }} />
-                    <Typography variant="body2">{h.startTime} — {h.endTime}</Typography>
+                    <Typography variant="body2">{start} — {end}</Typography>
                   </Box>
-                  {h.agenda && (
+                  {agenda && (
                     <Typography variant="body2" sx={{ mt: 1 }} color="textSecondary">
-                      {h.agenda}
+                      {agenda}
                     </Typography>
                   )}
                 </CardContent>
                 <CardActions>
-                  {h.type === 'virtual' && h.status !== 'cancelled' && (
-                    <Button
-                      size="small"
-                      variant="contained"
-                      startIcon={<VideoIcon />}
-                      onClick={() => handleJoin(h.hearingId)}
-                    >
+                  {type === 'virtual' && status !== 'cancelled' && (
+                    <Button size="small" variant="contained" startIcon={<VideoIcon />}
+                      onClick={() => handleJoin(hId)}>
                       Join
                     </Button>
                   )}
                 </CardActions>
               </Card>
             </Grid>
-          ))}
+            );
+          })}
         </Grid>
       )}
 

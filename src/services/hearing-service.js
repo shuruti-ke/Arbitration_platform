@@ -205,6 +205,26 @@ class HearingService {
     return participant;
   }
 
+  async getAllHearings(user) {
+    if (this.dbService && this.dbService.isConnected()) {
+      try {
+        let sql = 'SELECT * FROM hearings';
+        const params = {};
+        if (user.role === 'party' || user.role === 'counsel') {
+          sql += ' WHERE case_id IN (SELECT DISTINCT case_id FROM parties WHERE user_id = :userId UNION SELECT DISTINCT case_id FROM case_counsel WHERE user_id = :userId2)';
+          params.userId = user.userId;
+          params.userId2 = user.userId;
+        }
+        sql += ' ORDER BY start_time DESC';
+        const result = await this.dbService.executeQuery(sql, params);
+        return result.rows || [];
+      } catch (err) {
+        console.error('Get all hearings failed:', err.message);
+      }
+    }
+    return Array.from(this.hearings.values());
+  }
+
   getJitsiRoomUrl(jitsiBaseUrl, jitsiRoom) {
     return `${jitsiBaseUrl}/${jitsiRoom}`;
   }

@@ -499,6 +499,14 @@ function createServer(services) {
       // --- HEARING ROUTES ---
       // =============================================
 
+      // --- GET /api/hearings ---
+      if (path === '/api/hearings' && method === 'GET') {
+        const user = authenticate(req, res);
+        if (!user) return;
+        const hearings = await hearingService.getAllHearings(user);
+        return sendJSON(res, 200, { hearings });
+      }
+
       // --- POST /api/hearings ---
       if (path === '/api/hearings' && method === 'POST') {
         const user = authenticate(req, res, ['admin', 'secretariat', 'arbitrator']);
