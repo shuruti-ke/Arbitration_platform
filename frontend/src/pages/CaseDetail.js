@@ -23,6 +23,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import { apiService } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
+import { buildProofOfServicePdf } from '../utils/proofOfServicePdf';
 
 const Field = ({ label, value }) => (
   <Box sx={{ mb: 1.5 }}>
@@ -360,62 +361,18 @@ const CaseDetail = () => {
 
   const generateProofOfServicePdf = () => {
     const pdf = new jsPDF();
-    const caseNumber = c.CASE_ID || c.caseId || 'Unknown case';
-    const caseTitle = c.TITLE || c.title || 'Untitled case';
-    const seat = c.SEAT_OF_ARBITRATION || c.seatOfArbitration || '—';
-    const language = displayLanguage(c.LANGUAGE_OF_PROCEEDINGS || c.languageOfProceedings);
-    const claimantsList = claimants.map((p) => p.FULL_NAME || p.fullName).filter(Boolean);
-    const respondentsList = respondents.map((p) => p.FULL_NAME || p.fullName).filter(Boolean);
-    const counselList = (data.counsel || []).map((co) => co.FULL_NAME || co.fullName).filter(Boolean);
+    const filename = `${(c.CASE_ID || c.caseId || 'unknown-case')}-proof-of-service.pdf`
+      .replace(/[^a-z0-9._-]+/gi, '-');
 
-    let y = 18;
-    const fullWidth = 180;
-    const write = (text, { size = 11, bold = false, gap = 7 } = {}) => {
-      pdf.setFont('helvetica', bold ? 'bold' : 'normal');
-      pdf.setFontSize(size);
-      const lines = pdf.splitTextToSize(String(text || ''), fullWidth);
-      pdf.text(lines, 15, y);
-      y += lines.length * gap;
-    };
-    const field = (label, value) => write(`${label}: ${value || '—'}`, { size: 10, gap: 6 });
+    buildProofOfServicePdf({
+      pdf,
+      caseData: c,
+      claimants,
+      respondents,
+      counsel: data.counsel || [],
+      user,
+    });
 
-    pdf.setTextColor(0, 0, 0);
-    write('Proof of Service', { size: 16, bold: true, gap: 10 });
-    write('Standard arbitration service certificate', { size: 10, gap: 8 });
-    write('Case Details', { size: 12, bold: true, gap: 8 });
-    field('Case ID', caseNumber);
-    field('Case Title', caseTitle);
-    field('Seat of Arbitration', seat);
-    field('Language of Proceedings', language);
-    field('Governing Law', c.GOVERNING_LAW || c.governingLaw);
-    field('Institution Reference', c.INSTITUTION_REF || c.institutionRef);
-
-    write('Documents Served', { size: 12, bold: true, gap: 8 });
-    [
-      'Request for Arbitration',
-      'Arbitration clause / contract',
-      'Supporting exhibits and documents',
-      'Proof of service certificate'
-    ].forEach((item) => write(`- ${item}`, { size: 10, gap: 6 }));
-
-    write('Recipients', { size: 12, bold: true, gap: 8 });
-    const recipients = [...claimantsList, ...respondentsList, ...counselList];
-    if (recipients.length === 0) {
-      write('- Registered parties on the case file', { size: 10, gap: 6 });
-    } else {
-      recipients.forEach((name) => write(`- ${name}`, { size: 10, gap: 6 }));
-    }
-
-    write('Declaration', { size: 12, bold: true, gap: 8 });
-    write('I certify that the above documents were prepared for service and that the signed copy will be uploaded back to the case file and stored in the document library after completion.', { size: 10, gap: 6 });
-
-    write('Signature', { size: 12, bold: true, gap: 8 });
-    field('Signer', user?.firstName || user?.fullName || user?.email || 'Registrar');
-    field('Role', (user?.role || 'registrar').toString().toUpperCase());
-    field('Date', new Date().toLocaleDateString());
-    field('Generated', new Date().toISOString());
-
-    const filename = `${caseNumber}-proof-of-service.pdf`.replace(/[^a-z0-9._-]+/gi, '-');
     pdf.save(filename);
   };
 
@@ -633,7 +590,7 @@ const CaseDetail = () => {
                   startIcon={<UploadIcon />}
                   onClick={generateProofOfServicePdf}
                 >
-                  {t('Generate proof of service PDF')}
+                  {t('Generate branded proof of service PDF')}
                 </Button>
                 <Button
                   variant="text"
