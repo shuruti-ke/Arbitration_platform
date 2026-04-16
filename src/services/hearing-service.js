@@ -213,6 +213,7 @@ class HearingService {
     if (!appId || !apiKeyId || !privateKey) return null;
     try {
       const jwt = require('jsonwebtoken');
+      const crypto = require('crypto');
       const now = Math.floor(Date.now() / 1000);
       const payload = {
         iss: 'chat',
@@ -237,11 +238,12 @@ class HearingService {
           }
         }
       };
-      // privateKey may be base64-encoded or PEM
-      let key = privateKey;
-      if (!key.includes('-----BEGIN')) {
-        key = Buffer.from(key, 'base64').toString('utf8');
+      // Decode base64 key back to PEM if needed, then create crypto KeyObject
+      let pem = privateKey;
+      if (!pem.includes('-----BEGIN')) {
+        pem = Buffer.from(pem, 'base64').toString('utf8');
       }
+      const key = crypto.createPrivateKey(pem);
       return jwt.sign(payload, key, { algorithm: 'RS256', header: { kid: apiKeyId, alg: 'RS256' } });
     } catch (err) {
       console.error('JaaS JWT error:', err.message);
