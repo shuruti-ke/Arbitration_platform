@@ -5,6 +5,7 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { CssBaseline, CircularProgress, Box } from '@mui/material';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeModeProvider, useThemeMode } from './context/ThemeModeContext';
+import { LanguageProvider, useLanguage } from './context/LanguageContext';
 import Dashboard from './pages/Dashboard';
 import Cases from './pages/Cases';
 import CaseDetail from './pages/CaseDetail';
@@ -17,8 +18,9 @@ import Login from './pages/Login';
 import Navigation from './components/Navigation';
 import './styles/App.css';
 
-const buildTheme = (mode) =>
+const buildTheme = (mode, direction) =>
   createTheme({
+    direction,
     palette: {
       mode,
       primary: { main: '#1976d2' },
@@ -33,7 +35,8 @@ const buildTheme = (mode) =>
         styleOverrides: {
           body: {
             backgroundColor: mode === 'dark' ? '#0f172a' : '#f5f5f5',
-            color: mode === 'dark' ? '#f8fafc' : '#111827'
+            color: mode === 'dark' ? '#f8fafc' : '#111827',
+            direction
           }
         }
       }
@@ -78,14 +81,15 @@ const AppRoutes = () => {
 
 const AppShell = () => {
   const { mode } = useThemeMode();
-  const theme = useMemo(() => buildTheme(mode), [mode]);
+  const { dir } = useLanguage();
+  const theme = useMemo(() => buildTheme(mode, dir), [mode, dir]);
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <AuthProvider>
         <Router>
-          <div className="App">
+          <div className="App" dir={dir}>
             <AppRoutes />
           </div>
         </Router>
@@ -96,9 +100,11 @@ const AppShell = () => {
 
 function App() {
   return (
-    <ThemeModeProvider>
-      <AppShell />
-    </ThemeModeProvider>
+    <LanguageProvider>
+      <ThemeModeProvider>
+        <AppShell />
+      </ThemeModeProvider>
+    </LanguageProvider>
   );
 }
 

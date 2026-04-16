@@ -21,10 +21,12 @@ import {
   Settings as SettingsIcon
 } from '@mui/icons-material';
 import { apiService } from '../services/api';
+import { useLanguage } from '../context/LanguageContext';
 import { useThemeMode } from '../context/ThemeModeContext';
 
 const Settings = () => {
   const { mode, setMode } = useThemeMode();
+  const { language, setLanguage, languages, t } = useLanguage();
   const [settings, setSettings] = useState({
     notifications: true,
     emailAlerts: true,
@@ -38,9 +40,10 @@ const Settings = () => {
   useEffect(() => {
     setSettings((current) => ({
       ...current,
-      darkMode: mode === 'dark'
+      darkMode: mode === 'dark',
+      language
     }));
-  }, [mode]);
+  }, [mode, language]);
 
   const handleSettingChange = (setting) => (event) => {
     const nextValue = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
@@ -50,6 +53,15 @@ const Settings = () => {
       setSettings((current) => ({
         ...current,
         darkMode: nextValue
+      }));
+      return;
+    }
+
+    if (setting === 'language') {
+      setLanguage(nextValue);
+      setSettings((current) => ({
+        ...current,
+        language: nextValue
       }));
       return;
     }
@@ -72,16 +84,16 @@ const Settings = () => {
   const handleSave = async () => {
     try {
       await apiService.updateSettings(settings);
-      setSaveStatus({ type: 'success', message: 'Settings saved successfully.' });
+      setSaveStatus({ type: 'success', message: t('Settings saved successfully.') });
     } catch (err) {
-      setSaveStatus({ type: 'warning', message: 'Could not save to server. Settings saved locally.' });
+      setSaveStatus({ type: 'warning', message: t('Could not save to server. Settings saved locally.') });
     }
   };
 
   return (
     <Container maxWidth="md" sx={{ mt: 4, mb: 4 }}>
       <Typography variant="h4" component="h1" gutterBottom>
-        System Settings
+        {t('System Settings')}
       </Typography>
 
       {saveStatus && (
@@ -93,25 +105,25 @@ const Settings = () => {
       <Paper sx={{ p: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
           <SettingsIcon sx={{ mr: 1 }} />
-          <Typography variant="h6">General Settings</Typography>
+          <Typography variant="h6">{t('General Settings')}</Typography>
         </Box>
 
         <FormGroup>
           <FormControlLabel
             control={<Switch checked={settings.notifications} onChange={handleSettingChange('notifications')} color="primary" />}
-            label="Enable Notifications"
+            label={t('Enable Notifications')}
           />
           <FormControlLabel
             control={<Switch checked={settings.emailAlerts} onChange={handleSettingChange('emailAlerts')} color="primary" />}
-            label="Email Alerts"
+            label={t('Email Alerts')}
           />
           <FormControlLabel
             control={<Switch checked={settings.autoSave} onChange={handleSettingChange('autoSave')} color="primary" />}
-            label="Auto-save Documents"
+            label={t('Auto-save Documents')}
           />
           <FormControlLabel
             control={<Switch checked={settings.darkMode} onChange={handleDarkModeToggle} color="primary" />}
-            label="Dark Mode"
+            label={t('Dark Mode')}
           />
         </FormGroup>
 
@@ -119,32 +131,31 @@ const Settings = () => {
 
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
           <SettingsIcon sx={{ mr: 1 }} />
-          <Typography variant="h6">Preferences</Typography>
+          <Typography variant="h6">{t('Preferences')}</Typography>
         </Box>
 
         <FormControl fullWidth sx={{ mb: 2 }}>
-          <InputLabel>Language</InputLabel>
-          <Select value={settings.language} onChange={handleSettingChange('language')} label="Language">
-            <MenuItem value="en">English</MenuItem>
-            <MenuItem value="es">Spanish</MenuItem>
-            <MenuItem value="fr">French</MenuItem>
-            <MenuItem value="sw">Swahili</MenuItem>
+          <InputLabel>{t('Language')}</InputLabel>
+          <Select value={settings.language} onChange={handleSettingChange('language')} label={t('Language')}>
+            {Object.entries(languages).map(([code, entry]) => (
+              <MenuItem key={code} value={code}>{entry.nativeLabel}</MenuItem>
+            ))}
           </Select>
         </FormControl>
 
         <FormControl fullWidth sx={{ mb: 3 }}>
-          <InputLabel>Timezone</InputLabel>
-          <Select value={settings.timezone} onChange={handleSettingChange('timezone')} label="Timezone">
-            <MenuItem value="UTC">UTC</MenuItem>
-            <MenuItem value="EST">Eastern Time</MenuItem>
-            <MenuItem value="PST">Pacific Time</MenuItem>
-            <MenuItem value="CET">Central European Time</MenuItem>
-            <MenuItem value="EAT">East Africa Time</MenuItem>
+          <InputLabel>{t('Timezone')}</InputLabel>
+          <Select value={settings.timezone} onChange={handleSettingChange('timezone')} label={t('Timezone')}>
+            <MenuItem value="UTC">{t('UTC')}</MenuItem>
+            <MenuItem value="EST">{t('Eastern Time')}</MenuItem>
+            <MenuItem value="PST">{t('Pacific Time')}</MenuItem>
+            <MenuItem value="CET">{t('Central European Time')}</MenuItem>
+            <MenuItem value="EAT">{t('East Africa Time')}</MenuItem>
           </Select>
         </FormControl>
 
         <Button variant="contained" startIcon={<SaveIcon />} onClick={handleSave}>
-          Save Settings
+          {t('Save Settings')}
         </Button>
       </Paper>
     </Container>

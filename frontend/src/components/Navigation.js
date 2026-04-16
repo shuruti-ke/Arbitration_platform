@@ -13,6 +13,18 @@ import {
 } from '@mui/icons-material';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
+
+const roleLabelKey = (role) => {
+  switch ((role || '').toLowerCase()) {
+    case 'admin': return 'Administrator';
+    case 'secretariat': return 'Secretariat';
+    case 'arbitrator': return 'Arbitrator';
+    case 'counsel': return 'Legal Counsel';
+    case 'party': return 'Party (Claimant / Respondent)';
+    default: return role || '';
+  }
+};
 
 const roleColors = {
   admin: 'error',
@@ -24,34 +36,35 @@ const roleColors = {
 
 const Navigation = () => {
   const { user, logout } = useAuth();
+  const { t } = useLanguage();
   const canManageUsers = user && (user.role === 'admin' || user.role === 'secretariat');
 
   return (
     <AppBar position="static">
       <Toolbar>
         <Typography variant="h6" component="div" sx={{ mr: 2 }}>
-          Arbitration Platform
+          {t('Arbitration Platform')}
         </Typography>
         <Button color="inherit" component={Link} to="/" startIcon={<DashboardIcon />}>
-          Dashboard
+          {t('Dashboard')}
         </Button>
         <Button color="inherit" component={Link} to="/cases" startIcon={<CasesIcon />}>
-          Cases
+          {t('Cases')}
         </Button>
         <Button color="inherit" component={Link} to="/hearings" startIcon={<HearingsIcon />}>
-          Hearings
+          {t('Hearings')}
         </Button>
         <Button color="inherit" component={Link} to="/documents" startIcon={<DocumentsIcon />}>
-          Document Library
+          {t('Document Library')}
         </Button>
         <Button color="inherit" component={Link} to="/analytics" startIcon={<AnalyticsIcon />}>
-          Analytics
+          {t('Analytics')}
         </Button>
         <Button color="inherit" component={Link} to="/users" startIcon={<UsersIcon />}>
-          Users
+          {t('Users')}
         </Button>
         <Button color="inherit" component={Link} to="/settings" startIcon={<SettingsIcon />}>
-          Settings
+          {t('Settings')}
         </Button>
 
         <Box sx={{ flexGrow: 1 }} />
@@ -62,12 +75,12 @@ const Navigation = () => {
               {user.firstName} {user.lastName}
             </Typography>
             <Chip
-              label={user.role}
+              label={t(roleLabelKey(user.role))}
               size="small"
               color={roleColors[user.role] || 'default'}
               sx={{ color: 'white', fontWeight: 'bold' }}
             />
-            <IconButton color="inherit" onClick={logout} title="Logout">
+            <IconButton color="inherit" onClick={logout} title={t('Logout')}>
               <LogoutIcon />
             </IconButton>
           </Box>

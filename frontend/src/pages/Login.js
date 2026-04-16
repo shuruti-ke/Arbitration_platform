@@ -8,8 +8,10 @@ import { LockOutlined as LockIcon } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getApiErrorMessage } from '../services/apiErrors';
+import { useLanguage } from '../context/LanguageContext';
 
 const Login = () => {
+  const { t } = useLanguage();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
@@ -25,7 +27,7 @@ const Login = () => {
       await login(email, password);
       navigate('/');
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Login failed. Please check your credentials.'));
+      setError(getApiErrorMessage(err, t('Login failed. Please check your credentials.')));
     } finally {
       setLoading(false);
     }
@@ -36,15 +38,15 @@ const Login = () => {
       <Paper sx={{ p: 4 }}>
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 3 }}>
           <LockIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />
-          <Typography variant="h5" fontWeight="bold">Arbitration Platform</Typography>
-          <Typography variant="body2" color="textSecondary">Sign in to your account</Typography>
+          <Typography variant="h5" fontWeight="bold">{t('Arbitration Platform')}</Typography>
+          <Typography variant="body2" color="textSecondary">{t('Sign in to your account')}</Typography>
         </Box>
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
         <form onSubmit={handleSubmit}>
           <TextField
-            label="Email"
+            label={t('Email')}
             type="email"
             fullWidth
             required
@@ -54,7 +56,7 @@ const Login = () => {
             autoComplete="email"
           />
           <TextField
-            label="Password"
+            label={t('Password')}
             type="password"
             fullWidth
             required
@@ -70,13 +72,13 @@ const Login = () => {
             size="large"
             disabled={loading}
           >
-            {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In'}
+            {loading ? <CircularProgress size={24} color="inherit" /> : t('Sign In')}
           </Button>
         </form>
 
         <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
           <Typography variant="caption" color="textSecondary" display="block" gutterBottom>
-            Default admin credentials:
+            {t('Default admin credentials:')}
           </Typography>
           <Typography variant="caption" display="block">
             Email: <strong>admin@arbitration.platform</strong>
@@ -88,7 +90,7 @@ const Login = () => {
 
         <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           {['admin', 'arbitrator', 'secretariat', 'counsel', 'party'].map(role => (
-            <Chip key={role} label={role} size="small" variant="outlined" />
+            <Chip key={role} label={t(role === 'counsel' ? 'Legal Counsel' : role === 'party' ? 'Party (Claimant / Respondent)' : role === 'admin' ? 'Administrator' : role === 'secretariat' ? 'Secretariat' : 'Arbitrator')} size="small" variant="outlined" />
           ))}
         </Box>
       </Paper>

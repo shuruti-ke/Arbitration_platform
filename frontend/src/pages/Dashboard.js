@@ -27,6 +27,7 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 
 const StatCard = ({ title, value, icon, color, linkTo, linkLabel }) => (
   <Card>
@@ -34,7 +35,7 @@ const StatCard = ({ title, value, icon, color, linkTo, linkLabel }) => (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
         <Box sx={{ color }}>{icon}</Box>
         <Box>
-          <Typography color="text.secondary" variant="body2">{title}</Typography>
+    <Typography color="text.secondary" variant="body2">{title}</Typography>
           <Typography variant="h4" fontWeight="bold">{value}</Typography>
         </Box>
       </Box>
@@ -153,6 +154,7 @@ const ROLE_CONTENT = {
 const Dashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { t } = useLanguage();
   const [stats, setStats] = useState({ total: 0, active: 0, completed: 0, pending: 0, documents: 0 });
   const [recentCases, setRecentCases] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -183,7 +185,7 @@ const Dashboard = () => {
         setRecentCases((casesRes.data.cases || []).slice(0, 5));
         setError(null);
       } catch (err) {
-        setError('Could not load dashboard data. Check server connection.');
+        setError(t('Could not load dashboard data. Check server connection.'));
       } finally {
         setLoading(false);
       }
@@ -209,7 +211,7 @@ const Dashboard = () => {
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Typography variant="h4" component="h1" gutterBottom>
-        Dashboard
+        {t('Dashboard')}
       </Typography>
 
       {error && <Alert severity="warning" sx={{ mb: 2 }}>{error}</Alert>}
@@ -221,17 +223,17 @@ const Dashboard = () => {
           <Box sx={{ flex: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 0.5 }}>
               <Typography variant="h6" fontWeight="bold">
-                Welcome, {firstName}
+                {t('Welcome, {{name}}', { name: firstName })}
               </Typography>
-              <Chip label={roleContent.title} size="small" sx={{ bgcolor: roleContent.color, color: 'white' }} />
+              <Chip label={t(roleContent.title)} size="small" sx={{ bgcolor: roleContent.color, color: 'white' }} />
             </Box>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              {roleContent.purpose}
+              {t(roleContent.purpose)}
             </Typography>
             <Grid container spacing={2}>
               <Grid item xs={12} md={8}>
                 <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>
-                  Your responsibilities on this platform:
+                  {t('Your responsibilities on this platform:')}
                 </Typography>
                 <List dense disablePadding>
                   {roleContent.responsibilities.map((r, i) => (
@@ -239,20 +241,20 @@ const Dashboard = () => {
                       <ListItemIcon sx={{ minWidth: 28 }}>
                         <VerifiedIcon fontSize="small" sx={{ color: roleContent.color }} />
                       </ListItemIcon>
-                      <ListItemText primary={<Typography variant="body2">{r}</Typography>} />
+                      <ListItemText primary={<Typography variant="body2">{t(r)}</Typography>} />
                     </ListItem>
                   ))}
                 </List>
               </Grid>
               <Grid item xs={12} md={4}>
                 <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>
-                  Quick actions:
+                  {t('Quick actions:')}
                 </Typography>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                   {roleContent.actions.map((a, i) => (
                     <Button key={i} variant={i === 0 ? 'contained' : 'outlined'}
                       startIcon={a.icon} fullWidth component={Link} to={a.to} size="small">
-                      {a.label}
+                      {t(a.label)}
                     </Button>
                   ))}
                 </Box>
@@ -265,24 +267,24 @@ const Dashboard = () => {
       {/* Stats Row */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <StatCard title="Total Cases" value={stats.total}
+          <StatCard title={t('Total Cases')} value={stats.total}
             icon={<CasesIcon fontSize="large" />} color="text.secondary"
-            linkTo="/cases" linkLabel="View All" />
+            linkTo="/cases" linkLabel={t('View All')} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatCard title="Active Cases" value={stats.active}
+          <StatCard title={t('Active Cases')} value={stats.active}
             icon={<ActiveIcon fontSize="large" />} color="primary.main"
-            linkTo="/cases" linkLabel="View Active" />
+            linkTo="/cases" linkLabel={t('View Active')} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatCard title="Completed Cases" value={stats.completed}
+          <StatCard title={t('Completed Cases')} value={stats.completed}
             icon={<DoneIcon fontSize="large" />} color="success.main"
-            linkTo="/cases" linkLabel="View Completed" />
+            linkTo="/cases" linkLabel={t('View Completed')} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatCard title="Documents" value={stats.documents}
+          <StatCard title={t('Document Library')} value={stats.documents}
             icon={<DocumentsIcon fontSize="large" />} color="info.main"
-            linkTo="/documents" linkLabel="Document Library" />
+            linkTo="/documents" linkLabel={t('Document Library')} />
         </Grid>
       </Grid>
 
@@ -291,12 +293,12 @@ const Dashboard = () => {
         <Grid item xs={12} md={8}>
           <Paper sx={{ p: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6">Recent Cases</Typography>
-              <Button size="small" component={Link} to="/cases">View All</Button>
+              <Typography variant="h6">{t('Recent Cases')}</Typography>
+              <Button size="small" component={Link} to="/cases">{t('View All')}</Button>
             </Box>
             {recentCases.length === 0 ? (
               <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
-                No cases yet. Create your first case.
+                {t('No cases yet. Create your first case.')}
               </Typography>
             ) : (
               recentCases.map((c, i) => {
@@ -314,7 +316,7 @@ const Dashboard = () => {
                         <Typography variant="body2" fontWeight="medium">{title}</Typography>
                         <Typography variant="caption" color="text.secondary">{id} {type ? `· ${type}` : ''}</Typography>
                       </Box>
-                      <Chip label={status} size="small" color={statusColor(status)} />
+                      <Chip label={t(status)} size="small" color={statusColor(status)} />
                     </Box>
                     {i < recentCases.length - 1 && <Divider />}
                   </Box>
@@ -327,12 +329,12 @@ const Dashboard = () => {
         {/* Platform Overview */}
         <Grid item xs={12} md={4}>
           <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>About This Platform</Typography>
+            <Typography variant="h6" gutterBottom>{t('About This Platform')}</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              A secure, end-to-end digital arbitration management platform for conducting arbitration proceedings online — from initial filing through to final award.
+              {t('A secure, end-to-end digital arbitration management platform for conducting arbitration proceedings online — from initial filing through to final award.')}
             </Typography>
             <Divider sx={{ mb: 2 }} />
-            <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>Platform users:</Typography>
+            <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>{t('Platform users:')}</Typography>
             {[
               { role: 'Administrator / Secretariat', desc: 'Operates the platform, manages cases and users', color: 'error' },
               { role: 'Arbitrator', desc: 'Reviews cases, conducts hearings, issues awards', color: 'warning' },
@@ -341,9 +343,9 @@ const Dashboard = () => {
             ].map((u, i) => (
               <Box key={i} sx={{ mb: 1 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Chip label={u.role} size="small" color={u.color} variant="outlined" />
+                  <Chip label={t(u.role)} size="small" color={u.color} variant="outlined" />
                 </Box>
-                <Typography variant="caption" color="text.secondary" sx={{ pl: 0.5 }}>{u.desc}</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ pl: 0.5 }}>{t(u.desc)}</Typography>
               </Box>
             ))}
           </Paper>

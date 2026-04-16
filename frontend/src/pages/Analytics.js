@@ -23,6 +23,7 @@ import {
   Legend,
   ArcElement
 } from 'chart.js';
+import { useLanguage } from '../context/LanguageContext';
 
 ChartJS.register(
   CategoryScale,
@@ -35,17 +36,18 @@ ChartJS.register(
 );
 
 const Analytics = () => {
+  const { t } = useLanguage();
   // Sample data for charts
   const barData = {
     labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
     datasets: [
       {
-        label: 'Cases Created',
+        label: t('Cases Created'),
         data: [12, 19, 3, 5, 2, 3],
         backgroundColor: 'rgba(25, 118, 210, 0.5)',
       },
       {
-        label: 'Cases Completed',
+        label: t('Cases Completed'),
         data: [8, 15, 2, 3, 1, 2],
         backgroundColor: 'rgba(56, 210, 25, 0.5)',
       }
@@ -53,7 +55,7 @@ const Analytics = () => {
   };
 
   const pieData = {
-    labels: ['Commercial', 'Employment', 'IP', 'Other'],
+    labels: [t('Commercial'), t('Employment'), t('IP'), t('Other')],
     datasets: [
       {
         data: [300, 150, 100, 50],
@@ -83,14 +85,14 @@ const Analytics = () => {
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Typography variant="h4" component="h1" gutterBottom>
-        Analytics Dashboard
+        {t('Analytics Dashboard')}
       </Typography>
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={6}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" gutterBottom>
-              Cases Overview
+              {t('Cases Overview')}
             </Typography>
             <Box sx={{ height: 300 }}>
               <Bar data={barData} options={options} />
@@ -101,7 +103,7 @@ const Analytics = () => {
         <Grid item xs={12} md={6}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" gutterBottom>
-              Case Types Distribution
+              {t('Case Types Distribution')}
             </Typography>
             <Box sx={{ height: 300 }}>
               <Pie data={pieData} options={options} />
@@ -112,20 +114,20 @@ const Analytics = () => {
         <Grid item xs={12} md={6}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" gutterBottom>
-              Performance Metrics
+              {t('Performance Metrics')}
             </Typography>
             <Box sx={{ minHeight: 200 }}>
               <Typography variant="body1">
-                • Average case resolution time: 45 days
+                • {t('Average case resolution time: 45 days')}
               </Typography>
               <Typography variant="body1">
-                • Compliance rate: 98.5%
+                • {t('Compliance rate: 98.5%')}
               </Typography>
               <Typography variant="body1">
-                • User satisfaction: 4.7/5.0
+                • {t('User satisfaction: 4.7/5.0')}
               </Typography>
               <Typography variant="body1">
-                • Active arbitrators: 24
+                • {t('Active arbitrators: 24')}
               </Typography>
             </Box>
           </Paper>
@@ -134,20 +136,20 @@ const Analytics = () => {
         <Grid item xs={12} md={6}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" gutterBottom>
-              System Health
+              {t('System Health')}
             </Typography>
             <Box sx={{ minHeight: 200 }}>
               <Typography variant="body1">
-                • API Response Time: 120ms
+                • {t('API Response Time: 120ms')}
               </Typography>
               <Typography variant="body1">
-                • Uptime: 99.9%
+                • {t('Uptime: 99.9%')}
               </Typography>
               <Typography variant="body1">
-                • Active Users: 42
+                • {t('Active Users: 42')}
               </Typography>
               <Typography variant="body1">
-                • Storage Used: 2.4 GB
+                • {t('Storage Used: 2.4 GB')}
               </Typography>
             </Box>
           </Paper>

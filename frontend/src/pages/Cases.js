@@ -16,8 +16,7 @@ import {
 import { DataGrid } from '@mui/x-data-grid';
 import { useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
-
-const STEPS = ['Case Details', 'Parties', 'Procedural', 'Submission'];
+import { useLanguage } from '../context/LanguageContext';
 
 const EMPTY_FORM = {
   // Step 1 - Case Details
@@ -41,6 +40,7 @@ const EMPTY_FORM = {
 
 const Cases = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [mainTab, setMainTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -54,6 +54,8 @@ const Cases = () => {
   const [form, setForm] = useState(EMPTY_FORM);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState(null);
+
+  const STEPS = [t('Case Details'), t('Parties'), t('Procedural'), t('Submission')];
 
   const fetchCases = async () => {
     try {
@@ -74,7 +76,7 @@ const Cases = () => {
       setCases(rows);
       setError(null);
     } catch (err) {
-      setError('Could not load cases from server.');
+      setError(t('Could not load cases from server.'));
       setCases([]);
     } finally {
       setLoading(false);
@@ -88,15 +90,15 @@ const Cases = () => {
 
   const validateStep = () => {
     if (activeStep === 0 && !form.title.trim()) {
-      setFormError('Case title is required.');
+      setFormError(t('Case title is required.'));
       return false;
     }
     if (activeStep === 1 && (!form.claimantName.trim() || !form.respondentName.trim())) {
-      setFormError('Claimant and Respondent names are required.');
+      setFormError(t('Claimant and Respondent names are required.'));
       return false;
     }
     if (activeStep === 3 && !form.reliefSought.trim()) {
-      setFormError('Relief Sought is required — describe the remedy you seek from the Tribunal.');
+      setFormError(t('Relief Sought is required — describe the remedy you seek from the Tribunal.'));
       return false;
     }
     setFormError(null);
@@ -158,14 +160,14 @@ const Cases = () => {
       await fetchCases();
       navigate(`/cases/${newCaseId}`);
     } catch (err) {
-      setFormError(err.response?.data?.error || 'Failed to create case.');
+      setFormError(err.response?.data?.error || t('Failed to create case.'));
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleAiSuggest = async () => {
-    if (!form.seatOfArbitration) { setFormError('Enter a seat of arbitration first.'); return; }
+    if (!form.seatOfArbitration) { setFormError(t('Enter a seat of arbitration first.')); return; }
     setAiLoading(true);
     setFormError(null);
     try {
@@ -181,7 +183,7 @@ const Cases = () => {
         arbitrationRules: s.arbitrationRules || prev.arbitrationRules,
       }));
     } catch (err) {
-      setFormError('AI suggestion failed. Check server configuration.');
+      setFormError(t('AI suggestion failed. Check server configuration.'));
     } finally {
       setAiLoading(false);
     }
@@ -199,39 +201,39 @@ const Cases = () => {
   });
 
   const columns = [
-    { field: 'caseId', headerName: 'Case ID', width: 160 },
-    { field: 'title', headerName: 'Title', width: 240 },
-    { field: 'caseType', headerName: 'Type', width: 110 },
-    { field: 'sector', headerName: 'Sector', width: 110 },
+    { field: 'caseId', headerName: t('Case ID'), width: 160 },
+    { field: 'title', headerName: t('Title'), width: 240 },
+    { field: 'caseType', headerName: t('Type'), width: 110 },
+    { field: 'sector', headerName: t('Sector'), width: 110 },
     {
-      field: 'status', headerName: 'Status', width: 100,
+      field: 'status', headerName: t('Status'), width: 100,
       renderCell: (params) => (
-        <Chip label={params.value}
+        <Chip label={t(params.value)}
           color={params.value === 'active' ? 'primary' : params.value === 'completed' ? 'success' : 'warning'}
           size="small" variant="outlined" />
       )
     },
     {
-      field: 'submissionStatus', headerName: 'Submission', width: 110,
+      field: 'submissionStatus', headerName: t('Submission'), width: 110,
       renderCell: (params) => (
-        <Chip label={params.value || 'draft'}
+        <Chip label={t(params.value || 'draft')}
           color={params.value === 'submitted' ? 'success' : params.value === 'commenced' ? 'info' : 'default'}
           size="small" />
       )
     },
-    { field: 'caseStage', headerName: 'Stage', width: 120 },
-    { field: 'disputeAmount', headerName: 'Amount', width: 100 },
-    { field: 'createdAt', headerName: 'Filed', width: 100 },
+    { field: 'caseStage', headerName: t('Stage'), width: 120 },
+    { field: 'disputeAmount', headerName: t('Amount'), width: 100 },
+    { field: 'createdAt', headerName: t('Filed'), width: 100 },
     {
       field: 'actions', headerName: '', width: 90, sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: 'flex', gap: 0.5 }}>
-          <Tooltip title="Open case">
+          <Tooltip title={t('Open case')}>
             <IconButton size="small" onClick={(e) => { e.stopPropagation(); navigate(`/cases/${params.row.caseId}`); }}>
               <OpenIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Edit case">
+          <Tooltip title={t('Edit case')}>
             <IconButton size="small" onClick={(e) => { e.stopPropagation(); navigate(`/cases/${params.row.caseId}`); }}>
               <EditIcon fontSize="small" />
             </IconButton>
@@ -243,23 +245,23 @@ const Cases = () => {
 
   // NCIA checklist for Step 4 preview
   const nciaChecks = [
-    { label: 'Case title provided', ok: !!form.title.trim() },
-    { label: 'Dispute description provided', ok: !!form.description.trim() },
-    { label: 'Claimant details provided', ok: !!form.claimantName.trim() },
-    { label: 'Respondent details provided', ok: !!form.respondentName.trim() },
-    { label: 'Seat of arbitration specified', ok: !!form.seatOfArbitration.trim() },
-    { label: 'Language of proceedings specified', ok: !!form.languageOfProceedings },
-    { label: 'Relief sought stated', ok: !!form.reliefSought.trim() },
-    { label: 'Arbitrator nominee provided', ok: !!form.arbitratorNominee.trim() },
-    { label: 'Service on all parties confirmed', ok: !!form.serviceConfirmed },
+    { label: t('Case title provided'), ok: !!form.title.trim() },
+    { label: t('Dispute description provided'), ok: !!form.description.trim() },
+    { label: t('Claimant details provided'), ok: !!form.claimantName.trim() },
+    { label: t('Respondent details provided'), ok: !!form.respondentName.trim() },
+    { label: t('Seat of arbitration specified'), ok: !!form.seatOfArbitration.trim() },
+    { label: t('Language of proceedings specified'), ok: !!form.languageOfProceedings },
+    { label: t('Relief sought stated'), ok: !!form.reliefSought.trim() },
+    { label: t('Arbitrator nominee provided'), ok: !!form.arbitratorNominee.trim() },
+    { label: t('Service on all parties confirmed'), ok: !!form.serviceConfirmed },
   ];
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4">Case Management</Typography>
+        <Typography variant="h4">{t('Case Management')}</Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
-          New Case
+          {t('New Case')}
         </Button>
       </Box>
 
@@ -267,28 +269,28 @@ const Cases = () => {
 
       <Paper sx={{ mb: 2 }}>
         <Tabs value={mainTab} onChange={(_, v) => setMainTab(v)}>
-          <Tab label={`Active Cases (${activeCases.length})`} />
-          <Tab label={`Repository (${repositoryCases.length})`} />
+          <Tab label={`${t('Active Cases')} (${activeCases.length})`} />
+          <Tab label={`${t('Repository')} (${repositoryCases.length})`} />
         </Tabs>
       </Paper>
 
       <Paper sx={{ p: 2, mb: 3 }}>
         <Box sx={{ display: 'flex', gap: 2 }}>
-          <TextField label="Search Cases" variant="outlined" value={searchTerm}
+          <TextField label={t('Search Cases')} variant="outlined" value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
             sx={{ flex: 1 }} />
           <FormControl sx={{ minWidth: 150 }}>
-            <InputLabel>Status Filter</InputLabel>
-            <Select value={filterStatus} label="Status Filter" onChange={(e) => setFilterStatus(e.target.value)}>
-              <MenuItem value="all">All Statuses</MenuItem>
-              <MenuItem value="active">Active</MenuItem>
-              <MenuItem value="pending">Pending</MenuItem>
-              <MenuItem value="completed">Completed</MenuItem>
+            <InputLabel>{t('Status Filter')}</InputLabel>
+            <Select value={filterStatus} label={t('Status Filter')} onChange={(e) => setFilterStatus(e.target.value)}>
+              <MenuItem value="all">{t('All Statuses')}</MenuItem>
+              <MenuItem value="active">{t('Active')}</MenuItem>
+              <MenuItem value="pending">{t('Pending')}</MenuItem>
+              <MenuItem value="completed">{t('Completed')}</MenuItem>
             </Select>
           </FormControl>
           <Button variant="outlined" startIcon={<FilterIcon />} onClick={() => setFilterStatus('all')}>
-            Reset
+            {t('Reset')}
           </Button>
         </Box>
       </Paper>
@@ -309,7 +311,7 @@ const Cases = () => {
       {/* New Case Dialog */}
       <Dialog open={dialogOpen} onClose={() => { setDialogOpen(false); setActiveStep(0); setForm(EMPTY_FORM); }}
         maxWidth="md" fullWidth>
-        <DialogTitle>New Arbitration Case</DialogTitle>
+        <DialogTitle>{t('New Arbitration Case')}</DialogTitle>
         <DialogContent>
           <Stepper activeStep={activeStep} sx={{ mb: 3, mt: 1 }}>
             {STEPS.map((label) => <Step key={label}><StepLabel>{label}</StepLabel></Step>)}
@@ -321,72 +323,72 @@ const Cases = () => {
           {activeStep === 0 && (
             <Grid container spacing={2}>
               <Grid item xs={12}>
-                <TextField label="Case Title *" fullWidth value={form.title} onChange={set('title')} />
+        <TextField label={t('Case Title *')} fullWidth value={form.title} onChange={set('title')} />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
-                  <InputLabel>Case Type</InputLabel>
-                  <Select value={form.caseType} label="Case Type" onChange={set('caseType')}>
-                    <MenuItem value="commercial">Commercial</MenuItem>
-                    <MenuItem value="employment">Employment</MenuItem>
-                    <MenuItem value="construction">Construction</MenuItem>
-                    <MenuItem value="ip">Intellectual Property</MenuItem>
-                    <MenuItem value="investment">Investment</MenuItem>
-                    <MenuItem value="consumer">Consumer</MenuItem>
-                    <MenuItem value="insurance">Insurance</MenuItem>
-                    <MenuItem value="real_estate">Real Estate</MenuItem>
-                    <MenuItem value="technology">Technology</MenuItem>
-                    <MenuItem value="other">Other</MenuItem>
+                  <InputLabel>{t('Case Type')}</InputLabel>
+                  <Select value={form.caseType} label={t('Case Type')} onChange={set('caseType')}>
+                    <MenuItem value="commercial">{t('Commercial')}</MenuItem>
+                    <MenuItem value="employment">{t('Employment')}</MenuItem>
+                    <MenuItem value="construction">{t('Construction')}</MenuItem>
+                    <MenuItem value="ip">{t('Intellectual Property')}</MenuItem>
+                    <MenuItem value="investment">{t('Investment')}</MenuItem>
+                    <MenuItem value="consumer">{t('Consumer')}</MenuItem>
+                    <MenuItem value="insurance">{t('Insurance')}</MenuItem>
+                    <MenuItem value="real_estate">{t('Real Estate')}</MenuItem>
+                    <MenuItem value="technology">{t('Technology')}</MenuItem>
+                    <MenuItem value="other">{t('Other')}</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
-                  <InputLabel>Sector / Industry</InputLabel>
-                  <Select value={form.sector} label="Sector / Industry" onChange={set('sector')}>
-                    <MenuItem value="finance">Finance & Banking</MenuItem>
-                    <MenuItem value="energy">Energy & Resources</MenuItem>
-                    <MenuItem value="construction">Construction</MenuItem>
-                    <MenuItem value="technology">Technology</MenuItem>
-                    <MenuItem value="agriculture">Agriculture</MenuItem>
-                    <MenuItem value="healthcare">Healthcare</MenuItem>
-                    <MenuItem value="transport">Transport & Logistics</MenuItem>
-                    <MenuItem value="retail">Retail & Trade</MenuItem>
-                    <MenuItem value="government">Government</MenuItem>
-                    <MenuItem value="other">Other</MenuItem>
+                  <InputLabel>{t('Sector / Industry')}</InputLabel>
+                  <Select value={form.sector} label={t('Sector / Industry')} onChange={set('sector')}>
+                    <MenuItem value="finance">{t('Finance & Banking')}</MenuItem>
+                    <MenuItem value="energy">{t('Energy & Resources')}</MenuItem>
+                    <MenuItem value="construction">{t('Construction')}</MenuItem>
+                    <MenuItem value="technology">{t('Technology')}</MenuItem>
+                    <MenuItem value="agriculture">{t('Agriculture')}</MenuItem>
+                    <MenuItem value="healthcare">{t('Healthcare')}</MenuItem>
+                    <MenuItem value="transport">{t('Transport & Logistics')}</MenuItem>
+                    <MenuItem value="retail">{t('Retail & Trade')}</MenuItem>
+                    <MenuItem value="government">{t('Government')}</MenuItem>
+                    <MenuItem value="other">{t('Other')}</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
-                  <InputLabel>Dispute Category</InputLabel>
-                  <Select value={form.disputeCategory} label="Dispute Category" onChange={set('disputeCategory')}>
-                    <MenuItem value="b2b">Business to Business (B2B)</MenuItem>
-                    <MenuItem value="b2c">Business to Consumer (B2C)</MenuItem>
-                    <MenuItem value="investment">Investment Treaty</MenuItem>
-                    <MenuItem value="state">State vs. Private</MenuItem>
-                    <MenuItem value="cross_border">Cross-Border</MenuItem>
+                  <InputLabel>{t('Dispute Category')}</InputLabel>
+                  <Select value={form.disputeCategory} label={t('Dispute Category')} onChange={set('disputeCategory')}>
+                    <MenuItem value="b2b">{t('Business to Business (B2B)')}</MenuItem>
+                    <MenuItem value="b2c">{t('Business to Consumer (B2C)')}</MenuItem>
+                    <MenuItem value="investment">{t('Investment Treaty')}</MenuItem>
+                    <MenuItem value="state">{t('State vs. Private')}</MenuItem>
+                    <MenuItem value="cross_border">{t('Cross-Border')}</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
-                  <InputLabel>Status</InputLabel>
-                  <Select value={form.status} label="Status" onChange={set('status')}>
-                    <MenuItem value="active">Active</MenuItem>
-                    <MenuItem value="pending">Pending</MenuItem>
-                    <MenuItem value="completed">Completed</MenuItem>
+                  <InputLabel>{t('Status')}</InputLabel>
+                  <Select value={form.status} label={t('Status')} onChange={set('status')}>
+                    <MenuItem value="active">{t('Active')}</MenuItem>
+                    <MenuItem value="pending">{t('Pending')}</MenuItem>
+                    <MenuItem value="completed">{t('Completed')}</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField label="Dispute Amount" fullWidth type="number"
+                <TextField label={t('Dispute Amount')} fullWidth type="number"
                   value={form.disputeAmount} onChange={set('disputeAmount')} />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
-                  <InputLabel>Currency</InputLabel>
-                  <Select value={form.currency} label="Currency" onChange={set('currency')}>
+                  <InputLabel>{t('Currency')}</InputLabel>
+                  <Select value={form.currency} label={t('Currency')} onChange={set('currency')}>
                     <MenuItem value="USD">USD</MenuItem>
                     <MenuItem value="KES">KES</MenuItem>
                     <MenuItem value="EUR">EUR</MenuItem>
@@ -400,7 +402,7 @@ const Cases = () => {
                 </FormControl>
               </Grid>
               <Grid item xs={12}>
-                <TextField label="Description of Dispute / Nature of Claim" fullWidth multiline rows={3}
+                <TextField label={t('Description of Dispute / Nature of Claim')} fullWidth multiline rows={3}
                   value={form.description} onChange={set('description')} />
               </Grid>
             </Grid>
@@ -409,68 +411,68 @@ const Cases = () => {
           {/* Step 2: Parties */}
           {activeStep === 1 && (
             <Grid container spacing={2}>
-              <Grid item xs={12}><Typography variant="subtitle1" fontWeight="bold">Claimant</Typography></Grid>
+              <Grid item xs={12}><Typography variant="subtitle1" fontWeight="bold">{t('Claimant')}</Typography></Grid>
               <Grid item xs={12} sm={6}>
-                <TextField label="Full Name *" fullWidth value={form.claimantName} onChange={set('claimantName')} />
+                <TextField label={t('Full Name *')} fullWidth value={form.claimantName} onChange={set('claimantName')} />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField label="Organization / Company" fullWidth value={form.claimantOrg} onChange={set('claimantOrg')} />
+                <TextField label={t('Organization / Company')} fullWidth value={form.claimantOrg} onChange={set('claimantOrg')} />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
-                  <InputLabel>Entity Type</InputLabel>
-                  <Select value={form.claimantEntityType} label="Entity Type" onChange={set('claimantEntityType')}>
-                    <MenuItem value="individual">Individual</MenuItem>
-                    <MenuItem value="corporation">Corporation</MenuItem>
-                    <MenuItem value="partnership">Partnership</MenuItem>
-                    <MenuItem value="government">Government / State</MenuItem>
-                    <MenuItem value="ngo">NGO</MenuItem>
+                  <InputLabel>{t('Entity Type')}</InputLabel>
+                  <Select value={form.claimantEntityType} label={t('Entity Type')} onChange={set('claimantEntityType')}>
+                    <MenuItem value="individual">{t('Individual')}</MenuItem>
+                    <MenuItem value="corporation">{t('Corporation')}</MenuItem>
+                    <MenuItem value="partnership">{t('Partnership')}</MenuItem>
+                    <MenuItem value="government">{t('Government / State')}</MenuItem>
+                    <MenuItem value="ngo">{t('NGO')}</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField label="Nationality / Country" fullWidth value={form.claimantNationality} onChange={set('claimantNationality')} />
+                <TextField label={t('Nationality / Country')} fullWidth value={form.claimantNationality} onChange={set('claimantNationality')} />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField label="Email" fullWidth value={form.claimantEmail} onChange={set('claimantEmail')} />
+                <TextField label={t('Email')} fullWidth value={form.claimantEmail} onChange={set('claimantEmail')} />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField label="Phone" fullWidth value={form.claimantPhone} onChange={set('claimantPhone')} />
+                <TextField label={t('Phone')} fullWidth value={form.claimantPhone} onChange={set('claimantPhone')} />
               </Grid>
               <Grid item xs={12}>
-                <TextField label="Address" fullWidth multiline rows={2} value={form.claimantAddress} onChange={set('claimantAddress')} />
+                <TextField label={t('Address')} fullWidth multiline rows={2} value={form.claimantAddress} onChange={set('claimantAddress')} />
               </Grid>
 
-              <Grid item xs={12} sx={{ mt: 1 }}><Divider /><Typography variant="subtitle1" fontWeight="bold" sx={{ mt: 1 }}>Respondent</Typography></Grid>
+              <Grid item xs={12} sx={{ mt: 1 }}><Divider /><Typography variant="subtitle1" fontWeight="bold" sx={{ mt: 1 }}>{t('Respondent')}</Typography></Grid>
               <Grid item xs={12} sm={6}>
-                <TextField label="Full Name *" fullWidth value={form.respondentName} onChange={set('respondentName')} />
+                <TextField label={t('Full Name *')} fullWidth value={form.respondentName} onChange={set('respondentName')} />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField label="Organization / Company" fullWidth value={form.respondentOrg} onChange={set('respondentOrg')} />
+                <TextField label={t('Organization / Company')} fullWidth value={form.respondentOrg} onChange={set('respondentOrg')} />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
-                  <InputLabel>Entity Type</InputLabel>
-                  <Select value={form.respondentEntityType} label="Entity Type" onChange={set('respondentEntityType')}>
-                    <MenuItem value="individual">Individual</MenuItem>
-                    <MenuItem value="corporation">Corporation</MenuItem>
-                    <MenuItem value="partnership">Partnership</MenuItem>
-                    <MenuItem value="government">Government / State</MenuItem>
-                    <MenuItem value="ngo">NGO</MenuItem>
+                  <InputLabel>{t('Entity Type')}</InputLabel>
+                  <Select value={form.respondentEntityType} label={t('Entity Type')} onChange={set('respondentEntityType')}>
+                    <MenuItem value="individual">{t('Individual')}</MenuItem>
+                    <MenuItem value="corporation">{t('Corporation')}</MenuItem>
+                    <MenuItem value="partnership">{t('Partnership')}</MenuItem>
+                    <MenuItem value="government">{t('Government / State')}</MenuItem>
+                    <MenuItem value="ngo">{t('NGO')}</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField label="Nationality / Country" fullWidth value={form.respondentNationality} onChange={set('respondentNationality')} />
+                <TextField label={t('Nationality / Country')} fullWidth value={form.respondentNationality} onChange={set('respondentNationality')} />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField label="Email" fullWidth value={form.respondentEmail} onChange={set('respondentEmail')} />
+                <TextField label={t('Email')} fullWidth value={form.respondentEmail} onChange={set('respondentEmail')} />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField label="Phone" fullWidth value={form.respondentPhone} onChange={set('respondentPhone')} />
+                <TextField label={t('Phone')} fullWidth value={form.respondentPhone} onChange={set('respondentPhone')} />
               </Grid>
               <Grid item xs={12}>
-                <TextField label="Address" fullWidth multiline rows={2} value={form.respondentAddress} onChange={set('respondentAddress')} />
+                <TextField label={t('Address')} fullWidth multiline rows={2} value={form.respondentAddress} onChange={set('respondentAddress')} />
               </Grid>
             </Grid>
           )}
@@ -482,91 +484,91 @@ const Cases = () => {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1.5, bgcolor: 'primary.50', borderRadius: 1, border: '1px solid', borderColor: 'primary.200' }}>
                   <AiIcon color="primary" />
                   <Typography variant="body2" sx={{ flex: 1 }}>
-                    Enter the seat of arbitration below, then let AI suggest applicable laws and rules.
+                    {t('Enter the seat of arbitration below, then let AI suggest applicable laws and rules.')}
                   </Typography>
                   <Button size="small" variant="outlined" startIcon={<AiIcon />}
                     onClick={handleAiSuggest} disabled={aiLoading}>
-                    {aiLoading ? 'Thinking...' : 'AI Suggest'}
+                    {aiLoading ? t('Thinking...') : t('AI Suggest')}
                   </Button>
                 </Box>
                 {aiSuggestion && (
                   <Alert severity="success" sx={{ mt: 1 }}>
-                    <strong>AI Suggestion:</strong> {aiSuggestion.notes || ''}<br />
-                    Law: {aiSuggestion.arbitrationLaw || '—'} | Institutions: {(aiSuggestion.institutions || []).join(', ')}
+                    <strong>{t('AI Suggestion:')}</strong> {aiSuggestion.notes || ''}<br />
+                    {t('Law')}: {aiSuggestion.arbitrationLaw || '—'} | {t('Institutions')}: {(aiSuggestion.institutions || []).join(', ')}
                   </Alert>
                 )}
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField label="Seat of Arbitration" fullWidth value={form.seatOfArbitration}
-                  onChange={set('seatOfArbitration')} placeholder="e.g. Nairobi, Kenya" />
+                <TextField label={t('Seat of Arbitration')} fullWidth value={form.seatOfArbitration}
+                  onChange={set('seatOfArbitration')} placeholder={t('e.g. Nairobi, Kenya')} />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
-                  <InputLabel>Arbitration Rules</InputLabel>
-                  <Select value={form.arbitrationRules} label="Arbitration Rules" onChange={set('arbitrationRules')}>
-                    <MenuItem value="Kenya Arbitration Act">Kenya Arbitration Act</MenuItem>
-                    <MenuItem value="NCIA">NCIA Rules</MenuItem>
-                    <MenuItem value="KIAC">KIAC Rules</MenuItem>
-                    <MenuItem value="LCIA">LCIA Rules</MenuItem>
-                    <MenuItem value="ICC">ICC Rules</MenuItem>
-                    <MenuItem value="SIAC">SIAC Rules</MenuItem>
-                    <MenuItem value="UNCITRAL">UNCITRAL Rules</MenuItem>
-                    <MenuItem value="AAA">AAA Rules</MenuItem>
-                    <MenuItem value="AFSA">AFSA Rules</MenuItem>
-                    <MenuItem value="LCA">LCA Rules</MenuItem>
-                    <MenuItem value="CRCICA">CRCICA Rules</MenuItem>
-                    <MenuItem value="Ad Hoc">Ad Hoc</MenuItem>
+                  <InputLabel>{t('Arbitration Rules')}</InputLabel>
+                  <Select value={form.arbitrationRules} label={t('Arbitration Rules')} onChange={set('arbitrationRules')}>
+                    <MenuItem value="Kenya Arbitration Act">{t('Kenya Arbitration Act')}</MenuItem>
+                    <MenuItem value="NCIA">{t('NCIA Rules')}</MenuItem>
+                    <MenuItem value="KIAC">{t('KIAC Rules')}</MenuItem>
+                    <MenuItem value="LCIA">{t('LCIA Rules')}</MenuItem>
+                    <MenuItem value="ICC">{t('ICC Rules')}</MenuItem>
+                    <MenuItem value="SIAC">{t('SIAC Rules')}</MenuItem>
+                    <MenuItem value="UNCITRAL">{t('UNCITRAL Rules')}</MenuItem>
+                    <MenuItem value="AAA">{t('AAA Rules')}</MenuItem>
+                    <MenuItem value="AFSA">{t('AFSA Rules')}</MenuItem>
+                    <MenuItem value="LCA">{t('LCA Rules')}</MenuItem>
+                    <MenuItem value="CRCICA">{t('CRCICA Rules')}</MenuItem>
+                    <MenuItem value="Ad Hoc">{t('Ad Hoc')}</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField label="Governing Law" fullWidth value={form.governingLaw}
-                  onChange={set('governingLaw')} placeholder="e.g. Laws of Kenya" />
+                <TextField label={t('Governing Law')} fullWidth value={form.governingLaw}
+                  onChange={set('governingLaw')} placeholder={t('e.g. Laws of Kenya')} />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
-                  <InputLabel>Language of Proceedings</InputLabel>
-                  <Select value={form.languageOfProceedings} label="Language of Proceedings" onChange={set('languageOfProceedings')}>
-                    <MenuItem value="English">English</MenuItem>
-                    <MenuItem value="French">French</MenuItem>
-                    <MenuItem value="Arabic">Arabic</MenuItem>
-                    <MenuItem value="Portuguese">Portuguese</MenuItem>
-                    <MenuItem value="Swahili">Swahili</MenuItem>
-                    <MenuItem value="Other">Other</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Number of Arbitrators</InputLabel>
-                  <Select value={form.numArbitrators} label="Number of Arbitrators" onChange={set('numArbitrators')}>
-                    <MenuItem value="1">1 (Sole Arbitrator)</MenuItem>
-                    <MenuItem value="3">3 (Tribunal)</MenuItem>
+                  <InputLabel>{t('Language of Proceedings')}</InputLabel>
+                  <Select value={form.languageOfProceedings} label={t('Language of Proceedings')} onChange={set('languageOfProceedings')}>
+                    <MenuItem value="English">{t('English')}</MenuItem>
+                    <MenuItem value="French">{t('French')}</MenuItem>
+                    <MenuItem value="Arabic">{t('Arabic')}</MenuItem>
+                    <MenuItem value="Portuguese">{t('Portuguese')}</MenuItem>
+                    <MenuItem value="Swahili">{t('Swahili')}</MenuItem>
+                    <MenuItem value="Other">{t('Other')}</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
-                  <InputLabel>Confidentiality Level</InputLabel>
-                  <Select value={form.confidentialityLevel} label="Confidentiality Level" onChange={set('confidentialityLevel')}>
-                    <MenuItem value="confidential">Confidential</MenuItem>
-                    <MenuItem value="restricted">Restricted</MenuItem>
-                    <MenuItem value="public">Public</MenuItem>
+                  <InputLabel>{t('Number of Arbitrators')}</InputLabel>
+                  <Select value={form.numArbitrators} label={t('Number of Arbitrators')} onChange={set('numArbitrators')}>
+                    <MenuItem value="1">{t('1 (Sole Arbitrator)')}</MenuItem>
+                    <MenuItem value="3">{t('3 (Tribunal)')}</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField label="Response Deadline" fullWidth type="date"
+                <FormControl fullWidth>
+                  <InputLabel>{t('Confidentiality Level')}</InputLabel>
+                  <Select value={form.confidentialityLevel} label={t('Confidentiality Level')} onChange={set('confidentialityLevel')}>
+                    <MenuItem value="confidential">{t('Confidential')}</MenuItem>
+                    <MenuItem value="restricted">{t('Restricted')}</MenuItem>
+                    <MenuItem value="public">{t('Public')}</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label={t('Response Deadline')} fullWidth type="date"
                   value={form.responseDeadline} onChange={set('responseDeadline')}
                   InputLabelProps={{ shrink: true }} />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
-                  <InputLabel>Third Party Funding</InputLabel>
-                  <Select value={form.thirdPartyFunding} label="Third Party Funding"
+                  <InputLabel>{t('Third Party Funding')}</InputLabel>
+                  <Select value={form.thirdPartyFunding} label={t('Third Party Funding')}
                     onChange={(e) => setForm({ ...form, thirdPartyFunding: e.target.value })}>
-                    <MenuItem value={false}>No</MenuItem>
-                    <MenuItem value={true}>Yes</MenuItem>
+                    <MenuItem value={false}>{t('No')}</MenuItem>
+                    <MenuItem value={true}>{t('Yes')}</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
@@ -579,7 +581,7 @@ const Cases = () => {
               {/* NCIA Checklist preview */}
               <Grid item xs={12}>
                 <Alert severity="info" sx={{ mb: 1 }}>
-                  <strong>Arbitration Filing Checklist</strong> — Items needed for a valid Request for Arbitration
+                  <strong>{t('Arbitration Filing Checklist')}</strong> — {t('Items needed for a valid Request for Arbitration')}
                 </Alert>
                 <Paper variant="outlined" sx={{ p: 2 }}>
                   <Grid container spacing={1}>
@@ -604,9 +606,9 @@ const Cases = () => {
               </Grid>
 
               <Grid item xs={12}>
-                <TextField label="Relief Sought / Statement of Claim *" fullWidth multiline rows={3}
+                <TextField label={t('Relief Sought / Statement of Claim *')} fullWidth multiline rows={3}
                   value={form.reliefSought} onChange={set('reliefSought')}
-                  placeholder="Describe the specific relief or remedy you are seeking from the Tribunal (monetary amount, specific performance, declaratory relief, etc.)" />
+                  placeholder={t('Describe the specific relief or remedy you are seeking from the Tribunal (monetary amount, specific performance, declaratory relief, etc.)')} />
               </Grid>
 
               <Grid item xs={12}>
@@ -614,18 +616,18 @@ const Cases = () => {
               </Grid>
 
               <Grid item xs={12} sm={6}>
-                <TextField label="Nominated Arbitrator Name" fullWidth value={form.arbitratorNominee}
-                  onChange={set('arbitratorNominee')} placeholder="Full name of nominated arbitrator" />
+                <TextField label={t('Nominated Arbitrator Name')} fullWidth value={form.arbitratorNominee}
+                  onChange={set('arbitratorNominee')} placeholder={t('Full name of nominated arbitrator')} />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField label="Required Copies" fullWidth disabled
-                  value={form.numArbitrators === '1' ? '2 copies required (Sole Arbitrator)' : '4 copies required (Three-Member Tribunal)'}
-                  helperText="Physical copies to submit to NCIA Registrar" />
+                <TextField label={t('Required Copies')} fullWidth disabled
+                  value={form.numArbitrators === '1' ? t('2 copies required (Sole Arbitrator)') : t('4 copies required (Three-Member Tribunal)')}
+                  helperText={t('Physical copies to submit to NCIA Registrar')} />
               </Grid>
               <Grid item xs={12}>
-                <TextField label="Arbitrator Qualifications & Experience" fullWidth multiline rows={2}
+                <TextField label={t('Arbitrator Qualifications & Experience')} fullWidth multiline rows={2}
                   value={form.nomineeQualifications} onChange={set('nomineeQualifications')}
-                  placeholder="State nominee's professional qualifications, relevant experience, and confirmed availability" />
+                  placeholder={t("State nominee's professional qualifications, relevant experience, and confirmed availability")} />
               </Grid>
 
               <Grid item xs={12}>
@@ -633,15 +635,15 @@ const Cases = () => {
               </Grid>
 
               <Grid item xs={12} sm={6}>
-                <TextField label="Filing Fee Amount" fullWidth type="number"
+                <TextField label={t('Filing Fee Amount')} fullWidth type="number"
                   value={form.filingFee} onChange={set('filingFee')}
-                  helperText="Per NCIA Schedule of Fees" />
+                  helperText={t('Per NCIA Schedule of Fees')} />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
-                  <InputLabel>Fee Currency</InputLabel>
-                  <Select value={form.filingFeeCurrency} label="Fee Currency" onChange={set('filingFeeCurrency')}>
-                    <MenuItem value="KES">KES (Kenya Shillings)</MenuItem>
+                  <InputLabel>{t('Fee Currency')}</InputLabel>
+                  <Select value={form.filingFeeCurrency} label={t('Fee Currency')} onChange={set('filingFeeCurrency')}>
+                    <MenuItem value="KES">{t('KES (Kenya Shillings)')}</MenuItem>
                     <MenuItem value="USD">USD</MenuItem>
                     <MenuItem value="EUR">EUR</MenuItem>
                     <MenuItem value="GBP">GBP</MenuItem>
@@ -650,7 +652,7 @@ const Cases = () => {
               </Grid>
               <Grid item xs={12}>
                 <Alert severity="warning">
-                  Filing fees paid to NCIA are <strong>non-refundable</strong>. Arbitration commences only upon receipt of filing fees by the Centre.
+                  {t('Filing fees paid to NCIA are')} <strong>{t('non-refundable')}</strong>. {t('Arbitration commences only upon receipt of filing fees by the Centre.')}
                 </Alert>
               </Grid>
 
@@ -661,12 +663,12 @@ const Cases = () => {
               <Grid item xs={12}>
                 <FormControlLabel
                   control={<Checkbox checked={form.serviceConfirmed} onChange={setCheck('serviceConfirmed')} color="primary" />}
-                  label="I confirm that copies of this Request for Arbitration and all attached documents have been served on all parties to the arbitration"
+                  label={t('I confirm that copies of this Request for Arbitration and all attached documents have been served on all parties to the arbitration')}
                 />
               </Grid>
               <Grid item xs={12}>
                 <Alert severity="info" sx={{ mt: 1 }}>
-                  After creating the case, use the <strong>"Submit to Registrar"</strong> button on the case details page to formally submit to the relevant arbitration institution. Ensure you also deliver the required physical copies together with proof of filing fee payment.
+                  {t('After creating the case, use the "Submit to Registrar" button on the case details page to formally submit to the relevant arbitration institution. Ensure you also deliver the required physical copies together with proof of filing fee payment.')}
                 </Alert>
               </Grid>
             </Grid>
@@ -674,15 +676,15 @@ const Cases = () => {
         </DialogContent>
 
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => { setDialogOpen(false); setActiveStep(0); setForm(EMPTY_FORM); }}>
-            Cancel
-          </Button>
+            <Button onClick={() => { setDialogOpen(false); setActiveStep(0); setForm(EMPTY_FORM); }}>
+            {t('Cancel')}
+            </Button>
           <Box sx={{ flex: 1 }} />
           {activeStep > 0 && <Button onClick={handleBack}>Back</Button>}
           {activeStep < STEPS.length - 1
-            ? <Button variant="contained" onClick={handleNext}>Next</Button>
+            ? <Button variant="contained" onClick={handleNext}>{t('Next')}</Button>
             : <Button variant="contained" onClick={handleSubmit} disabled={submitting}>
-                {submitting ? 'Creating...' : 'Create Case'}
+                {submitting ? t('Creating...') : t('Create Case')}
               </Button>
           }
         </DialogActions>

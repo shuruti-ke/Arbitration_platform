@@ -21,6 +21,7 @@ import { DataGrid } from '@mui/x-data-grid';
 import { useAuth } from '../context/AuthContext';
 import { apiService } from '../services/api';
 import { getApiErrorMessage } from '../services/apiErrors';
+import { useLanguage } from '../context/LanguageContext';
 
 const ROLES = ['admin', 'secretariat', 'arbitrator', 'counsel', 'party'];
 
@@ -40,6 +41,17 @@ const ROLE_COLORS = {
   party: 'success'
 };
 
+const roleLabelKey = (role) => {
+  switch ((role || '').toLowerCase()) {
+    case 'admin': return 'Administrator';
+    case 'secretariat': return 'Secretariat';
+    case 'arbitrator': return 'Arbitrator';
+    case 'counsel': return 'Legal Counsel';
+    case 'party': return 'Party (Claimant / Respondent)';
+    default: return role || '';
+  }
+};
+
 const EMPTY_FORM = {
   firstName: '', lastName: '', email: '', password: '', role: 'party'
 };
@@ -56,6 +68,7 @@ const generatePassword = () => {
 
 const Users = () => {
   const { user: currentUser } = useAuth();
+  const { t } = useLanguage();
   const isAdmin = currentUser?.role === 'admin';
   const canManage = currentUser?.role === 'admin' || currentUser?.role === 'secretariat';
 
@@ -96,7 +109,7 @@ const Users = () => {
       setUsers(rows);
       setError(null);
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Could not load users.'));
+      setError(getApiErrorMessage(err, t('Could not load users.')));
     } finally {
       setLoading(false);
     }
@@ -106,7 +119,7 @@ const Users = () => {
 
   const handleCreate = async () => {
     if (!createForm.firstName || !createForm.email || !createForm.password || !createForm.role) {
-      setCreateError('First name, email, password and role are required.');
+      setCreateError(t('First name, email, password and role are required.'));
       return;
     }
     setCreating(true);
@@ -117,7 +130,7 @@ const Users = () => {
       setCreateForm(EMPTY_FORM);
       await fetchUsers();
     } catch (err) {
-      setCreateError(getApiErrorMessage(err, 'Failed to create user.'));
+      setCreateError(getApiErrorMessage(err, t('Failed to create user.')));
     } finally {
       setCreating(false);
     }
@@ -131,29 +144,29 @@ const Users = () => {
       setEditOpen(false);
       await fetchUsers();
     } catch (err) {
-      setEditError(getApiErrorMessage(err, 'Failed to update user.'));
+      setEditError(getApiErrorMessage(err, t('Failed to update user.')));
     } finally {
       setSaving(false);
     }
   };
 
   const handleArchive = async (userId, name) => {
-    if (!window.confirm(`Archive user ${name}? They will no longer be able to log in.`)) return;
+    if (!window.confirm(t('Archive user {{name}}? They will no longer be able to log in.', { name }))) return;
     try {
       await apiService.archiveUser(userId);
       await fetchUsers();
     } catch (err) {
-      alert(getApiErrorMessage(err, 'Failed to archive user.'));
+      alert(getApiErrorMessage(err, t('Failed to archive user.')));
     }
   };
 
   const handleRestore = async (userId, name) => {
-    if (!window.confirm(`Restore user ${name}? They will regain access to the platform.`)) return;
+    if (!window.confirm(t('Restore user {{name}}? They will regain access to the platform.', { name }))) return;
     try {
       await apiService.restoreUser(userId);
       await fetchUsers();
     } catch (err) {
-      alert(getApiErrorMessage(err, 'Failed to restore user.'));
+      alert(getApiErrorMessage(err, t('Failed to restore user.')));
     }
   };
 
@@ -171,37 +184,37 @@ const Users = () => {
 
   const columns = [
     {
-      field: 'name', headerName: 'Name', width: 180,
+      field: 'name', headerName: t('Name'), width: 180,
       valueGetter: (params) => `${params.row.firstName || ''} ${params.row.lastName || ''}`.trim() || '—'
     },
-    { field: 'email', headerName: 'Email', width: 240 },
+    { field: 'email', headerName: t('Email'), width: 240 },
     {
-      field: 'role', headerName: 'Role', width: 180,
+      field: 'role', headerName: t('Role'), width: 180,
       renderCell: (params) => (
         <Chip
-          label={ROLE_LABELS[params.value] || params.value}
+          label={t(roleLabelKey(params.value))}
           size="small"
           color={ROLE_COLORS[params.value] || 'default'}
         />
       )
     },
     {
-      field: 'isActive', headerName: 'Status', width: 100,
+      field: 'isActive', headerName: t('Status'), width: 100,
       renderCell: (params) => (
         <Chip
-          label={params.value ? 'Active' : 'Archived'}
+          label={params.value ? t('Active') : t('Archived')}
           size="small"
           color={params.value ? 'success' : 'default'}
           variant="outlined"
         />
       )
     },
-    { field: 'createdAt', headerName: 'Created', width: 110 },
+    { field: 'createdAt', headerName: t('Created'), width: 110 },
     {
       field: 'actions', headerName: '', width: 100, sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: 'flex', gap: 0.5 }}>
-          <Tooltip title="Edit user">
+          <Tooltip title={t('Edit user')}>
             <span>
               <IconButton size="small" onClick={() => openEdit(params.row)}
                 disabled={!canManage}>
@@ -211,14 +224,14 @@ const Users = () => {
           </Tooltip>
           {isAdmin && params.row.userId !== (currentUser?.userId || currentUser?.USER_ID) && (
             params.row.isActive ? (
-              <Tooltip title="Archive user">
+              <Tooltip title={t('Archive user')}>
                 <IconButton size="small" color="warning"
                   onClick={() => handleArchive(params.row.userId, params.row.firstName || params.row.email)}>
                   <ArchiveIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
             ) : (
-              <Tooltip title="Restore user">
+              <Tooltip title={t('Restore user')}>
                 <IconButton size="small" color="success"
                   onClick={() => handleRestore(params.row.userId, params.row.firstName || params.row.email)}>
                   <RestoreIcon fontSize="small" />
@@ -234,7 +247,7 @@ const Users = () => {
   if (!canManage) {
     return (
       <Container sx={{ mt: 4 }}>
-        <Alert severity="error">Access denied. Only administrators and secretariat can manage users.</Alert>
+        <Alert severity="error">{t('Access denied. Only administrators and secretariat can manage users.')}</Alert>
       </Container>
     );
   }
@@ -243,18 +256,18 @@ const Users = () => {
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
-          <Typography variant="h4">User Management</Typography>
+          <Typography variant="h4">{t('User Management')}</Typography>
           <Typography variant="body2" color="text.secondary">
-            Create and manage platform users — arbitrators, counsel, parties, and secretariat staff
+            {t('Create and manage platform users — arbitrators, counsel, parties, and secretariat staff')}
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
-          <Tooltip title="Refresh">
+          <Tooltip title={t('Refresh')}>
             <IconButton onClick={fetchUsers}><RefreshIcon /></IconButton>
           </Tooltip>
           <Button variant="contained" startIcon={<AddIcon />}
             onClick={() => { setCreatedUser(null); setCreateForm(EMPTY_FORM); setCreateError(null); setCreateOpen(true); }}>
-            Create User
+            {t('Create User')}
           </Button>
         </Box>
       </Box>
@@ -267,7 +280,7 @@ const Users = () => {
           const count = users.filter(u => u.role === r && u.isActive).length;
           return (
             <Chip key={r}
-              label={`${ROLE_LABELS[r]}: ${count}`}
+              label={`${t(roleLabelKey(r))}: ${count}`}
               color={ROLE_COLORS[r]}
               variant="outlined"
               size="small"
@@ -282,9 +295,9 @@ const Users = () => {
       <Paper sx={{ mb: 2 }}>
         <Tabs value={roleTabs.indexOf(roleTab)} onChange={(_, v) => setRoleTab(roleTabs[v])}
           variant="scrollable" scrollButtons="auto">
-          <Tab label={`All (${users.length})`} />
+          <Tab label={`${t('All')} (${users.length})`} />
           {ROLES.map(r => (
-            <Tab key={r} label={`${ROLE_LABELS[r].split(' ')[0]} (${users.filter(u => u.role === r).length})`} />
+            <Tab key={r} label={`${t(roleLabelKey(r))} (${users.filter(u => u.role === r).length})`} />
           ))}
         </Tabs>
       </Paper>
@@ -303,36 +316,36 @@ const Users = () => {
 
       {/* Create User Dialog */}
       <Dialog open={createOpen} onClose={() => { if (!creating) setCreateOpen(false); }} maxWidth="sm" fullWidth>
-        <DialogTitle>Create New User</DialogTitle>
+        <DialogTitle>{t('Create New User')}</DialogTitle>
         <DialogContent>
           {createdUser ? (
             <Alert severity="success" sx={{ mt: 1 }}>
-              <strong>User created successfully!</strong><br />
+              <strong>{t('User created successfully!')}</strong><br />
               Send these credentials to <strong>{createdUser.email}</strong>:<br />
               Email: <strong>{createdUser.email}</strong><br />
               Password: <strong>{createdUser.password}</strong><br />
-              Role: <strong>{ROLE_LABELS[createdUser.role]}</strong><br /><br />
-              <em>Ask the user to change their password after first login.</em>
+              {t('Role')}: <strong>{t(roleLabelKey(createdUser.role))}</strong><br /><br />
+              <em>{t('Ask the user to change their password after first login.')}</em>
             </Alert>
           ) : (
             <Grid container spacing={2} sx={{ mt: 0.5 }}>
               {createError && <Grid item xs={12}><Alert severity="error">{createError}</Alert></Grid>}
               <Grid item xs={6}>
-                <TextField label="First Name *" fullWidth value={createForm.firstName}
+              <TextField label={t('First Name *')} fullWidth value={createForm.firstName}
                   onChange={e => setCreateForm({ ...createForm, firstName: e.target.value })} />
               </Grid>
               <Grid item xs={6}>
-                <TextField label="Last Name" fullWidth value={createForm.lastName}
+                <TextField label={t('Last Name')} fullWidth value={createForm.lastName}
                   onChange={e => setCreateForm({ ...createForm, lastName: e.target.value })} />
               </Grid>
               <Grid item xs={12}>
-                <TextField label="Email Address *" fullWidth type="email" value={createForm.email}
+                <TextField label={t('Email Address *')} fullWidth type="email" value={createForm.email}
                   autoComplete="off"
                   onChange={e => setCreateForm({ ...createForm, email: e.target.value })} />
               </Grid>
               <Grid item xs={12}>
                 <TextField
-                  label="Password *" fullWidth
+                  label={t('Password *')} fullWidth
                   type={showPassword ? 'text' : 'password'}
                   value={createForm.password}
                   autoComplete="new-password"
@@ -340,12 +353,12 @@ const Users = () => {
                   InputProps={{
                     endAdornment: (
                       <InputAdornment position="end">
-                        <Tooltip title="Show/hide">
+                        <Tooltip title={t('Show/hide')}>
                           <IconButton size="small" onClick={() => setShowPassword(s => !s)}>
                             {showPassword ? <HideIcon fontSize="small" /> : <ShowIcon fontSize="small" />}
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="Generate password">
+                        <Tooltip title={t('Generate password')}>
                           <IconButton size="small" onClick={() => {
                             const pwd = generatePassword();
                             setCreateForm(f => ({ ...f, password: pwd }));
@@ -354,7 +367,7 @@ const Users = () => {
                             <RefreshIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="Copy password">
+                        <Tooltip title={t('Copy password')}>
                           <IconButton size="small" onClick={() => navigator.clipboard.writeText(createForm.password)}>
                             <CopyIcon fontSize="small" />
                           </IconButton>
@@ -362,19 +375,19 @@ const Users = () => {
                       </InputAdornment>
                     )
                   }}
-                  helperText="Min 8 characters. Use the refresh icon to auto-generate."
+                  helperText={t('Min 8 characters. Use the refresh icon to auto-generate.')}
                 />
               </Grid>
               <Grid item xs={12}>
                 <FormControl fullWidth>
-                  <InputLabel>Role *</InputLabel>
-                  <Select value={createForm.role} label="Role *"
+                  <InputLabel>{t('Role *')}</InputLabel>
+                  <Select value={createForm.role} label={t('Role *')}
                     onChange={e => setCreateForm({ ...createForm, role: e.target.value })}>
                     {ROLES.filter(r => isAdmin ? true : r !== 'admin').map(r => (
                       <MenuItem key={r} value={r}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Chip label={r} size="small" color={ROLE_COLORS[r]} />
-                          <Typography variant="body2">{ROLE_LABELS[r]}</Typography>
+                          <Chip label={t(roleLabelKey(r))} size="small" color={ROLE_COLORS[r]} />
+                          <Typography variant="body2">{t(roleLabelKey(r))}</Typography>
                         </Box>
                       </MenuItem>
                     ))}
@@ -383,26 +396,26 @@ const Users = () => {
               </Grid>
               <Grid item xs={12}>
                 <Alert severity="info" sx={{ mt: 0 }}>
-                  {createForm.role === 'admin' && 'Full platform access — all cases, users, documents, and settings.'}
-                  {createForm.role === 'secretariat' && 'Can create and manage cases, documents, and hearings. Cannot manage users.'}
-                  {createForm.role === 'arbitrator' && 'Can view assigned cases, access documents, conduct hearings, and issue awards.'}
-                  {createForm.role === 'counsel' && 'Can view their client\'s cases, upload submissions, and attend hearings.'}
-                  {createForm.role === 'party' && 'Can view their case(s), upload supporting documents, and attend hearings.'}
+                  {createForm.role === 'admin' && t('Full platform access — all cases, users, documents, and settings.')}
+                  {createForm.role === 'secretariat' && t('Can create and manage cases, documents, and hearings. Cannot manage users.')}
+                  {createForm.role === 'arbitrator' && t('Can view assigned cases, access documents, conduct hearings, and issue awards.')}
+                  {createForm.role === 'counsel' && t('Can view their client\'s cases, upload submissions, and attend hearings.')}
+                  {createForm.role === 'party' && t('Can view their case(s), upload supporting documents, and attend hearings.')}
                 </Alert>
               </Grid>
             </Grid>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateOpen(false)}>{createdUser ? 'Close' : 'Cancel'}</Button>
+          <Button onClick={() => setCreateOpen(false)}>{createdUser ? t('Close') : t('Cancel')}</Button>
           {!createdUser && (
             <Button variant="contained" onClick={handleCreate} disabled={creating}>
-              {creating ? 'Creating...' : 'Create User'}
+              {creating ? t('Creating...') : t('Create User')}
             </Button>
           )}
           {createdUser && (
             <Button variant="outlined" onClick={() => { setCreatedUser(null); setCreateForm(EMPTY_FORM); }}>
-              Create Another
+              {t('Create Another')}
             </Button>
           )}
         </DialogActions>
@@ -410,23 +423,23 @@ const Users = () => {
 
       {/* Edit User Dialog */}
       <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Edit User</DialogTitle>
+        <DialogTitle>{t('Edit User')}</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             {editError && <Grid item xs={12}><Alert severity="error">{editError}</Alert></Grid>}
             <Grid item xs={6}>
-              <TextField label="First Name" fullWidth value={editForm.firstName || ''}
+              <TextField label={t('First Name')} fullWidth value={editForm.firstName || ''}
                 onChange={e => setEditForm({ ...editForm, firstName: e.target.value })} />
             </Grid>
             <Grid item xs={6}>
-              <TextField label="Last Name" fullWidth value={editForm.lastName || ''}
+              <TextField label={t('Last Name')} fullWidth value={editForm.lastName || ''}
                 onChange={e => setEditForm({ ...editForm, lastName: e.target.value })} />
             </Grid>
             {isAdmin && (
               <Grid item xs={12}>
                 <FormControl fullWidth>
-                  <InputLabel>Role</InputLabel>
-                  <Select value={editForm.role || 'party'} label="Role"
+                  <InputLabel>{t('Role')}</InputLabel>
+                  <Select value={editForm.role || 'party'} label={t('Role')}
                     onChange={e => setEditForm({ ...editForm, role: e.target.value })}>
                     {ROLES.map(r => (
                       <MenuItem key={r} value={r}>
@@ -443,9 +456,9 @@ const Users = () => {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditOpen(false)}>Cancel</Button>
+          <Button onClick={() => setEditOpen(false)}>{t('Cancel')}</Button>
           <Button variant="contained" onClick={handleEdit} disabled={saving}>
-            {saving ? 'Saving...' : 'Save Changes'}
+            {saving ? t('Saving...') : t('Save Changes')}
           </Button>
         </DialogActions>
       </Dialog>

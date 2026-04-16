@@ -16,6 +16,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/api';
 import { getApiErrorMessage } from '../services/apiErrors';
+import { useLanguage } from '../context/LanguageContext';
 
 const statusColor = (status) => {
   switch (status) {
@@ -27,8 +28,17 @@ const statusColor = (status) => {
   }
 };
 
+const titleizeCode = (value) => String(value || '')
+  .trim()
+  .replace(/[_-]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .replace(/\b\w/g, (ch) => ch.toUpperCase());
+
+const codeKey = (value) => String(value || '').trim().toLowerCase();
+
 const Hearings = () => {
   const { user, hasRole } = useAuth();
+  const { t } = useLanguage();
   const [hearings, setHearings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -48,12 +58,38 @@ const Hearings = () => {
     fetchHearings();
   }, []);
 
+  const displayEnum = (value, overrides = {}) => {
+    const raw = codeKey(value);
+    if (!raw) return '';
+    return t(overrides[raw] || titleizeCode(value));
+  };
+
+  const displayHearingStatus = (value) => displayEnum(value, {
+    scheduled: 'Scheduled',
+    'in-progress': 'In Progress',
+    completed: 'Completed',
+    cancelled: 'Cancelled'
+  });
+
+  const displayHearingType = (value) => displayEnum(value, {
+    virtual: 'Virtual',
+    'in-person': 'In-Person',
+    hybrid: 'Hybrid'
+  });
+
+  const displayAssignmentRole = (value) => displayEnum(value, {
+    sole: 'Sole Arbitrator',
+    presiding: 'Presiding Arbitrator',
+    'co-arbitrator': 'Co-Arbitrator',
+    emergency: 'Emergency Arbitrator'
+  });
+
   const fetchHearings = async () => {
     try {
       const res = await apiService.getHearings();
       setHearings(res.data.hearings || []);
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Could not load hearings.'));
+      setError(getApiErrorMessage(err, t('Could not load hearings.')));
     } finally {
       setLoading(false);
     }
@@ -66,7 +102,7 @@ const Hearings = () => {
       setScheduleOpen(false);
       setNewHearing({ caseId: '', title: '', startTime: '', endTime: '', type: 'virtual', agenda: '' });
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Failed to schedule hearing.'));
+      setError(getApiErrorMessage(err, t('Failed to schedule hearing.')));
     }
   };
 
@@ -76,9 +112,9 @@ const Hearings = () => {
       setAssignOpen(false);
       setNewAssignment({ caseId: '', arbitratorId: '', role: 'sole' });
       setError(null);
-      alert('Arbitrator assigned successfully. Awaiting acceptance.');
+      alert(t('Arbitrator assigned successfully. Awaiting acceptance.'));
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Failed to assign arbitrator.'));
+      setError(getApiErrorMessage(err, t('Failed to assign arbitrator.')));
     }
   };
 
@@ -87,34 +123,34 @@ const Hearings = () => {
       const res = await apiService.joinHearing(hearingId);
       setJoinUrl(res.data.jitsiUrl);
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Failed to join hearing.'));
+      setError(getApiErrorMessage(err, t('Failed to join hearing.')));
     }
   };
 
   const handleDelete = async (hearingId, title) => {
-    if (!window.confirm(`Delete hearing "${title}"? You can schedule it again afterward if needed.`)) return;
+    if (!window.confirm(t('Delete hearing "{{title}}"? You can schedule it again afterward if needed.', { title }))) return;
     try {
       await apiService.deleteHearing(hearingId);
       setHearings(prev => prev.filter(h => (h.HEARING_ID || h.hearingId) !== hearingId));
       setError(null);
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Failed to delete hearing.'));
+      setError(getApiErrorMessage(err, t('Failed to delete hearing.')));
     }
   };
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1">Hearings</Typography>
+        <Typography variant="h4" component="h1">{t('Hearings')}</Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
           {hasRole('admin', 'secretariat', 'arbitrator') && (
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => setScheduleOpen(true)}>
-              Schedule Hearing
+              {t('Schedule Hearing')}
             </Button>
           )}
           {hasRole('admin', 'secretariat') && (
             <Button variant="outlined" startIcon={<GavelIcon />} onClick={() => setAssignOpen(true)}>
-              Assign Arbitrator
+              {t('Assign Arbitrator')}
             </Button>
           )}
         </Box>
@@ -124,9 +160,9 @@ const Hearings = () => {
 
       {joinUrl && (
         <Alert severity="info" sx={{ mb: 2 }} onClose={() => setJoinUrl(null)}>
-          Hearing room ready.{' '}
+          {t('Hearing room ready.')} {' '}
           <a href={joinUrl} target="_blank" rel="noopener noreferrer">
-            Click here to join
+            {t('Click here to join')}
           </a>
         </Alert>
       )}
@@ -138,10 +174,10 @@ const Hearings = () => {
       ) : hearings.length === 0 ? (
         <Paper sx={{ p: 4, textAlign: 'center' }}>
           <VideoIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-          <Typography variant="h6" color="textSecondary">No hearings scheduled yet.</Typography>
+          <Typography variant="h6" color="textSecondary">{t('No hearings scheduled yet.')}</Typography>
           {hasRole('admin', 'secretariat', 'arbitrator') && (
             <Button variant="contained" sx={{ mt: 2 }} onClick={() => setScheduleOpen(true)}>
-              Schedule First Hearing
+              {t('Schedule First Hearing')}
             </Button>
           )}
         </Paper>
@@ -162,9 +198,9 @@ const Hearings = () => {
                 <CardContent>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                     <Typography variant="h6">{title}</Typography>
-                    <Chip label={status} color={statusColor(status)} size="small" />
+                    <Chip label={displayHearingStatus(status)} color={statusColor(status)} size="small" />
                   </Box>
-                  <Typography variant="body2" color="textSecondary">Case: {caseId}</Typography>
+                  <Typography variant="body2" color="textSecondary">{t('Case')}: {caseId}</Typography>
                   <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
                     <TimeIcon fontSize="small" sx={{ mr: 0.5, color: 'text.secondary' }} />
                     <Typography variant="body2">{start} — {end}</Typography>
@@ -183,13 +219,13 @@ const Hearings = () => {
                       startIcon={<DeleteIcon />}
                       onClick={() => handleDelete(hId, title)}
                     >
-                      Delete
+                      {t('Delete')}
                     </Button>
                   )}
                   {type === 'virtual' && status !== 'cancelled' && (
                     <Button size="small" variant="contained" startIcon={<VideoIcon />}
                       onClick={() => handleJoin(hId)}>
-                      Join
+                      {t('Join')}
                     </Button>
                   )}
                 </CardActions>
@@ -202,47 +238,47 @@ const Hearings = () => {
 
       {/* Schedule Hearing Dialog */}
       <Dialog open={scheduleOpen} onClose={() => setScheduleOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Schedule Hearing</DialogTitle>
+        <DialogTitle>{t('Schedule Hearing')}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
-          <TextField label="Case ID" value={newHearing.caseId} onChange={e => setNewHearing({ ...newHearing, caseId: e.target.value })} fullWidth required />
-          <TextField label="Title" value={newHearing.title} onChange={e => setNewHearing({ ...newHearing, title: e.target.value })} fullWidth />
-          <TextField label="Start Time" type="datetime-local" value={newHearing.startTime} onChange={e => setNewHearing({ ...newHearing, startTime: e.target.value })} fullWidth InputLabelProps={{ shrink: true }} required />
-          <TextField label="End Time" type="datetime-local" value={newHearing.endTime} onChange={e => setNewHearing({ ...newHearing, endTime: e.target.value })} fullWidth InputLabelProps={{ shrink: true }} required />
+          <TextField label={t('Case ID')} value={newHearing.caseId} onChange={e => setNewHearing({ ...newHearing, caseId: e.target.value })} fullWidth required />
+          <TextField label={t('Title')} value={newHearing.title} onChange={e => setNewHearing({ ...newHearing, title: e.target.value })} fullWidth />
+          <TextField label={t('Start Time')} type="datetime-local" value={newHearing.startTime} onChange={e => setNewHearing({ ...newHearing, startTime: e.target.value })} fullWidth InputLabelProps={{ shrink: true }} required />
+          <TextField label={t('End Time')} type="datetime-local" value={newHearing.endTime} onChange={e => setNewHearing({ ...newHearing, endTime: e.target.value })} fullWidth InputLabelProps={{ shrink: true }} required />
           <FormControl fullWidth>
-            <InputLabel>Type</InputLabel>
-            <Select value={newHearing.type} label="Type" onChange={e => setNewHearing({ ...newHearing, type: e.target.value })}>
-              <MenuItem value="virtual">Virtual</MenuItem>
-              <MenuItem value="in-person">In-Person</MenuItem>
-              <MenuItem value="hybrid">Hybrid</MenuItem>
+            <InputLabel>{t('Type')}</InputLabel>
+            <Select value={newHearing.type} label={t('Type')} onChange={e => setNewHearing({ ...newHearing, type: e.target.value })}>
+              <MenuItem value="virtual">{t('Virtual')}</MenuItem>
+              <MenuItem value="in-person">{t('In-Person')}</MenuItem>
+              <MenuItem value="hybrid">{t('Hybrid')}</MenuItem>
             </Select>
           </FormControl>
-          <TextField label="Agenda" value={newHearing.agenda} onChange={e => setNewHearing({ ...newHearing, agenda: e.target.value })} fullWidth multiline rows={3} />
+          <TextField label={t('Agenda')} value={newHearing.agenda} onChange={e => setNewHearing({ ...newHearing, agenda: e.target.value })} fullWidth multiline rows={3} />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setScheduleOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleSchedule}>Schedule</Button>
+          <Button onClick={() => setScheduleOpen(false)}>{t('Cancel')}</Button>
+          <Button variant="contained" onClick={handleSchedule}>{t('Schedule')}</Button>
         </DialogActions>
       </Dialog>
 
       {/* Assign Arbitrator Dialog */}
       <Dialog open={assignOpen} onClose={() => setAssignOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Assign Arbitrator</DialogTitle>
+        <DialogTitle>{t('Assign Arbitrator')}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
-          <TextField label="Case ID" value={newAssignment.caseId} onChange={e => setNewAssignment({ ...newAssignment, caseId: e.target.value })} fullWidth required />
-          <TextField label="Arbitrator User ID" value={newAssignment.arbitratorId} onChange={e => setNewAssignment({ ...newAssignment, arbitratorId: e.target.value })} fullWidth required />
+          <TextField label={t('Case ID')} value={newAssignment.caseId} onChange={e => setNewAssignment({ ...newAssignment, caseId: e.target.value })} fullWidth required />
+          <TextField label={t('Arbitrator User ID')} value={newAssignment.arbitratorId} onChange={e => setNewAssignment({ ...newAssignment, arbitratorId: e.target.value })} fullWidth required />
           <FormControl fullWidth>
-            <InputLabel>Role</InputLabel>
-            <Select value={newAssignment.role} label="Role" onChange={e => setNewAssignment({ ...newAssignment, role: e.target.value })}>
-              <MenuItem value="sole">Sole Arbitrator</MenuItem>
-              <MenuItem value="presiding">Presiding Arbitrator</MenuItem>
-              <MenuItem value="co-arbitrator">Co-Arbitrator</MenuItem>
-              <MenuItem value="emergency">Emergency Arbitrator</MenuItem>
+            <InputLabel>{t('Role')}</InputLabel>
+            <Select value={newAssignment.role} label={t('Role')} onChange={e => setNewAssignment({ ...newAssignment, role: e.target.value })}>
+              <MenuItem value="sole">{t('Sole Arbitrator')}</MenuItem>
+              <MenuItem value="presiding">{displayAssignmentRole('presiding')}</MenuItem>
+              <MenuItem value="co-arbitrator">{displayAssignmentRole('co-arbitrator')}</MenuItem>
+              <MenuItem value="emergency">{displayAssignmentRole('emergency')}</MenuItem>
             </Select>
           </FormControl>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAssignOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleAssign}>Assign</Button>
+          <Button onClick={() => setAssignOpen(false)}>{t('Cancel')}</Button>
+          <Button variant="contained" onClick={handleAssign}>{t('Assign')}</Button>
         </DialogActions>
       </Dialog>
     </Container>
