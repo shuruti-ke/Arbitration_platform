@@ -306,6 +306,7 @@ const Users = () => {
               </Grid>
               <Grid item xs={12}>
                 <TextField label="Email Address *" fullWidth type="email" value={createForm.email}
+                  autoComplete="off"
                   onChange={e => setCreateForm({ ...createForm, email: e.target.value })} />
               </Grid>
               <Grid item xs={12}>
@@ -313,6 +314,7 @@ const Users = () => {
                   label="Password *" fullWidth
                   type={showPassword ? 'text' : 'password'}
                   value={createForm.password}
+                  autoComplete="new-password"
                   onChange={e => setCreateForm({ ...createForm, password: e.target.value })}
                   InputProps={{
                     endAdornment: (
