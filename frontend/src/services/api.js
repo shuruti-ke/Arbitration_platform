@@ -63,11 +63,12 @@ export const apiService = {
   getUsers: (role) => api.get(`/users${role ? `?role=${role}` : ''}`),
   registerUser: (userData) => api.post('/auth/register', userData),
   updateUser: (userId, data) => api.put(`/users/${userId}`, data),
-  deactivateUser: (userId) => api.delete(`/users/${userId}`),
+  deleteUser: (userId) => api.delete(`/users/${userId}`),
 
   // Hearings
   getHearings: () => api.get('/hearings'),
   createHearing: (hearingData) => api.post('/hearings', hearingData),
+  deleteHearing: (hearingId) => api.delete(`/hearings/${hearingId}`),
   assignArbitrator: (assignmentData) => api.post('/hearings/assign', assignmentData),
   joinHearing: (hearingId) => api.post(`/hearings/${hearingId}/join`),
 

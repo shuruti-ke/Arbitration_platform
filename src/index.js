@@ -453,8 +453,18 @@ function createServer(services) {
         const user = authenticate(req, res, ['admin']);
         if (!user) return;
         const targetId = path.split('/api/users/')[1];
-        await userService.deactivateUser(targetId);
-        await auditTrail.logEvent({ type: 'user_deactivate', userId: user.userId, action: 'deactivate', details: { targetId } });
+        if (targetId === user.userId) {
+          return sendJSON(res, 400, { error: 'You cannot delete your own account' });
+        }
+        try {
+          await userService.deleteUser(targetId);
+        } catch (err) {
+          if (err.message === 'User not found') {
+            return sendJSON(res, 404, { error: 'User not found' });
+          }
+          throw err;
+        }
+        await auditTrail.logEvent({ type: 'user_delete', userId: user.userId, action: 'delete', details: { targetId } });
         return sendJSON(res, 200, { success: true });
       }
 
@@ -553,6 +563,27 @@ function createServer(services) {
         const result = await hearingService.updateHearingStatus(hearingId, status);
         await auditTrail.logEvent({ type: 'hearing_status', userId: user.userId, action: 'status_update', details: { hearingId, status } });
         return sendJSON(res, 200, { success: true, hearing: result });
+      }
+
+      // --- DELETE /api/hearings/:hearingId ---
+      if (path.match(/^\/api\/hearings\/[^/]+$/) && method === 'DELETE' &&
+          !path.includes('/assign') && !path.includes('/panel')) {
+        const user = authenticate(req, res, ['admin', 'secretariat']);
+        if (!user) return;
+        const hearingId = path.split('/api/hearings/')[1];
+        const hearing = await hearingService.getHearing(hearingId);
+        if (!hearing) return sendJSON(res, 404, { error: 'Hearing not found' });
+        const deleted = await hearingService.deleteHearing(hearingId);
+        await auditTrail.logEvent({
+          type: 'hearing_delete',
+          userId: user.userId,
+          action: 'delete',
+          details: {
+            hearingId,
+            caseId: hearing.caseId || hearing.CASE_ID || null
+          }
+        });
+        return sendJSON(res, 200, { success: true, hearing: deleted });
       }
 
       // --- POST /api/hearings/:hearingId/join ---

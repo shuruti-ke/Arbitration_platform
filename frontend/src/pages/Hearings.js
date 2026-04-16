@@ -10,6 +10,7 @@ import {
   VideoCall as VideoIcon,
   Add as AddIcon,
   Gavel as GavelIcon,
+  DeleteForever as DeleteIcon,
   AccessTime as TimeIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
@@ -89,6 +90,17 @@ const Hearings = () => {
     }
   };
 
+  const handleDelete = async (hearingId, title) => {
+    if (!window.confirm(`Delete hearing "${title}"? You can schedule it again afterward if needed.`)) return;
+    try {
+      await apiService.deleteHearing(hearingId);
+      setHearings(prev => prev.filter(h => (h.HEARING_ID || h.hearingId) !== hearingId));
+      setError(null);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to delete hearing.');
+    }
+  };
+
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -163,6 +175,16 @@ const Hearings = () => {
                   )}
                 </CardContent>
                 <CardActions>
+                  {hasRole('admin', 'secretariat') && (
+                    <Button
+                      size="small"
+                      color="error"
+                      startIcon={<DeleteIcon />}
+                      onClick={() => handleDelete(hId, title)}
+                    >
+                      Delete
+                    </Button>
+                  )}
                   {type === 'virtual' && status !== 'cancelled' && (
                     <Button size="small" variant="contained" startIcon={<VideoIcon />}
                       onClick={() => handleJoin(hId)}>

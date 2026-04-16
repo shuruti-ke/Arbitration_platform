@@ -10,7 +10,7 @@ import {
 import {
   PersonAdd as AddIcon,
   Edit as EditIcon,
-  PersonOff as DeactivateIcon,
+  DeleteForever as DeleteIcon,
   Refresh as RefreshIcon,
   Visibility as ShowIcon,
   VisibilityOff as HideIcon,
@@ -135,13 +135,13 @@ const Users = () => {
     }
   };
 
-  const handleDeactivate = async (userId, name) => {
-    if (!window.confirm(`Deactivate account for ${name}? They will no longer be able to log in.`)) return;
+  const handleDelete = async (userId, name) => {
+    if (!window.confirm(`Delete user ${name}? This removes the account from the platform.`)) return;
     try {
-      await apiService.deactivateUser(userId);
+      await apiService.deleteUser(userId);
       await fetchUsers();
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to deactivate user.');
+      alert(err.response?.data?.error || 'Failed to delete user.');
     }
   };
 
@@ -197,11 +197,11 @@ const Users = () => {
               </IconButton>
             </span>
           </Tooltip>
-          {isAdmin && params.row.isActive && params.row.userId !== (currentUser?.userId || currentUser?.USER_ID) && (
-            <Tooltip title="Deactivate">
+          {isAdmin && params.row.userId !== (currentUser?.userId || currentUser?.USER_ID) && (
+            <Tooltip title="Delete user">
               <IconButton size="small" color="error"
-                onClick={() => handleDeactivate(params.row.userId, params.row.firstName || params.row.email)}>
-                <DeactivateIcon fontSize="small" />
+                onClick={() => handleDelete(params.row.userId, params.row.firstName || params.row.email)}>
+                <DeleteIcon fontSize="small" />
               </IconButton>
             </Tooltip>
           )}

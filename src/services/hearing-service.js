@@ -186,6 +186,30 @@ class HearingService {
     return hearing || { hearingId, status };
   }
 
+  async deleteHearing(hearingId) {
+    const hearing = await this.getHearing(hearingId);
+    if (!hearing) throw new Error('Hearing not found');
+
+    if (this.dbService && this.dbService.isConnected()) {
+      try {
+        await this.dbService.executeQuery(
+          'DELETE FROM hearing_participants WHERE hearing_id = :hearingId',
+          { hearingId }
+        );
+        await this.dbService.executeQuery(
+          'DELETE FROM hearings WHERE hearing_id = :hearingId',
+          { hearingId }
+        );
+      } catch (err) {
+        console.error('Hearing delete DB write failed:', err.message);
+        throw err;
+      }
+    }
+
+    this.hearings.delete(hearingId);
+    return hearing;
+  }
+
   async addParticipant(hearingId, userId, role) {
     const participant = { userId, role, joinedAt: new Date().toISOString() };
 

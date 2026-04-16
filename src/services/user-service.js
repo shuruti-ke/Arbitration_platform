@@ -159,6 +159,38 @@ class UserService {
     return true;
   }
 
+  async deleteUser(userId) {
+    let exists = this.users.has(userId);
+    if (!exists && this.dbService && this.dbService.isConnected()) {
+      try {
+        const result = await this.dbService.executeQuery(
+          'SELECT user_id FROM users WHERE user_id = :userId',
+          { userId }
+        );
+        exists = !!(result.rows && result.rows[0]);
+      } catch (err) {
+        console.error('User delete lookup failed:', err.message);
+        throw err;
+      }
+    }
+    if (!exists) throw new Error('User not found');
+
+    if (this.dbService && this.dbService.isConnected()) {
+      try {
+        await this.dbService.executeQuery(
+          'DELETE FROM users WHERE user_id = :userId',
+          { userId }
+        );
+      } catch (err) {
+        console.error('User delete DB write failed:', err.message);
+        throw err;
+      }
+    }
+
+    this.users.delete(userId);
+    return true;
+  }
+
   hasPermission(role, permission) {
     const perms = ROLE_PERMISSIONS[role] || [];
     return perms.includes('*') || perms.includes(permission);
