@@ -1,9 +1,10 @@
 // src/App.js
-import React from 'react';
+import React, { useMemo } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { CssBaseline, CircularProgress, Box } from '@mui/material';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ThemeModeProvider, useThemeMode } from './context/ThemeModeContext';
 import Dashboard from './pages/Dashboard';
 import Cases from './pages/Cases';
 import CaseDetail from './pages/CaseDetail';
@@ -16,13 +17,28 @@ import Login from './pages/Login';
 import Navigation from './components/Navigation';
 import './styles/App.css';
 
-const theme = createTheme({
-  palette: {
-    primary: { main: '#1976d2' },
-    secondary: { main: '#dc004e' },
-    background: { default: '#f5f5f5' },
-  },
-});
+const buildTheme = (mode) =>
+  createTheme({
+    palette: {
+      mode,
+      primary: { main: '#1976d2' },
+      secondary: { main: '#dc004e' },
+      background: {
+        default: mode === 'dark' ? '#0f172a' : '#f5f5f5',
+        paper: mode === 'dark' ? '#111827' : '#ffffff'
+      }
+    },
+    components: {
+      MuiCssBaseline: {
+        styleOverrides: {
+          body: {
+            backgroundColor: mode === 'dark' ? '#0f172a' : '#f5f5f5',
+            color: mode === 'dark' ? '#f8fafc' : '#111827'
+          }
+        }
+      }
+    }
+  });
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -60,7 +76,10 @@ const AppRoutes = () => {
   );
 };
 
-function App() {
+const AppShell = () => {
+  const { mode } = useThemeMode();
+  const theme = useMemo(() => buildTheme(mode), [mode]);
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -72,6 +91,14 @@ function App() {
         </Router>
       </AuthProvider>
     </ThemeProvider>
+  );
+};
+
+function App() {
+  return (
+    <ThemeModeProvider>
+      <AppShell />
+    </ThemeModeProvider>
   );
 }
 

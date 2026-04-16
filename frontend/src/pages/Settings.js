@@ -1,5 +1,5 @@
 // src/pages/Settings.js
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Container,
   Typography,
@@ -21,8 +21,10 @@ import {
   Settings as SettingsIcon
 } from '@mui/icons-material';
 import { apiService } from '../services/api';
+import { useThemeMode } from '../context/ThemeModeContext';
 
 const Settings = () => {
+  const { mode, setMode } = useThemeMode();
   const [settings, setSettings] = useState({
     notifications: true,
     emailAlerts: true,
@@ -33,11 +35,38 @@ const Settings = () => {
   });
   const [saveStatus, setSaveStatus] = useState(null);
 
+  useEffect(() => {
+    setSettings((current) => ({
+      ...current,
+      darkMode: mode === 'dark'
+    }));
+  }, [mode]);
+
   const handleSettingChange = (setting) => (event) => {
-    setSettings({
-      ...settings,
-      [setting]: event.target.type === 'checkbox' ? event.target.checked : event.target.value
-    });
+    const nextValue = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
+    if (setting === 'darkMode') {
+      const nextMode = nextValue ? 'dark' : 'light';
+      setMode(nextMode);
+      setSettings((current) => ({
+        ...current,
+        darkMode: nextValue
+      }));
+      return;
+    }
+
+    setSettings((current) => ({
+      ...current,
+      [setting]: nextValue
+    }));
+  };
+
+  const handleDarkModeToggle = () => {
+    const nextMode = mode === 'dark' ? 'light' : 'dark';
+    setMode(nextMode);
+    setSettings((current) => ({
+      ...current,
+      darkMode: nextMode === 'dark'
+    }));
   };
 
   const handleSave = async () => {
@@ -81,7 +110,7 @@ const Settings = () => {
             label="Auto-save Documents"
           />
           <FormControlLabel
-            control={<Switch checked={settings.darkMode} onChange={handleSettingChange('darkMode')} color="primary" />}
+            control={<Switch checked={settings.darkMode} onChange={handleDarkModeToggle} color="primary" />}
             label="Dark Mode"
           />
         </FormGroup>
