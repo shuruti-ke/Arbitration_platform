@@ -212,6 +212,29 @@ class OracleDatabaseService {
       )
     `);
 
+    await this._createTableSafe('AI_DOCUMENT_ANALYSES', `
+      CREATE TABLE ai_document_analyses (
+        id               NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        analysis_id      VARCHAR2(100) UNIQUE NOT NULL,
+        document_id      VARCHAR2(50) NOT NULL,
+        case_id          VARCHAR2(50),
+        prompt           CLOB,
+        prompt_normalized CLOB,
+        prompt_hash      VARCHAR2(64),
+        prompt_signature CLOB,
+        analysis_text    CLOB,
+        analysis_summary CLOB,
+        keywords         CLOB,
+        model_name       VARCHAR2(120),
+        language         VARCHAR2(20),
+        access_level     VARCHAR2(20),
+        created_by       VARCHAR2(100),
+        usage_count      NUMBER DEFAULT 1,
+        last_used_at     TIMESTAMP,
+        created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Expand CASES table with comprehensive arbitration fields
     await this._addColumnSafe('cases', 'case_type', 'VARCHAR2(100)');
     await this._addColumnSafe('cases', 'sector', 'VARCHAR2(100)');

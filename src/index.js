@@ -150,6 +150,7 @@ const RiskMonitoringService = require('./services/risk-monitoring');
 const ODPCComplianceService = require('./services/odpc-compliance');
 const OracleDatabaseService = require('./services/oracle-database-service');
 const IntelligenceService = require('./services/intelligence-service');
+const DocumentAnalysisService = require('./services/document-analysis-service');
 const { UserService, ROLES } = require('./services/user-service');
 const AuthService = require('./services/auth-service');
 const HearingService = require('./services/hearing-service');
@@ -196,7 +197,8 @@ function createServer(services) {
     aiOrchestrator, ruleEngine, caService,
     aiConflictScanner, certificateValidator,
     authService, userService, hearingService,
-    metricsDashboard, riskMonitoring, intelligenceService
+    metricsDashboard, riskMonitoring, intelligenceService,
+    documentAnalysisService
   } = services;
 
   // Auth middleware helper
@@ -1060,6 +1062,34 @@ function createServer(services) {
         const docDesc = doc.DESCRIPTION || doc.description || '';
         const textContent = doc.TEXT_CONTENT || doc.text_content || '';
         const docCaseId = doc.CASE_ID || doc.case_id || null;
+        const docAccessLevel = doc.ACCESS_LEVEL || doc.access_level || 'case';
+        const existing = await documentAnalysisService.findCachedAnalysis({
+          documentId: id,
+          prompt: body.prompt
+        });
+
+        if (existing.cached && existing.record) {
+          await documentAnalysisService.touchAnalysis(existing.record);
+          await auditTrail.logEvent({
+            type: 'document_analysis_cache_hit',
+            caseId: docCaseId,
+            userId: user.userId,
+            action: 'ai_analyze_cached',
+            details: JSON.stringify({
+              documentId: id,
+              documentName: docName,
+              matchType: existing.matchType,
+              similarity: existing.similarity || null
+            })
+          });
+          const cachedAnalysis = existing.record.ANALYSIS_TEXT || existing.record.analysis_text || existing.record.ANALYSIS || existing.record.analysis || '';
+          return sendJSON(res, 200, {
+            analysis: cachedAnalysis,
+            cached: true,
+            analysisId: existing.record.ANALYSIS_ID || existing.record.analysis_id || null,
+            matchType: existing.matchType || 'exact'
+          });
+        }
 
         // Fetch global library context (up to 3 relevant docs with text)
         let libraryContext = '';
@@ -1097,8 +1127,32 @@ function createServer(services) {
         const aiPrompt = `You are an expert arbitration lawyer and legal analyst.\n\nDocument being analyzed: "${docName}"\nCategory: ${docCategory}\n${docDesc ? `Description: ${docDesc}\n` : ''}${docSection}${libraryContext}${caseContext}\n\nUser request: ${body.prompt}\n\nProvide a concise, professional legal analysis referencing relevant laws and documents where applicable.`;
         const analysis = await callAI(aiPrompt);
         if (!analysis) return sendJSON(res, 503, { error: 'AI not configured. Add NVIDIA_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY to .env.oracle' });
+        const stored = await documentAnalysisService.storeAnalysis({
+          documentId: id,
+          caseId: docCaseId,
+          prompt: body.prompt,
+          analysisText: analysis,
+          analysisSummary: String(analysis).slice(0, 1000),
+          keywords: Array.from(new Set(
+            String(body.prompt || '')
+              .toLowerCase()
+              .replace(/[^a-z0-9\s]/g, ' ')
+              .split(/\s+/)
+              .filter((token) => token && token.length > 3)
+              .slice(0, 20)
+          )),
+          modelName: NVIDIA_API_KEY ? NVIDIA_MODEL : (GROQ_API_KEY ? GROQ_MODEL : 'gemini-2.0-flash'),
+          language: 'en',
+          accessLevel: docAccessLevel,
+          createdBy: user.userId
+        });
         await auditTrail.logEvent({ type: 'document_analyzed', caseId: docCaseId, userId: user.userId, action: 'ai_analyze', details: JSON.stringify({ documentId: id, documentName: docName }) });
-        return sendJSON(res, 200, { analysis });
+        return sendJSON(res, 200, {
+          analysis,
+          cached: false,
+          analysisId: stored.analysisId,
+          indexed: true
+        });
       }
 
       // --- DELETE /api/documents/:id ---
@@ -1331,6 +1385,8 @@ async function startServer() {
     riskMonitoring,
     auditTrail
   });
+  const documentAnalysisService = new DocumentAnalysisService(oracleDb);
+  await documentAnalysisService.ensureTable();
 
   // Register AI models
   aiOrchestrator.registerModel('conflict-scanner', {
@@ -1350,7 +1406,8 @@ async function startServer() {
     aiOrchestrator, ruleEngine, caService,
     aiConflictScanner, certificateValidator,
     authService, userService, hearingService,
-    metricsDashboard, riskMonitoring, intelligenceService
+    metricsDashboard, riskMonitoring, intelligenceService,
+    documentAnalysisService
   });
 
   const PORT = config.server.port;
