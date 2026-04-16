@@ -12,10 +12,8 @@ import {
   Gavel as GavelIcon,
   AccessTime as TimeIcon
 } from '@mui/icons-material';
-import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
-
-const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
+import apiService from '../services/api';
 
 const statusColor = (status) => {
   switch (status) {
@@ -50,10 +48,7 @@ const Hearings = () => {
 
   const fetchHearings = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await axios.get(`${API_BASE_URL}/hearings`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await apiService.getHearings();
       setHearings(res.data.hearings || []);
     } catch (err) {
       setError('Could not load hearings.');
@@ -64,7 +59,7 @@ const Hearings = () => {
 
   const handleSchedule = async () => {
     try {
-      const res = await axios.post(`${API_BASE_URL}/hearings`, newHearing);
+      const res = await apiService.createHearing(newHearing);
       setHearings(prev => [res.data.hearing, ...prev]);
       setScheduleOpen(false);
       setNewHearing({ caseId: '', title: '', startTime: '', endTime: '', type: 'virtual', agenda: '' });
@@ -75,7 +70,7 @@ const Hearings = () => {
 
   const handleAssign = async () => {
     try {
-      await axios.post(`${API_BASE_URL}/hearings/assign`, newAssignment);
+      await apiService.assignArbitrator(newAssignment);
       setAssignOpen(false);
       setNewAssignment({ caseId: '', arbitratorId: '', role: 'sole' });
       setError(null);
@@ -87,7 +82,7 @@ const Hearings = () => {
 
   const handleJoin = async (hearingId) => {
     try {
-      const res = await axios.post(`${API_BASE_URL}/hearings/${hearingId}/join`);
+      const res = await apiService.joinHearing(hearingId);
       setJoinUrl(res.data.jitsiUrl);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to join hearing.');

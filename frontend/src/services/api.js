@@ -66,6 +66,9 @@ export const apiService = {
   deactivateUser: (userId) => api.delete(`/users/${userId}`),
 
   // Hearings
+  getHearings: () => api.get('/hearings'),
+  createHearing: (hearingData) => api.post('/hearings', hearingData),
+  assignArbitrator: (assignmentData) => api.post('/hearings/assign', assignmentData),
   joinHearing: (hearingId) => api.post(`/hearings/${hearingId}/join`),
 
   // Authentication

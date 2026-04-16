@@ -2,6 +2,9 @@
 // src/services/hearing-service.js
 // Hearing scheduling and arbitrator assignment workflow
 
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
+
 class HearingService {
   constructor(dbService = null) {
     this.dbService = dbService;
@@ -184,11 +187,7 @@ class HearingService {
   }
 
   async addParticipant(hearingId, userId, role) {
-    const hearing = this.hearings.get(hearingId);
-    if (!hearing) throw new Error('Hearing not found');
-
     const participant = { userId, role, joinedAt: new Date().toISOString() };
-    hearing.participants.push(participant);
 
     if (this.dbService && this.dbService.isConnected()) {
       try {
@@ -232,8 +231,6 @@ class HearingService {
   generateJaaSJwt({ appId, apiKeyId, privateKey, user, room, isModerator = false }) {
     if (!appId || !apiKeyId || !privateKey) return null;
     try {
-      const jwt = require('jsonwebtoken');
-      const crypto = require('crypto');
       const now = Math.floor(Date.now() / 1000);
       const payload = {
         iss: 'chat',
@@ -258,12 +255,8 @@ class HearingService {
           }
         }
       };
-      // Decode base64 key back to PEM if needed, then create crypto KeyObject
-      let pem = privateKey;
-      if (!pem.includes('-----BEGIN')) {
-        pem = Buffer.from(pem, 'base64').toString('utf8');
-      }
-      const key = crypto.createPrivateKey(pem);
+      const pem = this._normalizeJaaSPrivateKey(privateKey);
+      const key = crypto.createPrivateKey({ key: pem, format: 'pem' });
       return jwt.sign(payload, key, { algorithm: 'RS256', header: { kid: apiKeyId, alg: 'RS256' } });
     } catch (err) {
       console.error('JaaS JWT error:', err.message);
@@ -275,6 +268,30 @@ class HearingService {
     const token = this.generateJaaSJwt({ appId, apiKeyId, privateKey, user, room: jitsiRoom, isModerator });
     const baseUrl = `https://8x8.vc/${appId}/${jitsiRoom}`;
     return token ? `${baseUrl}?jwt=${token}` : baseUrl;
+  }
+
+  _normalizeJaaSPrivateKey(rawKey) {
+    let keyText = String(rawKey || '').trim();
+    if (keyText.length >= 2 && keyText[0] === keyText[keyText.length - 1] && (keyText[0] === '"' || keyText[0] === "'")) {
+      keyText = keyText.slice(1, -1).trim();
+    }
+    keyText = keyText.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n');
+
+    if (keyText.includes('-----BEGIN') && keyText.includes('PRIVATE KEY')) {
+      if (!keyText.endsWith('\n')) keyText += '\n';
+      return keyText;
+    }
+
+    try {
+      const decoded = Buffer.from(keyText, 'base64').toString('utf8').trim();
+      if (decoded.includes('-----BEGIN') && decoded.includes('PRIVATE KEY')) {
+        return decoded.endsWith('\n') ? decoded : `${decoded}\n`;
+      }
+    } catch (err) {
+      // Fall through to the validation error below.
+    }
+
+    throw new Error('JAAS_PRIVATE_KEY must be a PEM private key or base64-encoded PEM');
   }
 }
 
