@@ -5,18 +5,43 @@ require('dotenv').config({ path: '.env.oracle' });
 const http = require('http');
 const url = require('url');
 
-// AI client — uses Groq (free: 14,400 req/day) with Gemini as fallback
+// AI client — uses NVIDIA Nemotron first, with Groq/Gemini as fallbacks
+const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || process.env.NGC_API_KEY;
+const NVIDIA_BASE_URL = process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1';
+const NVIDIA_MODEL = process.env.NVIDIA_MODEL || 'nvidia/nemotron-3-super-120b-a12b';
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 async function callAI(prompt) {
-  // Try Groq first
+  // Try NVIDIA Nemotron first
+  if (NVIDIA_API_KEY) {
+    const res = await fetch(`${NVIDIA_BASE_URL.replace(/\/$/, '')}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${NVIDIA_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: NVIDIA_MODEL,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 2048,
+        temperature: 0.3
+      })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+    if (!res.ok) throw new Error(data.message || data.error?.message || `NVIDIA request failed with ${res.status}`);
+    return data.choices?.[0]?.message?.content || null;
+  }
+
+  // Try Groq as a fallback
   if (GROQ_API_KEY) {
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GROQ_API_KEY}` },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: GROQ_MODEL,
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 2048,
         temperature: 0.3
@@ -1071,7 +1096,7 @@ function createServer(services) {
           : `Note: Binary document — analysis based on metadata and library context only.`;
         const aiPrompt = `You are an expert arbitration lawyer and legal analyst.\n\nDocument being analyzed: "${docName}"\nCategory: ${docCategory}\n${docDesc ? `Description: ${docDesc}\n` : ''}${docSection}${libraryContext}${caseContext}\n\nUser request: ${body.prompt}\n\nProvide a concise, professional legal analysis referencing relevant laws and documents where applicable.`;
         const analysis = await callAI(aiPrompt);
-        if (!analysis) return sendJSON(res, 503, { error: 'AI not configured. Add GROQ_API_KEY to .env.oracle' });
+        if (!analysis) return sendJSON(res, 503, { error: 'AI not configured. Add NVIDIA_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY to .env.oracle' });
         await auditTrail.logEvent({ type: 'document_analyzed', caseId: docCaseId, userId: user.userId, action: 'ai_analyze', details: JSON.stringify({ documentId: id, documentName: docName }) });
         return sendJSON(res, 200, { analysis });
       }
@@ -1177,8 +1202,8 @@ function createServer(services) {
         if (!body.caseId || !body.question) {
           return sendJSON(res, 400, { error: 'caseId and question are required' });
         }
-        if (!GROQ_API_KEY && !GEMINI_API_KEY) {
-          return sendJSON(res, 503, { error: 'AI not configured. Add GROQ_API_KEY or GEMINI_API_KEY to .env.oracle' });
+        if (!NVIDIA_API_KEY && !GROQ_API_KEY && !GEMINI_API_KEY) {
+          return sendJSON(res, 503, { error: 'AI not configured. Add NVIDIA_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY to .env.oracle' });
         }
         try {
           const analysis = await intelligenceService.generateCompanionAnalysis({
@@ -1188,7 +1213,7 @@ function createServer(services) {
             user
           });
           if (!analysis) {
-            return sendJSON(res, 503, { error: 'AI not configured. Add GROQ_API_KEY or GEMINI_API_KEY to .env.oracle' });
+            return sendJSON(res, 503, { error: 'AI not configured. Add NVIDIA_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY to .env.oracle' });
           }
           return sendJSON(res, 200, { success: true, analysis });
         } catch (error) {
@@ -1205,8 +1230,8 @@ function createServer(services) {
         if (!user) return;
         const body = await parseBody(req);
         const periodDays = Math.max(7, parseInt(body.periodDays || 30, 10) || 30);
-        if (!GROQ_API_KEY && !GEMINI_API_KEY) {
-          return sendJSON(res, 503, { error: 'AI not configured. Add GROQ_API_KEY or GEMINI_API_KEY to .env.oracle' });
+        if (!NVIDIA_API_KEY && !GROQ_API_KEY && !GEMINI_API_KEY) {
+          return sendJSON(res, 503, { error: 'AI not configured. Add NVIDIA_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY to .env.oracle' });
         }
         const report = await intelligenceService.generateAdminReport({
           user,
@@ -1215,7 +1240,7 @@ function createServer(services) {
           scope: body.scope || 'platform'
         });
         if (!report) {
-          return sendJSON(res, 503, { error: 'AI not configured. Add GROQ_API_KEY or GEMINI_API_KEY to .env.oracle' });
+          return sendJSON(res, 503, { error: 'AI not configured. Add NVIDIA_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY to .env.oracle' });
         }
         return sendJSON(res, 200, { success: true, report });
       }
@@ -1225,8 +1250,8 @@ function createServer(services) {
         const user = authenticate(req, res);
         if (!user) return;
         const { seatOfArbitration, caseType, jurisdiction } = await parseBody(req);
-        if (!GROQ_API_KEY && !GEMINI_API_KEY) {
-          return sendJSON(res, 200, { success: false, message: 'AI not configured. Add GROQ_API_KEY or GEMINI_API_KEY to .env.oracle' });
+        if (!NVIDIA_API_KEY && !GROQ_API_KEY && !GEMINI_API_KEY) {
+          return sendJSON(res, 200, { success: false, message: 'AI not configured. Add NVIDIA_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY to .env.oracle' });
         }
         const seat = jurisdiction || seatOfArbitration || 'Kenya';
         const prompt = `For a ${caseType || 'commercial'} arbitration with seat in ${seat}, provide a JSON object with:
