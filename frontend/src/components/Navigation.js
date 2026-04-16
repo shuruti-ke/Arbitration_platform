@@ -6,6 +6,7 @@ import {
   Gavel as CasesIcon,
   Description as DocumentsIcon,
   Analytics as AnalyticsIcon,
+  AutoAwesome as IntelligenceIcon,
   Settings as SettingsIcon,
   VideoCall as HearingsIcon,
   Logout as LogoutIcon,
@@ -59,6 +60,9 @@ const Navigation = () => {
         </Button>
         <Button color="inherit" component={Link} to="/analytics" startIcon={<AnalyticsIcon />}>
           {t('Analytics')}
+        </Button>
+        <Button color="inherit" component={Link} to="/intelligence" startIcon={<IntelligenceIcon />}>
+          {t('AI Intelligence')}
         </Button>
         <Button color="inherit" component={Link} to="/users" startIcon={<UsersIcon />}>
           {t('Users')}

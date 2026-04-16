@@ -11,6 +11,7 @@ import Cases from './pages/Cases';
 import CaseDetail from './pages/CaseDetail';
 import Documents from './pages/Documents';
 import Analytics from './pages/Analytics';
+import Intelligence from './pages/Intelligence';
 import Settings from './pages/Settings';
 import Hearings from './pages/Hearings';
 import Users from './pages/Users';
@@ -70,6 +71,7 @@ const AppRoutes = () => {
         <Route path="/cases/:caseId" element={<ProtectedRoute><CaseDetail /></ProtectedRoute>} />
         <Route path="/documents" element={<ProtectedRoute><Documents /></ProtectedRoute>} />
         <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
+        <Route path="/intelligence" element={<ProtectedRoute><Intelligence /></ProtectedRoute>} />
         <Route path="/hearings" element={<ProtectedRoute><Hearings /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />

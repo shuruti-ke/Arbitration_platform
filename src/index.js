@@ -124,6 +124,7 @@ const DisclosureWorkflowService = require('./services/disclosure-workflow');
 const RiskMonitoringService = require('./services/risk-monitoring');
 const ODPCComplianceService = require('./services/odpc-compliance');
 const OracleDatabaseService = require('./services/oracle-database-service');
+const IntelligenceService = require('./services/intelligence-service');
 const { UserService, ROLES } = require('./services/user-service');
 const AuthService = require('./services/auth-service');
 const HearingService = require('./services/hearing-service');
@@ -169,7 +170,8 @@ function createServer(services) {
     oracleDb, auditTrail, consentService,
     aiOrchestrator, ruleEngine, caService,
     aiConflictScanner, certificateValidator,
-    authService, userService, hearingService
+    authService, userService, hearingService,
+    metricsDashboard, riskMonitoring, intelligenceService
   } = services;
 
   // Auth middleware helper
@@ -1141,6 +1143,83 @@ function createServer(services) {
       // --- AI ROUTES ---
       // =============================================
 
+      // --- GET /api/intelligence/summary ---
+      if (path === '/api/intelligence/summary' && method === 'GET') {
+        const user = authenticate(req, res, ['admin']);
+        if (!user) return;
+        const days = Math.max(7, parseInt(parsedUrl.query.days || '30', 10) || 30);
+        const summary = await intelligenceService.getSummary();
+        return sendJSON(res, 200, {
+          success: true,
+          generatedAt: new Date().toISOString(),
+          days,
+          ...summary
+        });
+      }
+
+      // --- GET /api/intelligence/history ---
+      if (path === '/api/intelligence/history' && method === 'GET') {
+        const user = authenticate(req, res, ['admin']);
+        if (!user) return;
+        const { caseId, limit } = parsedUrl.query;
+        const reports = await intelligenceService.getHistory({
+          caseId: caseId || null,
+          limit: Math.max(1, Math.min(parseInt(limit || '10', 10) || 10, 50))
+        });
+        return sendJSON(res, 200, { success: true, reports });
+      }
+
+      // --- POST /api/intelligence/companion ---
+      if (path === '/api/intelligence/companion' && method === 'POST') {
+        const user = authenticate(req, res);
+        if (!user) return;
+        const body = await parseBody(req);
+        if (!body.caseId || !body.question) {
+          return sendJSON(res, 400, { error: 'caseId and question are required' });
+        }
+        if (!GROQ_API_KEY && !GEMINI_API_KEY) {
+          return sendJSON(res, 503, { error: 'AI not configured. Add GROQ_API_KEY or GEMINI_API_KEY to .env.oracle' });
+        }
+        try {
+          const analysis = await intelligenceService.generateCompanionAnalysis({
+            caseId: body.caseId,
+            question: body.question,
+            language: body.language || 'en',
+            user
+          });
+          if (!analysis) {
+            return sendJSON(res, 503, { error: 'AI not configured. Add GROQ_API_KEY or GEMINI_API_KEY to .env.oracle' });
+          }
+          return sendJSON(res, 200, { success: true, analysis });
+        } catch (error) {
+          if (error.message === 'Case not found') {
+            return sendJSON(res, 404, { error: 'Case not found' });
+          }
+          throw error;
+        }
+      }
+
+      // --- POST /api/intelligence/report ---
+      if (path === '/api/intelligence/report' && method === 'POST') {
+        const user = authenticate(req, res, ['admin']);
+        if (!user) return;
+        const body = await parseBody(req);
+        const periodDays = Math.max(7, parseInt(body.periodDays || 30, 10) || 30);
+        if (!GROQ_API_KEY && !GEMINI_API_KEY) {
+          return sendJSON(res, 503, { error: 'AI not configured. Add GROQ_API_KEY or GEMINI_API_KEY to .env.oracle' });
+        }
+        const report = await intelligenceService.generateAdminReport({
+          user,
+          language: body.language || 'en',
+          periodDays,
+          scope: body.scope || 'platform'
+        });
+        if (!report) {
+          return sendJSON(res, 503, { error: 'AI not configured. Add GROQ_API_KEY or GEMINI_API_KEY to .env.oracle' });
+        }
+        return sendJSON(res, 200, { success: true, report });
+      }
+
       // --- POST /api/ai/governing-law ---
       if (path === '/api/ai/governing-law' && method === 'POST') {
         const user = authenticate(req, res);
@@ -1220,6 +1299,13 @@ async function startServer() {
   const eSignatureController = new ESignatureController();
   const documentController = new DocumentController();
   const systemController = new SystemController();
+  const intelligenceService = new IntelligenceService({
+    oracleDb,
+    callAI,
+    metricsDashboard,
+    riskMonitoring,
+    auditTrail
+  });
 
   // Register AI models
   aiOrchestrator.registerModel('conflict-scanner', {
@@ -1238,7 +1324,8 @@ async function startServer() {
     oracleDb, auditTrail, consentService,
     aiOrchestrator, ruleEngine, caService,
     aiConflictScanner, certificateValidator,
-    authService, userService, hearingService
+    authService, userService, hearingService,
+    metricsDashboard, riskMonitoring, intelligenceService
   });
 
   const PORT = config.server.port;

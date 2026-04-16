@@ -40,6 +40,17 @@ export const apiService = {
   // Analytics
   getAnalytics: () => api.get('/analytics'),
 
+  // Intelligence
+  getIntelligenceSummary: (days = 30) => api.get(`/intelligence/summary?days=${days}`),
+  getIntelligenceHistory: ({ caseId, limit = 10 } = {}) => {
+    const params = new URLSearchParams();
+    if (caseId) params.set('caseId', caseId);
+    params.set('limit', String(limit));
+    return api.get(`/intelligence/history?${params.toString()}`);
+  },
+  generateCompanionAnalysis: ({ caseId, question, language }) => api.post('/intelligence/companion', { caseId, question, language }),
+  generateAdminReport: ({ periodDays = 30, language, scope = 'platform' } = {}) => api.post('/intelligence/report', { periodDays, language, scope }),
+
   // Consent
   recordConsent: (userId, consentData) => api.post('/consent/record', { userId, consentData }),
   checkConsent: (userId, purpose) => api.get(`/consent/check?userId=${userId}&purpose=${purpose}`),

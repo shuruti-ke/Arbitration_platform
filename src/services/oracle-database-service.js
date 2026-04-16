@@ -193,6 +193,25 @@ class OracleDatabaseService {
       )
     `);
 
+    await this._createTableSafe('AI_INTELLIGENCE_REPORTS', `
+      CREATE TABLE ai_intelligence_reports (
+        id            NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        report_id     VARCHAR2(100) UNIQUE NOT NULL,
+        report_type   VARCHAR2(50) NOT NULL,
+        case_id       VARCHAR2(50),
+        scope_key     VARCHAR2(255),
+        requester_id  VARCHAR2(100),
+        requester_role VARCHAR2(50),
+        title         VARCHAR2(255),
+        summary       CLOB,
+        analysis_json CLOB,
+        metrics_json  CLOB,
+        question      CLOB,
+        period_days   NUMBER,
+        created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Expand CASES table with comprehensive arbitration fields
     await this._addColumnSafe('cases', 'case_type', 'VARCHAR2(100)');
     await this._addColumnSafe('cases', 'sector', 'VARCHAR2(100)');
