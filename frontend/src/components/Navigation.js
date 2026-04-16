@@ -47,11 +47,9 @@ const Navigation = () => {
         <Button color="inherit" component={Link} to="/analytics" startIcon={<AnalyticsIcon />}>
           Analytics
         </Button>
-        {canManageUsers && (
-          <Button color="inherit" component={Link} to="/users" startIcon={<UsersIcon />}>
-            Users
-          </Button>
-        )}
+        <Button color="inherit" component={Link} to="/users" startIcon={<UsersIcon />}>
+          Users
+        </Button>
         <Button color="inherit" component={Link} to="/settings" startIcon={<SettingsIcon />}>
           Settings
         </Button>
