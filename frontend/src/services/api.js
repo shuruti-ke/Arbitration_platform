@@ -64,6 +64,8 @@ export const apiService = {
   registerUser: (userData) => api.post('/auth/register', userData),
   updateUser: (userId, data) => api.put(`/users/${userId}`, data),
   deleteUser: (userId) => api.delete(`/users/${userId}`),
+  archiveUser: (userId) => api.post(`/users/${userId}/archive`),
+  restoreUser: (userId) => api.post(`/users/${userId}/restore`),
 
   // Hearings
   getHearings: () => api.get('/hearings'),

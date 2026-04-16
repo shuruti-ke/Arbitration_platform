@@ -159,6 +159,40 @@ class UserService {
     return true;
   }
 
+  async restoreUser(userId) {
+    let exists = this.users.has(userId);
+    if (!exists && this.dbService && this.dbService.isConnected()) {
+      try {
+        const result = await this.dbService.executeQuery(
+          'SELECT user_id FROM users WHERE user_id = :userId',
+          { userId }
+        );
+        exists = !!(result.rows && result.rows[0]);
+      } catch (err) {
+        console.error('User restore lookup failed:', err.message);
+        throw err;
+      }
+    }
+    if (!exists) throw new Error('User not found');
+
+    if (this.dbService && this.dbService.isConnected()) {
+      try {
+        await this.dbService.executeQuery(
+          'UPDATE users SET is_active = 1 WHERE user_id = :userId',
+          { userId }
+        );
+      } catch (err) {
+        console.error('User restore DB write failed:', err.message);
+        throw err;
+      }
+    }
+
+    if (this.users.has(userId)) {
+      this.users.get(userId).isActive = true;
+    }
+    return true;
+  }
+
   async deleteUser(userId) {
     let exists = this.users.has(userId);
     if (!exists && this.dbService && this.dbService.isConnected()) {

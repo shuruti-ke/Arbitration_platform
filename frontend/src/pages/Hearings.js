@@ -15,6 +15,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/api';
+import { getApiErrorMessage } from '../services/apiErrors';
 
 const statusColor = (status) => {
   switch (status) {
@@ -52,7 +53,7 @@ const Hearings = () => {
       const res = await apiService.getHearings();
       setHearings(res.data.hearings || []);
     } catch (err) {
-      setError('Could not load hearings.');
+      setError(getApiErrorMessage(err, 'Could not load hearings.'));
     } finally {
       setLoading(false);
     }
@@ -65,7 +66,7 @@ const Hearings = () => {
       setScheduleOpen(false);
       setNewHearing({ caseId: '', title: '', startTime: '', endTime: '', type: 'virtual', agenda: '' });
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to schedule hearing.');
+      setError(getApiErrorMessage(err, 'Failed to schedule hearing.'));
     }
   };
 
@@ -77,7 +78,7 @@ const Hearings = () => {
       setError(null);
       alert('Arbitrator assigned successfully. Awaiting acceptance.');
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to assign arbitrator.');
+      setError(getApiErrorMessage(err, 'Failed to assign arbitrator.'));
     }
   };
 
@@ -86,7 +87,7 @@ const Hearings = () => {
       const res = await apiService.joinHearing(hearingId);
       setJoinUrl(res.data.jitsiUrl);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to join hearing.');
+      setError(getApiErrorMessage(err, 'Failed to join hearing.'));
     }
   };
 
@@ -97,7 +98,7 @@ const Hearings = () => {
       setHearings(prev => prev.filter(h => (h.HEARING_ID || h.hearingId) !== hearingId));
       setError(null);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to delete hearing.');
+      setError(getApiErrorMessage(err, 'Failed to delete hearing.'));
     }
   };
 

@@ -468,6 +468,43 @@ function createServer(services) {
         return sendJSON(res, 200, { success: true });
       }
 
+      // --- POST /api/users/:userId/archive ---
+      if (path.match(/^\/api\/users\/[^/]+\/archive$/) && method === 'POST') {
+        const user = authenticate(req, res, ['admin']);
+        if (!user) return;
+        const targetId = path.split('/')[3];
+        if (targetId === user.userId) {
+          return sendJSON(res, 400, { error: 'You cannot archive your own account' });
+        }
+        try {
+          await userService.deactivateUser(targetId);
+        } catch (err) {
+          if (err.message === 'User not found') {
+            return sendJSON(res, 404, { error: 'User not found' });
+          }
+          throw err;
+        }
+        await auditTrail.logEvent({ type: 'user_archive', userId: user.userId, action: 'archive', details: { targetId } });
+        return sendJSON(res, 200, { success: true });
+      }
+
+      // --- POST /api/users/:userId/restore ---
+      if (path.match(/^\/api\/users\/[^/]+\/restore$/) && method === 'POST') {
+        const user = authenticate(req, res, ['admin']);
+        if (!user) return;
+        const targetId = path.split('/')[3];
+        try {
+          await userService.restoreUser(targetId);
+        } catch (err) {
+          if (err.message === 'User not found') {
+            return sendJSON(res, 404, { error: 'User not found' });
+          }
+          throw err;
+        }
+        await auditTrail.logEvent({ type: 'user_restore', userId: user.userId, action: 'restore', details: { targetId } });
+        return sendJSON(res, 200, { success: true });
+      }
+
       // =============================================
       // --- ARBITRATOR ASSIGNMENT ROUTES ---
       // =============================================

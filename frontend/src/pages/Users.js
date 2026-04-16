@@ -10,7 +10,8 @@ import {
 import {
   PersonAdd as AddIcon,
   Edit as EditIcon,
-  DeleteForever as DeleteIcon,
+  Archive as ArchiveIcon,
+  Unarchive as RestoreIcon,
   Refresh as RefreshIcon,
   Visibility as ShowIcon,
   VisibilityOff as HideIcon,
@@ -19,6 +20,7 @@ import {
 import { DataGrid } from '@mui/x-data-grid';
 import { useAuth } from '../context/AuthContext';
 import { apiService } from '../services/api';
+import { getApiErrorMessage } from '../services/apiErrors';
 
 const ROLES = ['admin', 'secretariat', 'arbitrator', 'counsel', 'party'];
 
@@ -93,8 +95,8 @@ const Users = () => {
       }));
       setUsers(rows);
       setError(null);
-    } catch {
-      setError('Could not load users.');
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Could not load users.'));
     } finally {
       setLoading(false);
     }
@@ -115,7 +117,7 @@ const Users = () => {
       setCreateForm(EMPTY_FORM);
       await fetchUsers();
     } catch (err) {
-      setCreateError(err.response?.data?.error || 'Failed to create user.');
+      setCreateError(getApiErrorMessage(err, 'Failed to create user.'));
     } finally {
       setCreating(false);
     }
@@ -129,19 +131,29 @@ const Users = () => {
       setEditOpen(false);
       await fetchUsers();
     } catch (err) {
-      setEditError(err.response?.data?.error || 'Failed to update user.');
+      setEditError(getApiErrorMessage(err, 'Failed to update user.'));
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async (userId, name) => {
-    if (!window.confirm(`Delete user ${name}? This removes the account from the platform.`)) return;
+  const handleArchive = async (userId, name) => {
+    if (!window.confirm(`Archive user ${name}? They will no longer be able to log in.`)) return;
     try {
-      await apiService.deleteUser(userId);
+      await apiService.archiveUser(userId);
       await fetchUsers();
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to delete user.');
+      alert(getApiErrorMessage(err, 'Failed to archive user.'));
+    }
+  };
+
+  const handleRestore = async (userId, name) => {
+    if (!window.confirm(`Restore user ${name}? They will regain access to the platform.`)) return;
+    try {
+      await apiService.restoreUser(userId);
+      await fetchUsers();
+    } catch (err) {
+      alert(getApiErrorMessage(err, 'Failed to restore user.'));
     }
   };
 
@@ -177,7 +189,7 @@ const Users = () => {
       field: 'isActive', headerName: 'Status', width: 100,
       renderCell: (params) => (
         <Chip
-          label={params.value ? 'Active' : 'Inactive'}
+          label={params.value ? 'Active' : 'Archived'}
           size="small"
           color={params.value ? 'success' : 'default'}
           variant="outlined"
@@ -198,12 +210,21 @@ const Users = () => {
             </span>
           </Tooltip>
           {isAdmin && params.row.userId !== (currentUser?.userId || currentUser?.USER_ID) && (
-            <Tooltip title="Delete user">
-              <IconButton size="small" color="error"
-                onClick={() => handleDelete(params.row.userId, params.row.firstName || params.row.email)}>
-                <DeleteIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+            params.row.isActive ? (
+              <Tooltip title="Archive user">
+                <IconButton size="small" color="warning"
+                  onClick={() => handleArchive(params.row.userId, params.row.firstName || params.row.email)}>
+                  <ArchiveIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            ) : (
+              <Tooltip title="Restore user">
+                <IconButton size="small" color="success"
+                  onClick={() => handleRestore(params.row.userId, params.row.firstName || params.row.email)}>
+                  <RestoreIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )
           )}
         </Box>
       )
