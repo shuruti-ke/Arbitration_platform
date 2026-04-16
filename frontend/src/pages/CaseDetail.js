@@ -45,6 +45,7 @@ const CaseDetail = () => {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [joiningHearing, setJoiningHearing] = useState(null);
 
   const load = async () => {
     try {
@@ -190,6 +191,18 @@ const CaseDetail = () => {
 
   const numArbitrators = c.NUM_ARBITRATORS || c.numArbitrators || 1;
   const requiredCopies = parseInt(numArbitrators) === 1 ? 2 : 4;
+
+  const handleJoinHearing = async (hearingId) => {
+    setJoiningHearing(hearingId);
+    try {
+      const res = await apiService.joinHearing(hearingId);
+      window.open(res.data.jitsiUrl, '_blank');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to join hearing.');
+    } finally {
+      setJoiningHearing(null);
+    }
+  };
 
   return (
     <Container maxWidth="lg" sx={{ mt: 3, mb: 5 }}>
@@ -481,19 +494,30 @@ const CaseDetail = () => {
                     <TableCell>Start Time</TableCell>
                     <TableCell>End Time</TableCell>
                     <TableCell>Status</TableCell>
+                    <TableCell>Action</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {hearings.map((h, i) => (
+                  {hearings.map((h, i) => {
+                    const hId = h.HEARING_ID || h.hearingId;
+                    return (
                     <TableRow key={i}>
-                      <TableCell>{h.HEARING_ID || h.hearingId}</TableCell>
+                      <TableCell>{hId}</TableCell>
                       <TableCell>{h.TITLE || h.title}</TableCell>
                       <TableCell>{h.TYPE || h.type}</TableCell>
                       <TableCell>{h.START_TIME || h.startTime}</TableCell>
                       <TableCell>{h.END_TIME || h.endTime}</TableCell>
                       <TableCell><Chip label={h.STATUS || h.status} size="small" /></TableCell>
+                      <TableCell>
+                        <Button size="small" variant="contained" color="success"
+                          disabled={joiningHearing === hId}
+                          onClick={() => handleJoinHearing(hId)}>
+                          {joiningHearing === hId ? 'Joining…' : 'Join'}
+                        </Button>
+                      </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
           }

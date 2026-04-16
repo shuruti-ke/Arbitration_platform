@@ -65,6 +65,9 @@ export const apiService = {
   updateUser: (userId, data) => api.put(`/users/${userId}`, data),
   deactivateUser: (userId) => api.delete(`/users/${userId}`),
 
+  // Hearings
+  joinHearing: (hearingId) => api.post(`/hearings/${hearingId}/join`),
+
   // Authentication
   login: (credentials) => api.post('/auth/login', credentials),
   logout: () => api.post('/auth/logout'),
