@@ -189,6 +189,16 @@ function parseBody(req) {
   });
 }
 
+function cleanModelText(value) {
+  return String(value || '')
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, ' ')
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s+\n/g, '\n')
+    .trim();
+}
+
 // --- Server factory ---
 
 function createServer(services) {
@@ -1124,15 +1134,15 @@ function createServer(services) {
         const docSection = textContent
           ? `Document content:\n---\n${textContent.slice(0, 20000)}\n---`
           : `Note: Binary document — analysis based on metadata and library context only.`;
-        const aiPrompt = `You are an expert arbitration lawyer and legal analyst.\n\nDocument being analyzed: "${docName}"\nCategory: ${docCategory}\n${docDesc ? `Description: ${docDesc}\n` : ''}${docSection}${libraryContext}${caseContext}\n\nUser request: ${body.prompt}\n\nProvide a concise, professional legal analysis referencing relevant laws and documents where applicable.`;
-        const analysis = await callAI(aiPrompt);
+        const aiPrompt = `You are a careful arbitration document analyst.\n\nWrite in plain English at about a 9th-grade reading level.\nReturn plain text only.\nDo not use JSON, markdown tables, code fences, or long legal jargon.\nBe direct, clear, and practical.\n\nUse this exact structure:\n1. Plain-English summary: 2 to 3 short sentences.\n2. Main issues: 3 bullet points maximum.\n3. Risks: 3 bullet points maximum.\n4. Missing information or next steps: 3 bullet points maximum.\n\nKeep the full answer under 300 words.\nIf you mention a law, rule, or legal concept, explain it in simple words.\n\nDocument being analyzed: "${docName}"\nCategory: ${docCategory}\n${docDesc ? `Description: ${docDesc}\n` : ''}${docSection}${libraryContext}${caseContext}\n\nUser request: ${body.prompt}\n\nFocus on the practical legal meaning, the strongest points, the weak points, and what the user should do next.`;
+        const analysis = cleanModelText(await callAI(aiPrompt));
         if (!analysis) return sendJSON(res, 503, { error: 'AI not configured. Add NVIDIA_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY to .env.oracle' });
         const stored = await documentAnalysisService.storeAnalysis({
           documentId: id,
           caseId: docCaseId,
           prompt: body.prompt,
           analysisText: analysis,
-          analysisSummary: String(analysis).slice(0, 1000),
+          analysisSummary: analysis.slice(0, 1000),
           keywords: Array.from(new Set(
             String(body.prompt || '')
               .toLowerCase()
