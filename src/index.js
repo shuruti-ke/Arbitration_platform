@@ -128,6 +128,7 @@ const { UserService, ROLES } = require('./services/user-service');
 const AuthService = require('./services/auth-service');
 const HearingService = require('./services/hearing-service');
 const EmailService = require('./services/email-service');
+const emailService = new EmailService();
 
 // Models
 const ConflictGraph = require('./models/conflict-graph');
@@ -168,7 +169,7 @@ function createServer(services) {
     oracleDb, auditTrail, consentService,
     aiOrchestrator, ruleEngine, caService,
     aiConflictScanner, certificateValidator,
-    authService, userService, hearingService, emailService
+    authService, userService, hearingService
   } = services;
 
   // Auth middleware helper
@@ -1106,7 +1107,6 @@ async function startServer() {
   const userService = new UserService(oracleDb);
   const authService = new AuthService(userService, auditTrail);
   const hearingService = new HearingService(oracleDb);
-  const emailService = new EmailService();
 
   // 3. Initialize remaining services
   const aiOrchestrator = new AIOrchestrator();
@@ -1147,7 +1147,7 @@ async function startServer() {
     oracleDb, auditTrail, consentService,
     aiOrchestrator, ruleEngine, caService,
     aiConflictScanner, certificateValidator,
-    authService, userService, hearingService, emailService
+    authService, userService, hearingService
   });
 
   const PORT = config.server.port;
