@@ -70,11 +70,56 @@ class IntelligenceService {
       .trim();
   }
 
+  _sentenceCase(value) {
+    const text = this._cleanText(value);
+    if (!text) return '';
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
+  _splitPlainSentences(value, limit = 3) {
+    const text = this._cleanText(value);
+    if (!text) return [];
+    const chunks = text
+      .replace(/\s*[-•]\s*/g, '. ')
+      .split(/(?<=[.!?])\s+/)
+      .map((item) => this._sentenceCase(item))
+      .filter(Boolean);
+    return chunks.slice(0, limit);
+  }
+
   _limitList(values, limit = 5) {
     return (Array.isArray(values) ? values : [])
-      .map((item) => this._cleanText(item))
+      .map((item) => this._sentenceCase(item))
       .filter(Boolean)
       .slice(0, limit);
+  }
+
+  _sanitizeStructuredOutput(value) {
+    if (Array.isArray(value)) {
+      return value.map((item) => this._sanitizeStructuredOutput(item));
+    }
+    if (value && typeof value === 'object') {
+      const output = {};
+      for (const [key, item] of Object.entries(value)) {
+        output[key] = this._sanitizeStructuredOutput(item);
+      }
+      return output;
+    }
+    return this._sentenceCase(value);
+  }
+
+  _buildCompanionFallback(rawText, context) {
+    const lines = this._splitPlainSentences(rawText, 6);
+    const executiveSummary = lines.slice(0, 2).join(' ');
+    return {
+      executiveSummary: executiveSummary || 'The case needs closer review before a final view is formed.',
+      keyFindings: lines.slice(0, 3),
+      risks: lines.slice(3, 5),
+      recommendations: lines.slice(5, 8),
+      dataSnapshot: context.totals,
+      followUpQuestions: [],
+      confidence: 'medium'
+    };
   }
 
   _countRows(rows = [], key = 'status') {
@@ -181,6 +226,11 @@ class IntelligenceService {
     return `
 You are a senior arbitration platform analyst writing a sale-ready executive report for administrators and premium clients.
 Respond in ${languageName}.
+Use plain, human language at about a 9th-grade reading level.
+Write like a polished analyst briefing a busy executive.
+Keep the tone crisp, factual, and easy to scan.
+Avoid jargon unless it adds real value, and explain it simply when needed.
+Do not sound robotic, inflated, or overly academic.
 
 Output requirements:
 - Return valid JSON only.
@@ -461,6 +511,11 @@ Last ${periodDays} days
     const prompt = `
 You are an expert arbitration companion helping a neutral decision-maker.
 Respond in ${languageName}.
+Use plain, human language at about a 9th-grade reading level.
+Write like a careful legal assistant speaking to a smart non-lawyer.
+Keep the tone calm, crisp, and practical.
+Avoid jargon unless it is necessary, and explain it in simple words when used.
+Do not sound robotic or overly formal.
 
 Return valid JSON only with this structure:
 {
@@ -486,19 +541,24 @@ User question:
 ${question}
 
 Focus on practical tribunal support, procedural posture, evidence gaps, deadlines, and next actions.
+Keep each field short and easy to read.
 `;
 
     const rawText = await this.callAI(prompt);
     if (!rawText) return null;
 
-    const parsed = safeParseJson(rawText) || {
-      executiveSummary: rawText,
-      keyFindings: [],
-      risks: [],
-      recommendations: [],
-      dataSnapshot: context.totals,
-      followUpQuestions: [],
-      confidence: 'medium'
+    const parsed = safeParseJson(rawText) || this._buildCompanionFallback(rawText, context);
+    const sanitized = this._sanitizeStructuredOutput(parsed);
+    const companion = {
+      ...sanitized,
+      executiveSummary: this._sentenceCase(sanitized.executiveSummary) || this._buildCompanionFallback(rawText, context).executiveSummary,
+      keyFindings: this._limitList(sanitized.keyFindings, 5).length ? this._limitList(sanitized.keyFindings, 5) : this._buildCompanionFallback(rawText, context).keyFindings,
+      risks: this._limitList(sanitized.risks, 5).length ? this._limitList(sanitized.risks, 5) : this._buildCompanionFallback(rawText, context).risks,
+      recommendations: this._limitList(sanitized.recommendations, 5).length ? this._limitList(sanitized.recommendations, 5) : this._buildCompanionFallback(rawText, context).recommendations,
+      followUpQuestions: this._limitList(sanitized.followUpQuestions, 5),
+      confidence: ['high', 'medium', 'low'].includes(String(sanitized.confidence || '').toLowerCase())
+        ? String(sanitized.confidence).toLowerCase()
+        : 'medium'
     };
 
     const response = {
@@ -506,8 +566,8 @@ Focus on practical tribunal support, procedural posture, evidence gaps, deadline
       caseTitle: context.case.title,
       generatedAt: new Date().toISOString(),
       language,
-      ...parsed,
-      rawText
+      ...companion,
+      rawText: this._cleanText(rawText)
     };
 
     await this._storeReport({
@@ -546,16 +606,17 @@ Focus on practical tribunal support, procedural posture, evidence gaps, deadline
 
     const parsed = safeParseJson(rawText);
     const cleanedFallback = this._buildAdminFallbackReport({ context, languageName, periodDays, scope });
-    const report = parsed ? {
-      title: this._cleanText(parsed.title) || cleanedFallback.title,
-      executiveSummary: this._cleanText(parsed.executiveSummary) || cleanedFallback.executiveSummary,
-      keyFindings: this._limitList(parsed.keyFindings, 5).length ? this._limitList(parsed.keyFindings, 5) : cleanedFallback.keyFindings,
-      commercialHighlights: this._limitList(parsed.commercialHighlights, 5).length ? this._limitList(parsed.commercialHighlights, 5) : cleanedFallback.commercialHighlights,
-      risks: this._limitList(parsed.risks, 5).length ? this._limitList(parsed.risks, 5) : cleanedFallback.risks,
-      recommendations: this._limitList(parsed.recommendations, 5).length ? this._limitList(parsed.recommendations, 5) : cleanedFallback.recommendations,
-      dataSnapshot: parsed.dataSnapshot || cleanedFallback.dataSnapshot,
-      confidence: ['high', 'medium', 'low'].includes(String(parsed.confidence || '').toLowerCase())
-        ? String(parsed.confidence).toLowerCase()
+    const sanitized = parsed ? this._sanitizeStructuredOutput(parsed) : null;
+    const report = sanitized ? {
+      title: this._sentenceCase(sanitized.title) || cleanedFallback.title,
+      executiveSummary: this._sentenceCase(sanitized.executiveSummary) || cleanedFallback.executiveSummary,
+      keyFindings: this._limitList(sanitized.keyFindings, 5).length ? this._limitList(sanitized.keyFindings, 5) : cleanedFallback.keyFindings,
+      commercialHighlights: this._limitList(sanitized.commercialHighlights, 5).length ? this._limitList(sanitized.commercialHighlights, 5) : cleanedFallback.commercialHighlights,
+      risks: this._limitList(sanitized.risks, 5).length ? this._limitList(sanitized.risks, 5) : cleanedFallback.risks,
+      recommendations: this._limitList(sanitized.recommendations, 5).length ? this._limitList(sanitized.recommendations, 5) : cleanedFallback.recommendations,
+      dataSnapshot: sanitized.dataSnapshot || cleanedFallback.dataSnapshot,
+      confidence: ['high', 'medium', 'low'].includes(String(sanitized.confidence || '').toLowerCase())
+        ? String(sanitized.confidence).toLowerCase()
         : cleanedFallback.confidence
     } : cleanedFallback;
 
@@ -565,7 +626,7 @@ Focus on practical tribunal support, procedural posture, evidence gaps, deadline
       periodDays,
       scope,
       ...report,
-      rawText
+      rawText: this._cleanText(rawText)
     };
 
     await this._storeReport({
