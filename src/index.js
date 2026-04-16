@@ -168,7 +168,7 @@ function createServer(services) {
     oracleDb, auditTrail, consentService,
     aiOrchestrator, ruleEngine, caService,
     aiConflictScanner, certificateValidator,
-    authService, userService, hearingService
+    authService, userService, hearingService, emailService
   } = services;
 
   // Auth middleware helper
@@ -1147,7 +1147,7 @@ async function startServer() {
     oracleDb, auditTrail, consentService,
     aiOrchestrator, ruleEngine, caService,
     aiConflictScanner, certificateValidator,
-    authService, userService, hearingService
+    authService, userService, hearingService, emailService
   });
 
   const PORT = config.server.port;
