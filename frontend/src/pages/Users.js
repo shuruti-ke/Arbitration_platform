@@ -53,9 +53,9 @@ const generatePassword = () => {
 };
 
 const Users = () => {
-  const { user: currentUser, hasRole } = useAuth();
-  const isAdmin = hasRole('admin');
-  const canManage = hasRole('admin', 'secretariat');
+  const { user: currentUser } = useAuth();
+  const isAdmin = currentUser?.role === 'admin';
+  const canManage = currentUser?.role === 'admin' || currentUser?.role === 'secretariat';
 
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
