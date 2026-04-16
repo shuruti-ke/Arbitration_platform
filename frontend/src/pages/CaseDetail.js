@@ -1,5 +1,5 @@
 // src/pages/CaseDetail.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Container, Typography, Box, Paper, Tabs, Tab, Chip, Grid,
   CircularProgress, Alert, Button, Divider,
@@ -16,7 +16,8 @@ import {
   Send as SendIcon,
   CheckCircle as CheckCircleIcon,
   Cancel as CancelIcon,
-  Gavel as GavelIcon
+  Gavel as GavelIcon,
+  CloudUpload as UploadIcon
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
@@ -56,6 +57,13 @@ const CaseDetail = () => {
   const [submitError, setSubmitError] = useState(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [joiningHearing, setJoiningHearing] = useState(null);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadCategory, setUploadCategory] = useState('Contract / Agreement');
+  const [uploadDescription, setUploadDescription] = useState('');
+  const fileInputRef = useRef(null);
 
   const load = async () => {
     try {
@@ -339,6 +347,59 @@ const CaseDetail = () => {
     }
   };
 
+  const resetUploadDialog = () => {
+    setUploadOpen(false);
+    setUploading(false);
+    setUploadError(null);
+    setUploadFile(null);
+    setUploadCategory('Contract / Agreement');
+    setUploadDescription('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleSelectFile = (event) => {
+    const file = event.target.files?.[0] || null;
+    setUploadFile(file);
+  };
+
+  const handleUploadContract = async () => {
+    if (!uploadFile) {
+      setUploadError(t('Please choose a file to upload.'));
+      return;
+    }
+
+    setUploading(true);
+    setUploadError(null);
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const base64 = String(event.target.result || '').split(',')[1];
+        await apiService.uploadDocument({
+          documentName: uploadFile.name,
+          caseId,
+          category: uploadCategory || 'Contract / Agreement',
+          description: uploadDescription || 'Uploaded from case detail',
+          accessLevel: 'case',
+          content: base64,
+          mimeType: uploadFile.type
+        });
+        await load();
+        resetUploadDialog();
+      } catch (err) {
+        setUploadError(err.response?.data?.error || t('Upload failed.'));
+        setUploading(false);
+      }
+    };
+    reader.onerror = () => {
+      setUploadError(t('Could not read the selected file.'));
+      setUploading(false);
+    };
+    reader.readAsDataURL(uploadFile);
+  };
+
   return (
     <Container maxWidth="lg" sx={{ mt: 3, mb: 5 }}>
       {/* Header */}
@@ -489,6 +550,23 @@ const CaseDetail = () => {
                 <Alert severity="warning" sx={{ mt: 2 }}>
                   {t('Complete all checklist items before submitting to the Registrar. Edit the case to fill in missing information.')}
                 </Alert>
+              )}
+              {!documents.length && (
+                <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    startIcon={<UploadIcon />}
+                    onClick={() => setUploadOpen(true)}
+                  >
+                    {t('Upload contract / arbitration clause')}
+                  </Button>
+                  <Button
+                    variant="text"
+                    onClick={() => navigate('/documents')}
+                  >
+                    {t('Open Document Library')}
+                  </Button>
+                </Box>
               )}
               {allChecksPass && submissionStatus === 'draft' && (
                 <Alert severity="success" sx={{ mt: 2 }}>
@@ -865,6 +943,67 @@ const CaseDetail = () => {
               {submitting ? t('Submitting...') : t('Confirm Submission')}
             </Button>
           )}
+        </DialogActions>
+      </Dialog>
+
+      {/* Upload contract / arbitration clause dialog */}
+      <Dialog open={uploadOpen} onClose={() => { if (!uploading) resetUploadDialog(); }} maxWidth="sm" fullWidth>
+        <DialogTitle>{t('Upload contract / arbitration clause')}</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            {uploadError && <Alert severity="error">{uploadError}</Alert>}
+            <Box
+              sx={{
+                border: '2px dashed',
+                borderColor: 'divider',
+                borderRadius: 2,
+                p: 3,
+                textAlign: 'center',
+                cursor: 'pointer',
+                '&:hover': { borderColor: 'primary.main' }
+              }}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+                onChange={handleSelectFile}
+                accept=".pdf,.doc,.docx,.txt,.md,.rtf,.jpg,.jpeg,.png"
+              />
+              <UploadIcon sx={{ fontSize: 40, color: 'text.secondary' }} />
+              <Typography sx={{ mt: 1 }}>
+                {uploadFile ? uploadFile.name : t('Click to choose a contract, clause, or supporting file')}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {t('This file will be attached to this case and used by the AI as case evidence.')}
+              </Typography>
+            </Box>
+            <TextField
+              label={t('Category')}
+              fullWidth
+              value={uploadCategory}
+              onChange={(e) => setUploadCategory(e.target.value)}
+            />
+            <TextField
+              label={t('Description (optional)')}
+              fullWidth
+              multiline
+              rows={2}
+              value={uploadDescription}
+              onChange={(e) => setUploadDescription(e.target.value)}
+              placeholder={t('e.g. Signed arbitration clause and contract bundle')}
+            />
+            {uploading && <CircularProgress size={24} />}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { if (!uploading) resetUploadDialog(); }}>
+            {t('Cancel')}
+          </Button>
+          <Button variant="contained" onClick={handleUploadContract} disabled={uploading || !uploadFile}>
+            {uploading ? t('Uploading...') : t('Upload')}
+          </Button>
         </DialogActions>
       </Dialog>
     </Container>
