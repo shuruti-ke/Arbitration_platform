@@ -127,6 +127,7 @@ const OracleDatabaseService = require('./services/oracle-database-service');
 const { UserService, ROLES } = require('./services/user-service');
 const AuthService = require('./services/auth-service');
 const HearingService = require('./services/hearing-service');
+const EmailService = require('./services/email-service');
 
 // Models
 const ConflictGraph = require('./models/conflict-graph');
@@ -366,6 +367,13 @@ function createServer(services) {
         }
         const newUser = await userService.createUser(body);
         await auditTrail.logEvent({ type: 'user_register', userId: user.userId, action: 'register', details: { email: body.email, role: body.role } });
+        // Send welcome email with credentials
+        emailService.sendWelcomeEmail({
+          toEmail: body.email,
+          firstName: body.firstName || '',
+          password: body.password,
+          role: body.role
+        }).catch(err => console.error('Welcome email error:', err.message));
         return sendJSON(res, 201, { success: true, user: newUser });
       }
 
@@ -1098,6 +1106,7 @@ async function startServer() {
   const userService = new UserService(oracleDb);
   const authService = new AuthService(userService, auditTrail);
   const hearingService = new HearingService(oracleDb);
+  const emailService = new EmailService();
 
   // 3. Initialize remaining services
   const aiOrchestrator = new AIOrchestrator();
