@@ -79,11 +79,12 @@ const config = {
     }
   },
 
-  // Jitsi configuration (self-hosted)
+  // JaaS (Jitsi as a Service) configuration
   jitsi: {
-    baseUrl: process.env.JITSI_BASE_URL || 'https://meet.jit.si', // replace with self-hosted URL
-    appId: process.env.JITSI_APP_ID || '',
-    apiKey: process.env.JITSI_API_KEY || ''
+    baseUrl: process.env.JITSI_BASE_URL || 'https://8x8.vc',
+    appId: process.env.JAAS_APP_ID || '',
+    apiKeyId: process.env.JAAS_API_KEY_ID || '',
+    privateKey: process.env.JAAS_PRIVATE_KEY || ''
   }
 };
 

@@ -208,6 +208,52 @@ class HearingService {
   getJitsiRoomUrl(jitsiBaseUrl, jitsiRoom) {
     return `${jitsiBaseUrl}/${jitsiRoom}`;
   }
+
+  generateJaaSJwt({ appId, apiKeyId, privateKey, user, room, isModerator = false }) {
+    if (!appId || !apiKeyId || !privateKey) return null;
+    try {
+      const jwt = require('jsonwebtoken');
+      const now = Math.floor(Date.now() / 1000);
+      const payload = {
+        iss: 'chat',
+        iat: now,
+        exp: now + 7200,
+        nbf: now - 10,
+        aud: 'jitsi',
+        sub: appId,
+        room: '*',
+        context: {
+          user: {
+            id: user.userId,
+            name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
+            email: user.email,
+            moderator: isModerator
+          },
+          features: {
+            recording: isModerator,
+            livestreaming: false,
+            transcription: false,
+            'outbound-call': false
+          }
+        }
+      };
+      // privateKey may be base64-encoded or PEM
+      let key = privateKey;
+      if (!key.includes('-----BEGIN')) {
+        key = Buffer.from(key, 'base64').toString('utf8');
+      }
+      return jwt.sign(payload, key, { algorithm: 'RS256', header: { kid: apiKeyId, alg: 'RS256' } });
+    } catch (err) {
+      console.error('JaaS JWT error:', err.message);
+      return null;
+    }
+  }
+
+  getJaaSRoomUrl({ appId, apiKeyId, privateKey, jitsiRoom, user, isModerator }) {
+    const token = this.generateJaaSJwt({ appId, apiKeyId, privateKey, user, room: jitsiRoom, isModerator });
+    const baseUrl = `https://8x8.vc/${appId}/${jitsiRoom}`;
+    return token ? `${baseUrl}?jwt=${token}` : baseUrl;
+  }
 }
 
 module.exports = HearingService;

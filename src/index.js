@@ -556,7 +556,22 @@ function createServer(services) {
         if (!hearing) return sendJSON(res, 404, { error: 'Hearing not found' });
         await hearingService.addParticipant(hearingId, user.userId, user.role);
         const jitsiRoom = hearing.jitsiRoom || hearing.JITSI_ROOM;
-        const jitsiUrl = hearingService.getJitsiRoomUrl(config.jitsi.baseUrl, jitsiRoom);
+        const isModerator = ['admin', 'secretariat', 'arbitrator'].includes(user.role);
+        let jitsiUrl;
+        if (config.jitsi.appId && config.jitsi.apiKeyId && config.jitsi.privateKey) {
+          // Use JaaS authenticated URL with platform branding
+          const userProfile = await userService.findById(user.userId);
+          jitsiUrl = hearingService.getJaaSRoomUrl({
+            appId: config.jitsi.appId,
+            apiKeyId: config.jitsi.apiKeyId,
+            privateKey: config.jitsi.privateKey,
+            jitsiRoom,
+            user: userProfile || user,
+            isModerator
+          });
+        } else {
+          jitsiUrl = hearingService.getJitsiRoomUrl(config.jitsi.baseUrl, jitsiRoom);
+        }
         await auditTrail.logEvent({ type: 'hearing_join', userId: user.userId, action: 'join', details: { hearingId } });
         return sendJSON(res, 200, { success: true, jitsiUrl, jitsiRoom });
       }
