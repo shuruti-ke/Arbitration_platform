@@ -62,6 +62,165 @@ class IntelligenceService {
     return String(value).slice(0, limit);
   }
 
+  _cleanText(value) {
+    return String(value || '')
+      .replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/\s([,.;:!?])/g, '$1')
+      .trim();
+  }
+
+  _limitList(values, limit = 5) {
+    return (Array.isArray(values) ? values : [])
+      .map((item) => this._cleanText(item))
+      .filter(Boolean)
+      .slice(0, limit);
+  }
+
+  _countRows(rows = [], key = 'status') {
+    return (rows || []).map((row) => ({
+      [key]: this._pick(row, key, key.toUpperCase()),
+      count: Number(this._pick(row, 'COUNT', 'count') || 0)
+    }));
+  }
+
+  _buildAdminPromptContext(context) {
+    return {
+      totals: {
+        caseStatuses: this._countRows(context.caseStatus || [], 'status'),
+        caseStages: this._countRows(context.caseStage || [], 'case_stage'),
+        hearingStatuses: this._countRows(context.hearingStatus || [], 'status'),
+        documentAccess: this._countRows(context.documentAccess || [], 'access_level'),
+        roles: this._countRows(context.roles || [], 'role'),
+        overdueMilestones: Number(context.overdueMilestones || 0)
+      },
+      highlights: {
+        recentCases: (context.recentCases || []).slice(0, 5).map((row) => ({
+          caseId: this._pick(row, 'CASE_ID', 'case_id'),
+          title: this._pick(row, 'TITLE', 'title'),
+          status: this._pick(row, 'STATUS', 'status'),
+          caseStage: this._pick(row, 'CASE_STAGE', 'case_stage')
+        })),
+        recentHearings: (context.recentHearings || []).slice(0, 5).map((row) => ({
+          hearingId: this._pick(row, 'HEARING_ID', 'hearing_id'),
+          title: this._pick(row, 'TITLE', 'title'),
+          status: this._pick(row, 'STATUS', 'status'),
+          type: this._pick(row, 'TYPE', 'type')
+        }))
+      },
+      system: {
+        compliance: context.compliance
+          ? {
+              status: this._pick(context.compliance, 'status', 'STATUS'),
+              score: this._pick(context.compliance, 'score', 'SCORE'),
+              notes: this._pick(context.compliance, 'notes', 'NOTES')
+            }
+          : null,
+        health: context.health
+          ? {
+              status: this._pick(context.health, 'status', 'STATUS'),
+              uptime: this._pick(context.health, 'uptime', 'UPTIME')
+            }
+          : null,
+        risk: context.risk
+          ? {
+              level: this._pick(context.risk, 'level', 'LEVEL'),
+              summary: this._pick(context.risk, 'summary', 'SUMMARY')
+            }
+          : null
+      }
+    };
+  }
+
+  _buildAdminFallbackReport({ context, languageName, periodDays, scope }) {
+    const caseStatuses = this._countRows(context.caseStatus || [], 'status');
+    const hearingStatuses = this._countRows(context.hearingStatus || [], 'status');
+    const documentAccess = this._countRows(context.documentAccess || [], 'access_level');
+    const roles = this._countRows(context.roles || [], 'role');
+    const topCaseStatus = caseStatuses[0]?.status || 'active';
+    const topHearingStatus = hearingStatuses[0]?.status || 'scheduled';
+    const activeCases = caseStatuses.reduce((sum, row) => sum + (String(row.status || '').toLowerCase() === 'active' ? row.count : 0), 0);
+    const pendingCases = caseStatuses.reduce((sum, row) => sum + (String(row.status || '').toLowerCase() === 'pending' ? row.count : 0), 0);
+    const completedCases = caseStatuses.reduce((sum, row) => sum + (String(row.status || '').toLowerCase() === 'completed' ? row.count : 0), 0);
+    const overdueMilestones = Number(context.overdueMilestones || 0);
+
+    return {
+      title: 'Platform Intelligence Report',
+      executiveSummary: `Over the last ${periodDays} days, the ${scope} view shows ${activeCases} active cases, ${pendingCases} pending matters, and ${completedCases} completed matters. The platform remains operational, with ${hearingStatuses.reduce((sum, row) => sum + row.count, 0)} hearings tracked, ${documentAccess.reduce((sum, row) => sum + row.count, 0)} documents available, and ${roles.reduce((sum, row) => sum + row.count, 0)} registered users. The current portfolio is led by ${topCaseStatus} cases and ${topHearingStatus} hearings, while overdue milestones remain at ${overdueMilestones}.`,
+      keyFindings: [
+        `Case activity is concentrated in ${topCaseStatus} matters.`,
+        `The hearing pipeline is led by ${topHearingStatus} items.`,
+        `Document access and role coverage remain stable across the platform.`
+      ],
+      commercialHighlights: [
+        'The system produces clear operational metrics suitable for premium reporting.',
+        'Administrative dashboards support export-ready client briefs and management packs.'
+      ],
+      risks: overdueMilestones > 0
+        ? [
+            `${overdueMilestones} milestone${overdueMilestones === 1 ? '' : 's'} are overdue and should be reviewed promptly.`
+          ]
+        : ['No overdue milestones are currently flagged in the platform snapshot.'],
+      recommendations: [
+        'Package the report as a concise executive brief with charts and trend commentary.',
+        'Track case aging, hearing conversion, and document completeness to support premium analytics.'
+      ],
+      dataSnapshot: {
+        cases: caseStatuses,
+        hearings: hearingStatuses,
+        documents: documentAccess,
+        roles,
+        overdueMilestones
+      },
+      confidence: 'medium'
+    };
+  }
+
+  _buildAdminReportPrompt({ context, languageName, periodDays, scope }) {
+    const promptContext = this._buildAdminPromptContext(context);
+    return `
+You are a senior arbitration platform analyst writing a sale-ready executive report for administrators and premium clients.
+Respond in ${languageName}.
+
+Output requirements:
+- Return valid JSON only.
+- No markdown, no commentary, no code fences, no extra text.
+- Use polished business language that is concise, clear, and professional.
+- Keep the executiveSummary to 2 short paragraphs maximum.
+- Keep each list to 3 to 5 items.
+- Do not invent numbers. Use only the supplied data.
+- Keep the tone factual, commercial, and presentation-ready.
+- Prefer plain ASCII punctuation and avoid decorative characters.
+
+Return this structure exactly:
+{
+  "title": "string",
+  "executiveSummary": "string",
+  "keyFindings": ["string"],
+  "commercialHighlights": ["string"],
+  "risks": ["string"],
+  "recommendations": ["string"],
+  "dataSnapshot": {
+    "cases": [{"status":"string","count":number}],
+    "hearings": [{"status":"string","count":number}],
+    "documents": [{"access_level":"string","count":number}],
+    "roles": [{"role":"string","count":number}],
+    "overdueMilestones": number
+  },
+  "confidence": "high|medium|low"
+}
+
+Platform context:
+${JSON.stringify(promptContext, null, 2)}
+
+Scope:
+${scope}
+
+Period:
+Last ${periodDays} days
+`.trim();
+  }
+
   async _getCaseContext(caseId) {
     const caseResult = await this.oracleDb.executeQuery('SELECT * FROM cases WHERE case_id = :caseId', { caseId });
     if (!caseResult.rows || caseResult.rows.length === 0) {
@@ -380,66 +539,32 @@ Focus on practical tribunal support, procedural posture, evidence gaps, deadline
   async generateAdminReport({ user, language = 'en', periodDays = 30, scope = 'platform' }) {
     const context = await this._getAdminContext();
     const languageName = this._languageName(language);
-    const prompt = `
-You are a premium arbitration platform analyst.
-Respond in ${languageName}.
-
-Return valid JSON only with this structure:
-{
-  "title": "string",
-  "executiveSummary": "string",
-  "keyFindings": ["string"],
-  "commercialHighlights": ["string"],
-  "risks": ["string"],
-  "recommendations": ["string"],
-  "dataSnapshot": {
-    "cases": ["status", "count"],
-    "hearings": ["status", "count"],
-    "documents": ["access_level", "count"],
-    "roles": ["role", "count"],
-    "overdueMilestones": number
-  },
-  "confidence": "high|medium|low"
-}
-
-Use this platform context:
-${JSON.stringify(context, null, 2)}
-
-Scope:
-${scope}
-
-Period:
-Last ${periodDays} days
-
-Write as a saleable report for administrators, institutions, and premium clients.
-`;
+    const prompt = this._buildAdminReportPrompt({ context, languageName, periodDays, scope });
 
     const rawText = await this.callAI(prompt);
     if (!rawText) return null;
 
-    const parsed = safeParseJson(rawText) || {
-      title: 'Platform Intelligence Report',
-      executiveSummary: rawText,
-      keyFindings: [],
-      commercialHighlights: [],
-      risks: [],
-      recommendations: [],
-      dataSnapshot: {
-        cases: context.caseStatus,
-        hearings: context.hearingStatus,
-        documents: context.documentAccess,
-        roles: context.roles,
-        overdueMilestones: context.overdueMilestones
-      },
-      confidence: 'medium'
-    };
+    const parsed = safeParseJson(rawText);
+    const cleanedFallback = this._buildAdminFallbackReport({ context, languageName, periodDays, scope });
+    const report = parsed ? {
+      title: this._cleanText(parsed.title) || cleanedFallback.title,
+      executiveSummary: this._cleanText(parsed.executiveSummary) || cleanedFallback.executiveSummary,
+      keyFindings: this._limitList(parsed.keyFindings, 5).length ? this._limitList(parsed.keyFindings, 5) : cleanedFallback.keyFindings,
+      commercialHighlights: this._limitList(parsed.commercialHighlights, 5).length ? this._limitList(parsed.commercialHighlights, 5) : cleanedFallback.commercialHighlights,
+      risks: this._limitList(parsed.risks, 5).length ? this._limitList(parsed.risks, 5) : cleanedFallback.risks,
+      recommendations: this._limitList(parsed.recommendations, 5).length ? this._limitList(parsed.recommendations, 5) : cleanedFallback.recommendations,
+      dataSnapshot: parsed.dataSnapshot || cleanedFallback.dataSnapshot,
+      confidence: ['high', 'medium', 'low'].includes(String(parsed.confidence || '').toLowerCase())
+        ? String(parsed.confidence).toLowerCase()
+        : cleanedFallback.confidence
+    } : cleanedFallback;
 
     const response = {
       generatedAt: new Date().toISOString(),
       language,
       periodDays,
       scope,
-      ...parsed,
+      ...report,
       rawText
     };
 
