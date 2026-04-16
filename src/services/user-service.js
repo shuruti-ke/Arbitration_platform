@@ -165,8 +165,17 @@ class UserService {
   }
 
   _safeUser(user) {
-    const { passwordHash, PASSWORD_HASH, ...safe } = user;
-    return safe;
+    // Normalize Oracle uppercase column names to camelCase/lowercase
+    const normalized = {
+      userId:    user.userId    || user.USER_ID,
+      email:     user.email     || user.EMAIL,
+      firstName: user.firstName || user.FIRST_NAME,
+      lastName:  user.lastName  || user.LAST_NAME,
+      role:      user.role      || user.ROLE,
+      isActive:  user.isActive  !== undefined ? user.isActive : user.IS_ACTIVE,
+      createdAt: user.createdAt || user.CREATED_AT,
+    };
+    return normalized;
   }
 }
 
