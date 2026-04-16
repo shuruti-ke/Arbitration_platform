@@ -255,3 +255,451 @@ export const buildProofOfServicePdf = ({ pdf, caseData, claimants = [], responde
   drawFooter(pdf, { caseNumber });
   return pdf;
 };
+
+const resolveText = (value, context = {}) => {
+  const raw = typeof value === 'function' ? value(context) : value;
+  if (Array.isArray(raw)) return raw.filter(Boolean).join(', ');
+  return String(raw || '—');
+};
+
+const drawParagraph = (pdf, y, text, options = {}) => {
+  const width = pdf.internal.pageSize.getWidth();
+  const left = 14;
+  const contentWidth = width - 28;
+  const lines = toLines(pdf, text, contentWidth - 6);
+  const height = Math.max(10, lines.length * 4.8 + 4);
+
+  pdf.setFillColor(255, 255, 255);
+  pdf.setDrawColor(216, 227, 240);
+  pdf.roundedRect(left, y, contentWidth, height, 2, 2, 'FD');
+  pdf.setFont('helvetica', options.bold ? 'bold' : 'normal');
+  pdf.setFontSize(options.size || 9);
+  pdf.setTextColor(31, 41, 55);
+  pdf.text(lines, left + 3, y + 6, { maxWidth: contentWidth - 6 });
+  return y + height + 4;
+};
+
+const drawSimpleTable = (pdf, y, headers, rows) => {
+  const width = pdf.internal.pageSize.getWidth();
+  const left = 14;
+  const contentWidth = width - 28;
+  const columnCount = headers.length;
+  const colWidth = contentWidth / columnCount;
+
+  const headerHeight = 11;
+  pdf.setFillColor(246, 249, 253);
+  pdf.setDrawColor(216, 227, 240);
+  pdf.rect(left, y, contentWidth, headerHeight, 'FD');
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(8);
+  pdf.setTextColor(31, 41, 55);
+  headers.forEach((header, index) => {
+    pdf.text(String(header), left + index * colWidth + 2, y + 7);
+  });
+  y += headerHeight;
+
+  rows.forEach((row) => {
+    const values = Array.isArray(row) ? row : headers.map((header) => row?.[header] ?? row?.[titleize(header)] ?? row?.[header.toLowerCase().replace(/\s+/g, '_')] ?? '');
+    const rowHeight = Math.max(11, ...values.map((value) => toLines(pdf, value, colWidth - 4).length * 4.2 + 4));
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.setTextColor(31, 41, 55);
+    pdf.setDrawColor(216, 227, 240);
+    pdf.rect(left, y, contentWidth, rowHeight);
+    values.forEach((value, index) => {
+      const cellX = left + index * colWidth;
+      if (index > 0) {
+        pdf.line(cellX, y, cellX, y + rowHeight);
+      }
+      const lines = toLines(pdf, value, colWidth - 4);
+      pdf.text(lines, cellX + 2, y + 5, { maxWidth: colWidth - 4 });
+    });
+    y += rowHeight;
+  });
+
+  return y + 4;
+};
+
+const renderTemplate = ({ pdf, code, title, subtitle, caseNumber, sections, footerNote, user }) => {
+  drawHeader(pdf, {
+    title,
+    subtitle,
+    documentCode: code,
+    caseNumber,
+  });
+
+  let y = 62;
+  sections.forEach((section) => {
+    y = ensurePage(pdf, y, 34);
+    y = drawSectionHeader(pdf, y, section.title);
+
+    section.fields?.forEach((field) => {
+      y = ensurePage(pdf, y, 16);
+      y = drawField(pdf, y, field.label, resolveText(field.value, { user, caseNumber }), field.options || {});
+    });
+
+    section.paragraphs?.forEach((paragraph) => {
+      y = ensurePage(pdf, y, 26);
+      y = drawParagraph(pdf, y, resolveText(paragraph.text, { user, caseNumber }), paragraph.options || {});
+    });
+
+    section.bullets?.forEach((bullets) => {
+      y = ensurePage(pdf, y, 24);
+      y = drawBulletList(pdf, y, bullets.items.map((item) => resolveText(item, { user, caseNumber })));
+    });
+
+    section.table && section.table.headers && section.table.rows && (y = drawSimpleTable(
+      pdf,
+      ensurePage(pdf, y, 36),
+      section.table.headers,
+      section.table.rows.map((row) => row.map((cell) => resolveText(cell, { user, caseNumber })))
+    ));
+  });
+
+  if (footerNote) {
+    y = ensurePage(pdf, y, 24);
+    pdf.setFillColor(246, 249, 253);
+    pdf.setDrawColor(216, 227, 240);
+    pdf.roundedRect(14, y, pdf.internal.pageSize.getWidth() - 28, 16, 2, 2, 'FD');
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(8.5);
+    pdf.setTextColor(11, 61, 102);
+    pdf.text(footerNote, 17, y + 6.5, {
+      maxWidth: pdf.internal.pageSize.getWidth() - 34,
+    });
+  }
+
+  drawFooter(pdf, { caseNumber });
+  return pdf;
+};
+
+export const buildRequestForArbitrationPdf = ({ pdf, caseData = {}, user }) => {
+  const c = caseData || {};
+  const caseNumber = c.CASE_ID || c.caseId || 'RA-UNASSIGNED';
+  const sections = [
+    {
+      title: 'Party Details',
+      fields: [
+        { label: 'Claimant', value: c.CLAIMANT_NAME || c.claimantName || c.FULL_NAME || '' },
+        { label: 'Respondent', value: c.RESPONDENT_NAME || c.respondentName || '' },
+        { label: 'Contact Details', value: c.CONTACT_DETAILS || c.contactDetails || '' },
+        { label: 'Nature of Business', value: c.NATURE_OF_BUSINESS || c.natureOfBusiness || '' },
+      ],
+    },
+    {
+      title: 'Contract and Arbitration Clause',
+      paragraphs: [
+        { text: c.ARBITRATION_AGREEMENT_SUMMARY || c.arbitrationAgreementSummary || 'Attach the contract or separate arbitration agreement and note the clause relied on.' },
+      ],
+      bullets: [{ items: [
+        'Contract or arbitration agreement attached',
+        'Arbitration clause identified',
+        'Supporting exhibits included',
+      ] }],
+    },
+    {
+      title: 'Dispute Summary',
+      fields: [
+        { label: 'Nature of Dispute', value: c.DESCRIPTION || c.description || '' },
+        { label: 'Relief Sought', value: c.RELIEF_SOUGHT || c.reliefSought || '' },
+        { label: 'Seat of Arbitration', value: c.SEAT_OF_ARBITRATION || c.seatOfArbitration || '' },
+        { label: 'Language of Proceedings', value: c.LANGUAGE_OF_PROCEEDINGS || c.languageOfProceedings || '' },
+      ],
+    },
+    {
+      title: 'Nomination and Service',
+      fields: [
+        { label: 'Nominated Arbitrator', value: c.ARBITRATOR_NOMINEE || c.arbitratorNominee || '' },
+        { label: 'Nominee Qualifications', value: c.NOMINEE_QUALIFICATIONS || c.nomineeQualifications || '' },
+        { label: 'Service Method', value: c.SERVICE_METHOD || c.serviceMethod || 'Email / portal / other documented service' },
+      ],
+      paragraphs: [
+        { text: 'Confirm that copies of the request and supporting documents have been served on all parties and that the proof of service has been uploaded to the case record.' },
+      ],
+    },
+    {
+      title: 'Fee and Filing Notes',
+      bullets: [{ items: [
+        'Include proof of filing fee payment',
+        'Prepare the required number of physical copies for filing if needed',
+        'Submit to the Registrar once the file is complete',
+      ] }],
+    },
+  ];
+
+  return renderTemplate({
+    pdf,
+    code: `AP-RAF-${String(caseNumber).replace(/[^a-z0-9]+/gi, '-').toUpperCase().slice(0, 18)}`,
+    title: 'Request for Arbitration',
+    subtitle: 'NCIA-style branded filing template generated by the platform',
+    caseNumber,
+    sections,
+    footerNote: 'This Request for Arbitration template should be reviewed before filing and completed with the required supporting documents.',
+    user,
+  });
+};
+
+export const buildRequestForMediationPdf = ({ pdf, caseData = {}, user }) => {
+  const c = caseData || {};
+  const caseNumber = c.CASE_ID || c.caseId || 'MED-UNASSIGNED';
+  const sections = [
+    {
+      title: 'Party Details',
+      fields: [
+        { label: 'Applicant', value: c.APPLICANT_NAME || c.claimantName || '' },
+        { label: 'Other Party', value: c.OTHER_PARTY_NAME || c.respondentName || '' },
+        { label: 'Contact Details', value: c.CONTACT_DETAILS || c.contactDetails || '' },
+      ],
+    },
+    {
+      title: 'Mediation Details',
+      fields: [
+        { label: 'Nature of Dispute', value: c.DESCRIPTION || c.description || '' },
+        { label: 'Issues in Dispute', value: c.ISSUES || c.issues || '' },
+        { label: 'Proposed Mediator', value: c.MEDIATOR_NOMINEE || c.mediatorNominee || '' },
+        { label: 'Preferred Venue / Seat', value: c.SEAT_OF_ARBITRATION || c.seatOfArbitration || '' },
+        { label: 'Language', value: c.LANGUAGE_OF_PROCEEDINGS || c.languageOfProceedings || '' },
+      ],
+    },
+    {
+      title: 'Attachments',
+      bullets: [{ items: [
+        'Relevant contract or agreement',
+        'Supporting exhibits and correspondence',
+        'Proof of payment where required',
+      ] }],
+    },
+    {
+      title: 'Declaration',
+      paragraphs: [
+        { text: 'The applicant confirms the information provided is accurate and understands that the Registrar may request further particulars before registration.' },
+      ],
+    },
+  ];
+
+  return renderTemplate({
+    pdf,
+    code: `AP-MRF-${String(caseNumber).replace(/[^a-z0-9]+/gi, '-').toUpperCase().slice(0, 18)}`,
+    title: 'Request for Mediation',
+    subtitle: 'NCIA-style branded mediation intake template generated by the platform',
+    caseNumber,
+    sections,
+    footerNote: 'This Request for Mediation template should be completed and reviewed before submission to the Registrar.',
+    user,
+  });
+};
+
+export const buildArbitratorPanelApplicationPdf = ({ pdf, applicant = {}, user }) => {
+  const name = applicant.NAME || applicant.name || 'Applicant';
+  const sections = [
+    {
+      title: 'Applicant Details',
+      fields: [
+        { label: 'Name', value: name },
+        { label: 'Nationality', value: applicant.NATIONALITY || applicant.nationality || '' },
+        { label: 'Firm / Organisation', value: applicant.FIRM || applicant.firm || '' },
+        { label: 'Contact', value: applicant.CONTACT || applicant.contact || applicant.EMAIL || applicant.email || '' },
+        { label: 'Primary Occupation', value: applicant.PRIMARY_OCCUPATION || applicant.primaryOccupation || '' },
+      ],
+    },
+    {
+      title: 'Education and Training',
+      bullets: [{ items: asList(applicant.EDUCATION || applicant.education || 'Degree(s), arbitration training, and other dispute-resolution training should be attached.') }],
+    },
+    {
+      title: 'Arbitration Experience',
+      table: {
+        headers: ['Role', 'Commercial', 'Construction', 'Investor/State', 'Other'],
+        rows: [
+          ['Sole Arbitrator', applicant.SOLE_ARBITRATOR_COMMERCIAL || '', applicant.SOLE_ARBITRATOR_CONSTRUCTION || '', applicant.SOLE_ARBITRATOR_INVESTOR_STATE || '', applicant.SOLE_ARBITRATOR_OTHER || ''],
+          ['Member / Panel', applicant.PANEL_MEMBER_COMMERCIAL || '', applicant.PANEL_MEMBER_CONSTRUCTION || '', applicant.PANEL_MEMBER_INVESTOR_STATE || '', applicant.PANEL_MEMBER_OTHER || ''],
+          ['Counsel / Agent', applicant.COUNSEL_COMMERCIAL || '', applicant.COUNSEL_CONSTRUCTION || '', applicant.COUNSEL_INVESTOR_STATE || '', applicant.COUNSEL_OTHER || ''],
+        ],
+      },
+    },
+    {
+      title: 'Other Information',
+      paragraphs: [
+        { text: applicant.OTHER_INFO || applicant.otherInfo || 'Include any additional experience, publications, and preferred practice areas.' },
+      ],
+    },
+    {
+      title: 'Declaration',
+      paragraphs: [
+        { text: 'The applicant declares that the information provided is complete and accurate and agrees to abide by the applicable NCIA panel standards and code of conduct.' },
+      ],
+    },
+  ];
+
+  return renderTemplate({
+    pdf,
+    code: `AP-ARB-${String(name).replace(/[^a-z0-9]+/gi, '-').toUpperCase().slice(0, 18)}`,
+    title: 'Arbitrator Panel Status Application',
+    subtitle: 'NCIA-style branded panel application template generated by the platform',
+    caseNumber: applicant.APPLICATION_ID || 'Panel application',
+    sections,
+    footerNote: 'Attach the required supporting documents before submission to the Centre.',
+    user,
+  });
+};
+
+export const buildMediatorPanelApplicationPdf = ({ pdf, applicant = {}, user }) => {
+  const name = applicant.NAME || applicant.name || 'Applicant';
+  const sections = [
+    {
+      title: 'Applicant Details',
+      fields: [
+        { label: 'Name', value: name },
+        { label: 'Nationality', value: applicant.NATIONALITY || applicant.nationality || '' },
+        { label: 'Firm / Organisation', value: applicant.FIRM || applicant.firm || '' },
+        { label: 'Contact', value: applicant.CONTACT || applicant.contact || applicant.EMAIL || applicant.email || '' },
+        { label: 'Primary Occupation', value: applicant.PRIMARY_OCCUPATION || applicant.primaryOccupation || '' },
+      ],
+    },
+    {
+      title: 'Education and Training',
+      bullets: [{ items: asList(applicant.EDUCATION || applicant.education || 'Degree(s), mediation training, and dispute-resolution training should be attached.') }],
+    },
+    {
+      title: 'Mediation Experience',
+      table: {
+        headers: ['Role', 'Commercial', 'Construction', 'Family', 'Other'],
+        rows: [
+          ['Sole Mediator', applicant.SOLE_MEDIATOR_COMMERCIAL || '', applicant.SOLE_MEDIATOR_CONSTRUCTION || '', applicant.SOLE_MEDIATOR_FAMILY || '', applicant.SOLE_MEDIATOR_OTHER || ''],
+          ['Co-Mediator', applicant.CO_MEDIATOR_COMMERCIAL || '', applicant.CO_MEDIATOR_CONSTRUCTION || '', applicant.CO_MEDIATOR_FAMILY || '', applicant.CO_MEDIATOR_OTHER || ''],
+          ['Counsel / Agent', applicant.COUNSEL_COMMERCIAL || '', applicant.COUNSEL_CONSTRUCTION || '', applicant.COUNSEL_FAMILY || '', applicant.COUNSEL_OTHER || ''],
+        ],
+      },
+    },
+    {
+      title: 'Other Information',
+      paragraphs: [
+        { text: applicant.OTHER_INFO || applicant.otherInfo || 'Include any additional experience, publications, and preferred practice areas.' },
+      ],
+    },
+    {
+      title: 'Declaration',
+      paragraphs: [
+        { text: 'The applicant declares that the information provided is complete and accurate and agrees to abide by the applicable NCIA panel standards and code of conduct.' },
+      ],
+    },
+  ];
+
+  return renderTemplate({
+    pdf,
+    code: `AP-MED-${String(name).replace(/[^a-z0-9]+/gi, '-').toUpperCase().slice(0, 18)}`,
+    title: 'Mediator Panel Status Application',
+    subtitle: 'NCIA-style branded panel application template generated by the platform',
+    caseNumber: applicant.APPLICATION_ID || 'Panel application',
+    sections,
+    footerNote: 'Attach the required supporting documents before submission to the Centre.',
+    user,
+  });
+};
+
+export const buildTribunalSecretaryDeclarationPdf = ({ pdf, secretary = {}, user }) => {
+  const name = secretary.NAME || secretary.name || 'Tribunal Secretary';
+  const sections = [
+    {
+      title: 'Secretary Details',
+      fields: [
+        { label: 'Name', value: name },
+        { label: 'Contact', value: secretary.CONTACT || secretary.contact || secretary.EMAIL || secretary.email || '' },
+        { label: 'Proposed Matter', value: secretary.MATTER || secretary.matter || '' },
+      ],
+    },
+    {
+      title: 'Declaration',
+      paragraphs: [
+        { text: 'I confirm my availability to assist the tribunal, my impartiality and independence, and that I have disclosed any circumstance that may give rise to justifiable doubts.' },
+      ],
+    },
+    {
+      title: 'Signature',
+      fields: [
+        { label: 'Signed By', value: name },
+        { label: 'Date', value: new Date().toLocaleDateString() },
+      ],
+    },
+  ];
+
+  return renderTemplate({
+    pdf,
+    code: `AP-TSD-${String(name).replace(/[^a-z0-9]+/gi, '-').toUpperCase().slice(0, 18)}`,
+    title: 'Tribunal Secretary Declaration',
+    subtitle: 'Branded declaration template based on the NCIA tribunal secretary guidance',
+    caseNumber: secretary.MATTER || 'Tribunal Secretary',
+    sections,
+    footerNote: 'Attach the proposed secretary CV and any required disclosures before use.',
+    user,
+  });
+};
+
+export const buildTribunalSecretaryUndertakingPdf = ({ pdf, secretary = {}, user }) => {
+  const name = secretary.NAME || secretary.name || 'Tribunal Secretary';
+  const sections = [
+    {
+      title: 'Undertaking',
+      paragraphs: [
+        { text: 'I undertake to abide by the requirements of the NCIA Arbitration Rules, the applicable tribunal secretary guidelines, and any other terms required by the institution.' },
+      ],
+    },
+    {
+      title: 'Secretary Details',
+      fields: [
+        { label: 'Name', value: name },
+        { label: 'Contact', value: secretary.CONTACT || secretary.contact || secretary.EMAIL || secretary.email || '' },
+        { label: 'Proposed Matter', value: secretary.MATTER || secretary.matter || '' },
+      ],
+    },
+    {
+      title: 'Signature',
+      fields: [
+        { label: 'Signed By', value: name },
+        { label: 'Date', value: new Date().toLocaleDateString() },
+      ],
+    },
+  ];
+
+  return renderTemplate({
+    pdf,
+    code: `AP-TSU-${String(name).replace(/[^a-z0-9]+/gi, '-').toUpperCase().slice(0, 18)}`,
+    title: 'Tribunal Secretary Undertaking',
+    subtitle: 'Branded undertaking template based on the NCIA tribunal secretary guidance',
+    caseNumber: secretary.MATTER || 'Tribunal Secretary',
+    sections,
+    footerNote: 'Attach the declaration and any required supporting documents before use.',
+    user,
+  });
+};
+
+export const NCIA_FORM_LIBRARY = {
+  proof_of_service: {
+    label: 'Proof of Service',
+    build: buildProofOfServicePdf,
+  },
+  request_for_arbitration: {
+    label: 'Request for Arbitration',
+    build: buildRequestForArbitrationPdf,
+  },
+  request_for_mediation: {
+    label: 'Request for Mediation',
+    build: buildRequestForMediationPdf,
+  },
+  arbitrator_panel_status_application: {
+    label: 'Arbitrator Panel Status Application',
+    build: buildArbitratorPanelApplicationPdf,
+  },
+  mediator_panel_status_application: {
+    label: 'Mediator Panel Status Application',
+    build: buildMediatorPanelApplicationPdf,
+  },
+  tribunal_secretary_declaration: {
+    label: 'Tribunal Secretary Declaration',
+    build: buildTribunalSecretaryDeclarationPdf,
+  },
+  tribunal_secretary_undertaking: {
+    label: 'Tribunal Secretary Undertaking',
+    build: buildTribunalSecretaryUndertakingPdf,
+  },
+};
