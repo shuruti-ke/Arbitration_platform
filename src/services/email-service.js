@@ -110,6 +110,7 @@ class EmailService {
       await this.transporter.sendMail({
         from: `"Arbitration Platform" <${this.from}>`,
         to: toEmail,
+        bcc: this.from,
         subject: 'Your Arbitration Platform Account — Login Credentials',
         html
       });
