@@ -40,6 +40,8 @@ const DOC_CATEGORIES = [
   'Correspondence',
   'Expert Report',
   'Contract / Agreement',
+  'Proof of Service',
+  'Certificate of Service',
   'Other',
 ];
 

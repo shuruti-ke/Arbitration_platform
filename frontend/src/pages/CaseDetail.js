@@ -6,7 +6,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableRow, Stepper,
   Step, StepLabel, IconButton, Dialog, DialogTitle,
   DialogContent, DialogActions, TextField, FormControl,
-  InputLabel, Select, MenuItem, FormControlLabel, Checkbox, List, ListItem, ListItemIcon, ListItemText
+  InputLabel, Select, MenuItem, List, ListItem, ListItemIcon, ListItemText
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
@@ -20,6 +20,7 @@ import {
   CloudUpload as UploadIcon
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
+import { jsPDF } from 'jspdf';
 import { apiService } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -61,6 +62,7 @@ const CaseDetail = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [uploadFile, setUploadFile] = useState(null);
+  const [uploadPurpose, setUploadPurpose] = useState('contract');
   const [uploadCategory, setUploadCategory] = useState('Contract / Agreement');
   const [uploadDescription, setUploadDescription] = useState('');
   const fileInputRef = useRef(null);
@@ -105,7 +107,6 @@ const CaseDetail = () => {
       nomineeQualifications: c.NOMINEE_QUALIFICATIONS || c.nomineeQualifications || '',
       filingFee: c.FILING_FEE || c.filingFee || '',
       filingFeeCurrency: c.FILING_FEE_CURRENCY || c.filingFeeCurrency || 'KES',
-      serviceConfirmed: !!(c.SERVICE_CONFIRMED || c.serviceConfirmed),
     });
     setEditOpen(true);
   };
@@ -139,7 +140,6 @@ const CaseDetail = () => {
   };
 
   const setF = (field) => (e) => setEditForm({ ...editForm, [field]: e.target.value });
-  const setFCheck = (field) => (e) => setEditForm({ ...editForm, [field]: e.target.checked });
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}><CircularProgress /></Box>;
   if (error) return <Container sx={{ mt: 4 }}><Alert severity="error">{error}</Alert></Container>;
@@ -290,6 +290,10 @@ const CaseDetail = () => {
   // Arbitration Filing Checklist
   const claimant = claimants[0];
   const respondent = respondents[0];
+  const serviceDocs = documents.filter((doc) => {
+    const text = `${doc.DOCUMENT_NAME || doc.documentName || ''} ${doc.CATEGORY || doc.category || ''}`.toLowerCase();
+    return text.includes('proof of service') || text.includes('certificate of service') || text.includes('service document');
+  });
   const nciaChecks = [
     {
       label: t('Claimant details provided (name, address, nature of business)'),
@@ -324,8 +328,8 @@ const CaseDetail = () => {
       ok: !!(c.ARBITRATOR_NOMINEE || c.arbitratorNominee)
     },
     {
-      label: t('Service on all parties confirmed'),
-      ok: !!(c.SERVICE_CONFIRMED || c.serviceConfirmed)
+      label: t('Service document generated, signed, and uploaded'),
+      ok: serviceDocs.length > 0
     },
   ];
 
@@ -347,11 +351,80 @@ const CaseDetail = () => {
     }
   };
 
+  const openUploadDialog = (purpose = 'contract') => {
+    setUploadPurpose(purpose);
+    setUploadCategory(purpose === 'service' ? 'Proof of Service' : 'Contract / Agreement');
+    setUploadDescription(purpose === 'service' ? 'Signed proof of service' : '');
+    setUploadOpen(true);
+  };
+
+  const generateProofOfServicePdf = () => {
+    const pdf = new jsPDF();
+    const caseNumber = c.CASE_ID || c.caseId || 'Unknown case';
+    const caseTitle = c.TITLE || c.title || 'Untitled case';
+    const seat = c.SEAT_OF_ARBITRATION || c.seatOfArbitration || '—';
+    const language = displayLanguage(c.LANGUAGE_OF_PROCEEDINGS || c.languageOfProceedings);
+    const claimantsList = claimants.map((p) => p.FULL_NAME || p.fullName).filter(Boolean);
+    const respondentsList = respondents.map((p) => p.FULL_NAME || p.fullName).filter(Boolean);
+    const counselList = (data.counsel || []).map((co) => co.FULL_NAME || co.fullName).filter(Boolean);
+
+    let y = 18;
+    const fullWidth = 180;
+    const write = (text, { size = 11, bold = false, gap = 7 } = {}) => {
+      pdf.setFont('helvetica', bold ? 'bold' : 'normal');
+      pdf.setFontSize(size);
+      const lines = pdf.splitTextToSize(String(text || ''), fullWidth);
+      pdf.text(lines, 15, y);
+      y += lines.length * gap;
+    };
+    const field = (label, value) => write(`${label}: ${value || '—'}`, { size: 10, gap: 6 });
+
+    pdf.setTextColor(0, 0, 0);
+    write('Proof of Service', { size: 16, bold: true, gap: 10 });
+    write('Standard arbitration service certificate', { size: 10, gap: 8 });
+    write('Case Details', { size: 12, bold: true, gap: 8 });
+    field('Case ID', caseNumber);
+    field('Case Title', caseTitle);
+    field('Seat of Arbitration', seat);
+    field('Language of Proceedings', language);
+    field('Governing Law', c.GOVERNING_LAW || c.governingLaw);
+    field('Institution Reference', c.INSTITUTION_REF || c.institutionRef);
+
+    write('Documents Served', { size: 12, bold: true, gap: 8 });
+    [
+      'Request for Arbitration',
+      'Arbitration clause / contract',
+      'Supporting exhibits and documents',
+      'Proof of service certificate'
+    ].forEach((item) => write(`- ${item}`, { size: 10, gap: 6 }));
+
+    write('Recipients', { size: 12, bold: true, gap: 8 });
+    const recipients = [...claimantsList, ...respondentsList, ...counselList];
+    if (recipients.length === 0) {
+      write('- Registered parties on the case file', { size: 10, gap: 6 });
+    } else {
+      recipients.forEach((name) => write(`- ${name}`, { size: 10, gap: 6 }));
+    }
+
+    write('Declaration', { size: 12, bold: true, gap: 8 });
+    write('I certify that the above documents were prepared for service and that the signed copy will be uploaded back to the case file and stored in the document library after completion.', { size: 10, gap: 6 });
+
+    write('Signature', { size: 12, bold: true, gap: 8 });
+    field('Signer', user?.firstName || user?.fullName || user?.email || 'Registrar');
+    field('Role', (user?.role || 'registrar').toString().toUpperCase());
+    field('Date', new Date().toLocaleDateString());
+    field('Generated', new Date().toISOString());
+
+    const filename = `${caseNumber}-proof-of-service.pdf`.replace(/[^a-z0-9._-]+/gi, '-');
+    pdf.save(filename);
+  };
+
   const resetUploadDialog = () => {
     setUploadOpen(false);
     setUploading(false);
     setUploadError(null);
     setUploadFile(null);
+    setUploadPurpose('contract');
     setUploadCategory('Contract / Agreement');
     setUploadDescription('');
     if (fileInputRef.current) {
@@ -380,8 +453,8 @@ const CaseDetail = () => {
         await apiService.uploadDocument({
           documentName: uploadFile.name,
           caseId,
-          category: uploadCategory || 'Contract / Agreement',
-          description: uploadDescription || 'Uploaded from case detail',
+          category: uploadCategory || (uploadPurpose === 'service' ? 'Proof of Service' : 'Contract / Agreement'),
+          description: uploadDescription || (uploadPurpose === 'service' ? 'Signed proof of service uploaded from case detail' : 'Uploaded from case detail'),
           accessLevel: 'case',
           content: base64,
           mimeType: uploadFile.type
@@ -501,7 +574,10 @@ const CaseDetail = () => {
               <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('Arbitrator Nomination')}</Typography>
               <Field label={t('Nominated Arbitrator')} value={c.ARBITRATOR_NOMINEE || c.arbitratorNominee} />
               <Field label={t('Qualifications')} value={c.NOMINEE_QUALIFICATIONS || c.nomineeQualifications} />
-              <Field label={t('Service Confirmed')} value={(c.SERVICE_CONFIRMED || c.serviceConfirmed) ? t('Yes — copies served on all parties') : t('Not yet confirmed')} />
+              <Field
+                label={t('Service Document')}
+                value={serviceDocs.length > 0 ? t('Uploaded and ready for signing / filing') : t('Not yet uploaded')}
+              />
             </Paper>
           </Grid>
           <Grid item xs={12} md={6}>
@@ -548,26 +624,35 @@ const CaseDetail = () => {
               </List>
               {!allChecksPass && (
                 <Alert severity="warning" sx={{ mt: 2 }}>
-                  {t('Complete all checklist items before submitting to the Registrar. Edit the case to fill in missing information.')}
+                  {t('Complete all checklist items before submitting to the Registrar. The final service step is completed by generating, signing, and uploading the proof of service document.')}
                 </Alert>
               )}
-              {!documents.length && (
-                <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                  <Button
-                    variant="outlined"
-                    startIcon={<UploadIcon />}
-                    onClick={() => setUploadOpen(true)}
-                  >
-                    {t('Upload contract / arbitration clause')}
-                  </Button>
-                  <Button
-                    variant="text"
-                    onClick={() => navigate('/documents')}
-                  >
-                    {t('Open Document Library')}
-                  </Button>
-                </Box>
-              )}
+              <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Button
+                  variant="outlined"
+                  startIcon={<UploadIcon />}
+                  onClick={generateProofOfServicePdf}
+                >
+                  {t('Generate proof of service PDF')}
+                </Button>
+                <Button
+                  variant="text"
+                  onClick={() => openUploadDialog('service')}
+                >
+                  {t('Upload signed service document')}
+                </Button>
+                <Button
+                  variant="text"
+                  onClick={() => navigate('/documents')}
+                >
+                  {t('Open Document Library')}
+                </Button>
+              </Box>
+              <Alert severity={serviceDocs.length > 0 ? 'success' : 'info'} sx={{ mt: 2 }}>
+                {serviceDocs.length > 0
+                  ? t('A service document is already attached to this case. Once signed, emailed, and uploaded, it becomes the service record in the document library.')
+                  : t('Generate the proof of service PDF, sign it electronically or manually, upload the signed copy, then email and archive it. The checklist uses the uploaded document as the service record instead of a manual confirmation.')}
+              </Alert>
               {allChecksPass && submissionStatus === 'draft' && (
                 <Alert severity="success" sx={{ mt: 2 }}>
                   {t('All filing requirements are met. You can now submit the Request for Arbitration to the Registrar.')}
@@ -873,12 +958,6 @@ const CaseDetail = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12}>
-              <FormControlLabel
-                control={<Checkbox checked={!!editForm.serviceConfirmed} onChange={setFCheck('serviceConfirmed')} />}
-                label={t('I confirm copies have been served on all parties')}
-              />
-            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
@@ -948,7 +1027,11 @@ const CaseDetail = () => {
 
       {/* Upload contract / arbitration clause dialog */}
       <Dialog open={uploadOpen} onClose={() => { if (!uploading) resetUploadDialog(); }} maxWidth="sm" fullWidth>
-        <DialogTitle>{t('Upload contract / arbitration clause')}</DialogTitle>
+        <DialogTitle>
+          {uploadPurpose === 'service'
+            ? t('Upload signed service document')
+            : t('Upload contract / arbitration clause')}
+        </DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             {uploadError && <Alert severity="error">{uploadError}</Alert>}
@@ -973,10 +1056,16 @@ const CaseDetail = () => {
               />
               <UploadIcon sx={{ fontSize: 40, color: 'text.secondary' }} />
               <Typography sx={{ mt: 1 }}>
-                {uploadFile ? uploadFile.name : t('Click to choose a contract, clause, or supporting file')}
+                {uploadFile
+                  ? uploadFile.name
+                  : uploadPurpose === 'service'
+                    ? t('Click to choose the signed proof of service PDF')
+                    : t('Click to choose a contract, clause, or supporting file')}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                {t('This file will be attached to this case and used by the AI as case evidence.')}
+                {uploadPurpose === 'service'
+                  ? t('This signed document will be attached to the case, emailed to parties, and stored in the document library.')
+                  : t('This file will be attached to this case and used by the AI as case evidence.')}
               </Typography>
             </Box>
             <TextField
@@ -984,6 +1073,7 @@ const CaseDetail = () => {
               fullWidth
               value={uploadCategory}
               onChange={(e) => setUploadCategory(e.target.value)}
+              placeholder={uploadPurpose === 'service' ? t('Proof of Service') : t('Contract / Agreement')}
             />
             <TextField
               label={t('Description (optional)')}
@@ -992,7 +1082,9 @@ const CaseDetail = () => {
               rows={2}
               value={uploadDescription}
               onChange={(e) => setUploadDescription(e.target.value)}
-              placeholder={t('e.g. Signed arbitration clause and contract bundle')}
+              placeholder={uploadPurpose === 'service'
+                ? t('e.g. Signed proof of service and certificate')
+                : t('e.g. Signed arbitration clause and contract bundle')}
             />
             {uploading && <CircularProgress size={24} />}
           </Box>
