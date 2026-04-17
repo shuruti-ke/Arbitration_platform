@@ -1135,6 +1135,112 @@ function createServer(services) {
         });
       }
 
+      // --- POST /api/intake/agreement/analyze ---
+      if (path === '/api/intake/agreement/analyze' && method === 'POST') {
+        const user = authenticate(req, res, ['admin', 'secretariat', 'arbitrator']);
+        if (!user) return;
+        const requestData = await parseBody(req);
+        if (!requestData.documentName || !requestData.content) {
+          return sendJSON(res, 400, { error: 'documentName and content are required' });
+        }
+
+        const extractedText = await extractTextFromFile(
+          requestData.content,
+          requestData.documentName,
+          requestData.mimeType
+        );
+        if (!extractedText) {
+          return sendJSON(res, 400, { error: 'Could not extract text from the uploaded agreement' });
+        }
+
+        const prompt = `You are an arbitration intake assistant. Extract case setup details from the agreement below.
+Return valid JSON only, with this exact structure:
+{
+  "title": "string",
+  "caseType": "string",
+  "sector": "string",
+  "disputeCategory": "string",
+  "description": "string",
+  "claimantName": "string",
+  "claimantOrg": "string",
+  "respondentName": "string",
+  "respondentOrg": "string",
+  "arbitratorNominee": "string",
+  "nomineeQualifications": "string",
+  "seatOfArbitration": "string",
+  "governingLaw": "string",
+  "arbitrationRules": "string",
+  "languageOfProceedings": "string",
+  "numArbitrators": number,
+  "confidentialityLevel": "string",
+  "reliefSought": "string",
+  "summary": "string",
+  "keyTerms": ["string"],
+  "missingInfo": ["string"]
+}
+
+Rules:
+- Use only details supported by the agreement.
+- If the document is a template with blanks, infer the intended case setup and list blanks under missingInfo.
+- Do not invent facts.
+- Keep the language simple and practical.
+- When referring to Kenyan arbitration law, use Arbitration Act, Cap. 49.
+
+Agreement text:
+---
+${extractedText.slice(0, 25000)}
+---`;
+
+        const aiResult = cleanModelText(await callAI(prompt));
+        const parsed = safeParseJson(aiResult);
+        if (!parsed) {
+          return sendJSON(res, 200, {
+            success: true,
+            extracted: {
+              summary: aiResult || 'No structured extraction was returned.',
+              missingInfo: ['Agreement details require manual review.']
+            }
+          });
+        }
+
+        await auditTrail.logEvent({
+          type: 'agreement_analysis',
+          userId: user.userId,
+          action: 'intake_analyze',
+          details: JSON.stringify({
+            documentName: requestData.documentName,
+            extractedKeys: Object.keys(parsed)
+          })
+        });
+
+        return sendJSON(res, 200, {
+          success: true,
+          extracted: {
+            title: parsed.title || '',
+            caseType: parsed.caseType || '',
+            sector: parsed.sector || '',
+            disputeCategory: parsed.disputeCategory || '',
+            description: parsed.description || '',
+            claimantName: parsed.claimantName || '',
+            claimantOrg: parsed.claimantOrg || '',
+            respondentName: parsed.respondentName || '',
+            respondentOrg: parsed.respondentOrg || '',
+            arbitratorNominee: parsed.arbitratorNominee || '',
+            nomineeQualifications: parsed.nomineeQualifications || '',
+            seatOfArbitration: parsed.seatOfArbitration || '',
+            governingLaw: parsed.governingLaw || '',
+            arbitrationRules: parsed.arbitrationRules || '',
+            languageOfProceedings: parsed.languageOfProceedings || '',
+            numArbitrators: Number(parsed.numArbitrators || 1),
+            confidentialityLevel: parsed.confidentialityLevel || '',
+            reliefSought: parsed.reliefSought || '',
+            summary: parsed.summary || '',
+            keyTerms: Array.isArray(parsed.keyTerms) ? parsed.keyTerms : [],
+            missingInfo: Array.isArray(parsed.missingInfo) ? parsed.missingInfo : []
+          }
+        });
+      }
+
       // --- GET /api/documents/:id ---
       if (path.match(/^\/api\/documents\/[^/]+$/) && method === 'GET') {
         const user = authenticate(req, res);

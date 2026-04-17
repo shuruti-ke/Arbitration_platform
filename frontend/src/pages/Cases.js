@@ -15,10 +15,14 @@ import {
 } from '@mui/icons-material';
 import { DataGrid } from '@mui/x-data-grid';
 import { useNavigate } from 'react-router-dom';
+import { jsPDF } from 'jspdf';
 import { apiService } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
+import { buildCaseAgreementPdf } from '../utils/caseAgreementPdf';
 
 const EMPTY_FORM = {
+  // Step 0 - Agreement intake
+  agreementSigned: false,
   // Step 1 - Case Details
   title: '', caseType: '', sector: '', disputeCategory: '',
   description: '', disputeAmount: '', currency: 'USD', status: 'active',
@@ -35,7 +39,7 @@ const EMPTY_FORM = {
   // Step 4 - Submission
   reliefSought: '', arbitratorNominee: '', nomineeQualifications: '',
   filingFee: '', filingFeeCurrency: 'KES',
-  serviceConfirmed: false, feeAcknowledged: false,
+  feeAcknowledged: false,
 };
 
 const Cases = () => {
@@ -54,8 +58,13 @@ const Cases = () => {
   const [form, setForm] = useState(EMPTY_FORM);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState(null);
+  const [agreementFile, setAgreementFile] = useState(null);
+  const [agreementAnalyzing, setAgreementAnalyzing] = useState(false);
+  const [agreementError, setAgreementError] = useState(null);
+  const [agreementAnalysis, setAgreementAnalysis] = useState(null);
+  const [agreementMode, setAgreementMode] = useState('template');
 
-  const STEPS = [t('Case Details'), t('Parties'), t('Procedural'), t('Submission')];
+  const STEPS = [t('Agreement'), t('Case Details'), t('Parties'), t('Procedural'), t('Submission')];
 
   const fetchCases = async () => {
     try {
@@ -89,15 +98,19 @@ const Cases = () => {
   const setCheck = (field) => (e) => setForm({ ...form, [field]: e.target.checked });
 
   const validateStep = () => {
-    if (activeStep === 0 && !form.title.trim()) {
+    if (activeStep === 0 && !agreementFile) {
+      setFormError(t('Please upload a signed agreement before creating the case.'));
+      return false;
+    }
+    if (activeStep === 1 && !form.title.trim()) {
       setFormError(t('Case title is required.'));
       return false;
     }
-    if (activeStep === 1 && (!form.claimantName.trim() || !form.respondentName.trim())) {
+    if (activeStep === 2 && (!form.claimantName.trim() || !form.respondentName.trim())) {
       setFormError(t('Claimant and Respondent names are required.'));
       return false;
     }
-    if (activeStep === 3 && !form.reliefSought.trim()) {
+    if (activeStep === 4 && !form.reliefSought.trim()) {
       setFormError(t('Relief Sought is required — describe the remedy you seek from the Tribunal.'));
       return false;
     }
@@ -132,7 +145,6 @@ const Cases = () => {
         nomineeQualifications: form.nomineeQualifications || null,
         filingFee: form.filingFee || null,
         filingFeeCurrency: form.filingFeeCurrency || 'KES',
-        serviceConfirmed: form.serviceConfirmed,
       });
 
       const newCaseId = res.data.caseId;
@@ -154,9 +166,23 @@ const Cases = () => {
         });
       }
 
+      if (agreementFile) {
+        const agreementContent = await fileToBase64(agreementFile);
+        await apiService.uploadDocument({
+          documentName: agreementFile.name,
+          caseId: newCaseId,
+          category: 'Arbitration Agreement',
+          description: 'Signed arbitration agreement uploaded during case setup',
+          accessLevel: 'case',
+          content: agreementContent,
+          mimeType: agreementFile.type
+        });
+      }
+
       setDialogOpen(false);
       setActiveStep(0);
       setForm(EMPTY_FORM);
+      resetAgreementStep();
       await fetchCases();
       navigate(`/cases/${newCaseId}`);
     } catch (err) {
@@ -186,6 +212,97 @@ const Cases = () => {
       setFormError(t('AI suggestion failed. Check server configuration.'));
     } finally {
       setAiLoading(false);
+    }
+  };
+
+  const fileToBase64 = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      const commaIndex = result.indexOf(',');
+      resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : '');
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  const resetAgreementStep = () => {
+    setAgreementFile(null);
+    setAgreementAnalyzing(false);
+    setAgreementError(null);
+    setAgreementAnalysis(null);
+    setAgreementMode('template');
+  };
+
+  const handleGenerateAgreementTemplate = () => {
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    buildCaseAgreementPdf({ pdf, caseData: form, user: null });
+    const caseLabel = (form.title || 'arbitration-agreement').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    pdf.save(`${caseLabel}-template.pdf`);
+  };
+
+  const applyAgreementAnalysis = (analysis) => {
+    if (!analysis) return;
+    setAgreementAnalysis(analysis);
+    setForm((prev) => ({
+      ...prev,
+      title: analysis.title || prev.title,
+      caseType: analysis.caseType || prev.caseType,
+      sector: analysis.sector || prev.sector,
+      disputeCategory: analysis.disputeCategory || prev.disputeCategory,
+      description: analysis.description || prev.description,
+      claimantName: analysis.claimantName || prev.claimantName,
+      claimantOrg: analysis.claimantOrg || prev.claimantOrg,
+      respondentName: analysis.respondentName || prev.respondentName,
+      respondentOrg: analysis.respondentOrg || prev.respondentOrg,
+      arbitratorNominee: analysis.arbitratorNominee || prev.arbitratorNominee,
+      nomineeQualifications: analysis.nomineeQualifications || prev.nomineeQualifications,
+      seatOfArbitration: analysis.seatOfArbitration || prev.seatOfArbitration,
+      governingLaw: analysis.governingLaw || prev.governingLaw,
+      arbitrationRules: analysis.arbitrationRules || prev.arbitrationRules,
+      languageOfProceedings: analysis.languageOfProceedings || prev.languageOfProceedings,
+      numArbitrators: String(analysis.numArbitrators || prev.numArbitrators || 1),
+      confidentialityLevel: analysis.confidentialityLevel || prev.confidentialityLevel,
+      reliefSought: analysis.reliefSought || prev.reliefSought,
+    }));
+  };
+
+  const analyzeAgreementFile = async (file) => {
+    if (!file) {
+      setAgreementError(t('Please upload a signed agreement first.'));
+      return;
+    }
+    setAgreementAnalyzing(true);
+    setAgreementError(null);
+    try {
+      const content = await fileToBase64(file);
+      const response = await apiService.analyzeAgreement({
+        documentName: file.name,
+        content,
+        mimeType: file.type
+      });
+      const analysis = response.data?.extracted || null;
+      if (analysis) {
+        applyAgreementAnalysis(analysis);
+      } else {
+        setAgreementError(t('Agreement analysis could not extract structured details.'));
+      }
+    } catch (err) {
+      setAgreementError(err.response?.data?.error || t('Agreement analysis failed.'));
+    } finally {
+      setAgreementAnalyzing(false);
+    }
+  };
+
+  const handleAnalyzeAgreement = () => analyzeAgreementFile(agreementFile);
+
+  const handleAgreementFileChange = (e) => {
+    const file = e.target.files?.[0] || null;
+    setAgreementFile(file);
+    setAgreementError(null);
+    if (file) {
+      setAgreementMode('upload');
+      analyzeAgreementFile(file);
     }
   };
 
@@ -309,7 +426,7 @@ const Cases = () => {
       </Paper>
 
       {/* New Case Dialog */}
-      <Dialog open={dialogOpen} onClose={() => { setDialogOpen(false); setActiveStep(0); setForm(EMPTY_FORM); }}
+      <Dialog open={dialogOpen} onClose={() => { setDialogOpen(false); setActiveStep(0); setForm(EMPTY_FORM); resetAgreementStep(); }}
         maxWidth="md" fullWidth>
         <DialogTitle>{t('New Arbitration Case')}</DialogTitle>
         <DialogContent>
@@ -319,8 +436,65 @@ const Cases = () => {
 
           {formError && <Alert severity="error" sx={{ mb: 2 }}>{formError}</Alert>}
 
-          {/* Step 1: Case Details */}
+          {/* Step 0: Agreement */}
           {activeStep === 0 && (
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <Alert severity="info">
+                  {t('Start here: the case begins with a signed arbitration agreement. You can generate a platform template or upload your own signed agreement, then let AI extract the case details.')}
+                </Alert>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Button variant={agreementMode === 'template' ? 'contained' : 'outlined'} fullWidth onClick={() => { setAgreementMode('template'); handleGenerateAgreementTemplate(); }}>
+                  {t('Download Agreement Template')}
+                </Button>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Button variant={agreementMode === 'upload' ? 'contained' : 'outlined'} component="label" fullWidth>
+                  {t('Upload Signed Agreement')}
+                  <input hidden type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" onChange={handleAgreementFileChange} />
+                </Button>
+              </Grid>
+              <Grid item xs={12}>
+                <Box sx={{ p: 2, border: '1px dashed', borderColor: 'divider', borderRadius: 1, bgcolor: 'background.default' }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('Agreement Intake')}</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    {agreementFile
+                      ? t('Selected file: {{name}}', { name: agreementFile.name })
+                      : t('No agreement uploaded yet. Use the template or upload a signed agreement to continue.')}
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    <Button variant="outlined" onClick={handleAnalyzeAgreement} disabled={!agreementFile || agreementAnalyzing}>
+                      {agreementAnalyzing ? t('Analyzing...') : t('Extract Details from Agreement')}
+                    </Button>
+                    <Button variant="text" onClick={() => setAgreementMode('template')}>
+                      {t('Use Template')}
+                    </Button>
+                    <Button variant="text" onClick={() => setAgreementMode('upload')}>
+                      {t('Use Own Agreement')}
+                    </Button>
+                  </Box>
+                  {agreementAnalysis && (
+                    <Alert severity="success" sx={{ mt: 2 }}>
+                      <strong>{t('Agreement Analysis')}:</strong> {agreementAnalysis.summary || t('Structured details extracted and applied to the case draft.')}
+                      {agreementAnalysis.missingInfo?.length > 0 && (
+                        <>
+                          <br />
+                          <strong>{t('Missing')}:</strong> {agreementAnalysis.missingInfo.join(', ')}
+                        </>
+                      )}
+                    </Alert>
+                  )}
+                  {agreementError && (
+                    <Alert severity="error" sx={{ mt: 2 }}>{agreementError}</Alert>
+                  )}
+                </Box>
+              </Grid>
+            </Grid>
+          )}
+
+          {/* Step 1: Case Details */}
+          {activeStep === 1 && (
             <Grid container spacing={2}>
               <Grid item xs={12}>
         <TextField label={t('Case Title *')} fullWidth value={form.title} onChange={set('title')} />
@@ -409,7 +583,7 @@ const Cases = () => {
           )}
 
           {/* Step 2: Parties */}
-          {activeStep === 1 && (
+          {activeStep === 2 && (
             <Grid container spacing={2}>
               <Grid item xs={12}><Typography variant="subtitle1" fontWeight="bold">{t('Claimant')}</Typography></Grid>
               <Grid item xs={12} sm={6}>
@@ -478,7 +652,7 @@ const Cases = () => {
           )}
 
           {/* Step 3: Procedural */}
-          {activeStep === 2 && (
+          {activeStep === 3 && (
             <Grid container spacing={2}>
               <Grid item xs={12}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1.5, bgcolor: 'primary.50', borderRadius: 1, border: '1px solid', borderColor: 'primary.200' }}>
@@ -576,7 +750,7 @@ const Cases = () => {
           )}
 
           {/* Step 4: Submission Details */}
-          {activeStep === 3 && (
+          {activeStep === 4 && (
             <Grid container spacing={2}>
               {/* NCIA Checklist preview */}
               <Grid item xs={12}>
@@ -657,18 +831,8 @@ const Cases = () => {
               </Grid>
 
               <Grid item xs={12}>
-                <Divider><Typography variant="caption" color="text.secondary">Service Confirmation</Typography></Divider>
-              </Grid>
-
-              <Grid item xs={12}>
-                <FormControlLabel
-                  control={<Checkbox checked={form.serviceConfirmed} onChange={setCheck('serviceConfirmed')} color="primary" />}
-                  label={t('I confirm that copies of this Request for Arbitration and all attached documents have been served on all parties to the arbitration')}
-                />
-              </Grid>
-              <Grid item xs={12}>
                 <Alert severity="info" sx={{ mt: 1 }}>
-                  {t('After creating the case, use the "Submit to Registrar" button on the case details page to formally submit to the relevant arbitration institution. Ensure you also deliver the required physical copies together with proof of filing fee payment.')}
+                  {t('After creating the case, upload the signed agreement file to the case record. The agreement becomes the setup record and the AI can use it for filing extraction and review.')}
                 </Alert>
               </Grid>
             </Grid>
@@ -676,7 +840,7 @@ const Cases = () => {
         </DialogContent>
 
         <DialogActions sx={{ px: 3, pb: 2 }}>
-            <Button onClick={() => { setDialogOpen(false); setActiveStep(0); setForm(EMPTY_FORM); }}>
+            <Button onClick={() => { setDialogOpen(false); setActiveStep(0); setForm(EMPTY_FORM); resetAgreementStep(); }}>
             {t('Cancel')}
             </Button>
           <Box sx={{ flex: 1 }} />

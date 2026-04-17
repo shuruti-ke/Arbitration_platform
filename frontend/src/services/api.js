@@ -46,6 +46,7 @@ export const apiService = {
   assessArbitrability: (caseData) => api.post('/compliance/arbitrability-check', { case: caseData }),
   getSigningReadiness: (type = 'legal document') => api.get(`/signing/readiness?type=${encodeURIComponent(type)}`),
   buildAwardPack: (awardData) => api.post('/awards/pack', awardData),
+  analyzeAgreement: (agreementData) => api.post('/intake/agreement/analyze', agreementData),
 
   // Intelligence
   getIntelligenceSummary: (days = 30) => api.get(`/intelligence/summary?days=${days}`),
