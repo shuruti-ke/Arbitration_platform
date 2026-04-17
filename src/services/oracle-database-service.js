@@ -235,6 +235,86 @@ class OracleDatabaseService {
       )
     `);
 
+    await this._createTableSafe('CASE_AGREEMENTS', `
+      CREATE TABLE case_agreements (
+        id                    NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        agreement_id          VARCHAR2(100) UNIQUE NOT NULL,
+        case_id               VARCHAR2(50),
+        source_document_name  VARCHAR2(255),
+        source_document_type  VARCHAR2(50) DEFAULT 'uploaded',
+        template_name         VARCHAR2(255),
+        agreement_status      VARCHAR2(50) DEFAULT 'draft',
+        title                 VARCHAR2(255),
+        case_type             VARCHAR2(100),
+        sector                VARCHAR2(100),
+        dispute_category      VARCHAR2(100),
+        description           CLOB,
+        claimant_name         VARCHAR2(255),
+        claimant_org          VARCHAR2(255),
+        respondent_name       VARCHAR2(255),
+        respondent_org        VARCHAR2(255),
+        arbitrator_nominee    VARCHAR2(255),
+        nominee_qualifications CLOB,
+        seat_of_arbitration   VARCHAR2(255),
+        governing_law         VARCHAR2(255),
+        arbitration_rules     VARCHAR2(255),
+        language_of_proceedings VARCHAR2(100),
+        num_arbitrators       NUMBER(2),
+        confidentiality_level VARCHAR2(50),
+        relief_sought         CLOB,
+        extracted_summary     CLOB,
+        extracted_json        CLOB,
+        key_terms             CLOB,
+        missing_info          CLOB,
+        signed_at             TIMESTAMP,
+        effective_date        DATE,
+        created_by            VARCHAR2(100),
+        created_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await this._createTableSafe('CASE_AGREEMENT_PARTIES', `
+      CREATE TABLE case_agreement_parties (
+        id               NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        agreement_id     VARCHAR2(100) NOT NULL,
+        party_role       VARCHAR2(50) NOT NULL,
+        full_name        VARCHAR2(255),
+        organization_name VARCHAR2(255),
+        email            VARCHAR2(255),
+        signature_status VARCHAR2(50) DEFAULT 'pending',
+        signed_at        TIMESTAMP,
+        created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await this._createTableSafe('CASE_AGREEMENT_SIGNATURES', `
+      CREATE TABLE case_agreement_signatures (
+        id               NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        agreement_id     VARCHAR2(100) NOT NULL,
+        signer_role      VARCHAR2(50) NOT NULL,
+        signer_name      VARCHAR2(255),
+        signature_status VARCHAR2(50) DEFAULT 'pending',
+        signature_method VARCHAR2(100),
+        signed_at        TIMESTAMP,
+        signature_hash   VARCHAR2(255),
+        created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await this._createTableSafe('CASE_AGREEMENT_EXTRACTIONS', `
+      CREATE TABLE case_agreement_extractions (
+        id               NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        agreement_id     VARCHAR2(100) NOT NULL,
+        source_document_name VARCHAR2(255),
+        model_name       VARCHAR2(120),
+        extracted_json   CLOB,
+        extracted_summary CLOB,
+        confidence       VARCHAR2(20),
+        created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Expand CASES table with comprehensive arbitration fields
     await this._addColumnSafe('cases', 'case_type', 'VARCHAR2(100)');
     await this._addColumnSafe('cases', 'sector', 'VARCHAR2(100)');
@@ -324,6 +404,9 @@ class OracleDatabaseService {
     await this._addColumnSafe('cases', 'filing_fee_currency', "VARCHAR2(10) DEFAULT 'KES'");
     await this._addColumnSafe('cases', 'submission_status', "VARCHAR2(50) DEFAULT 'draft'");
     await this._addColumnSafe('cases', 'submitted_at', 'TIMESTAMP');
+    await this._addColumnSafe('cases', 'agreement_id', 'VARCHAR2(100)');
+    await this._addColumnSafe('cases', 'agreement_status', "VARCHAR2(50) DEFAULT 'none'");
+    await this._addColumnSafe('cases', 'agreement_document_name', 'VARCHAR2(255)');
   }
 
   // --- Cases ---

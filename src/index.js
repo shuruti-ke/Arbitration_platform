@@ -812,6 +812,20 @@ function createServer(services) {
         const caseId = path.split('/api/cases/')[1];
         const caseResult = await oracleDb.executeQuery('SELECT * FROM cases WHERE case_id = :caseId', { caseId });
         if (!caseResult.rows || caseResult.rows.length === 0) return sendJSON(res, 404, { error: 'Case not found' });
+        const agreementResult = await oracleDb.executeQuery(
+          'SELECT * FROM case_agreements WHERE case_id = :caseId ORDER BY created_at DESC',
+          { caseId }
+        );
+        const agreementId = agreementResult.rows?.[0]?.AGREEMENT_ID || agreementResult.rows?.[0]?.agreement_id || null;
+        const agreementPartiesResult = agreementId
+          ? await oracleDb.executeQuery('SELECT * FROM case_agreement_parties WHERE agreement_id = :agreementId ORDER BY created_at', { agreementId })
+          : { rows: [] };
+        const agreementSignaturesResult = agreementId
+          ? await oracleDb.executeQuery('SELECT * FROM case_agreement_signatures WHERE agreement_id = :agreementId ORDER BY created_at', { agreementId })
+          : { rows: [] };
+        const agreementExtractionResult = agreementId
+          ? await oracleDb.executeQuery('SELECT * FROM case_agreement_extractions WHERE agreement_id = :agreementId ORDER BY created_at DESC', { agreementId })
+          : { rows: [] };
         const partiesResult = await oracleDb.executeQuery('SELECT * FROM parties WHERE case_id = :caseId ORDER BY party_type', { caseId });
         const counselResult = await oracleDb.executeQuery('SELECT * FROM case_counsel WHERE case_id = :caseId', { caseId });
         const milestonesResult = await oracleDb.executeQuery('SELECT * FROM case_milestones WHERE case_id = :caseId ORDER BY created_at', { caseId });
@@ -825,6 +839,10 @@ function createServer(services) {
           milestones: milestonesResult.rows || [],
           documents: docsResult.rows || [],
           hearings: hearingsResult.rows || [],
+          agreement: agreementResult.rows?.[0] || null,
+          agreementParties: agreementPartiesResult.rows || [],
+          agreementSignatures: agreementSignaturesResult.rows || [],
+          agreementExtractions: agreementExtractionResult.rows || [],
           auditLog: auditResult || []
         });
       }
@@ -1238,6 +1256,163 @@ ${extractedText.slice(0, 25000)}
             keyTerms: Array.isArray(parsed.keyTerms) ? parsed.keyTerms : [],
             missingInfo: Array.isArray(parsed.missingInfo) ? parsed.missingInfo : []
           }
+        });
+      }
+
+      // --- POST /api/case-agreements ---
+      if (path === '/api/case-agreements' && method === 'POST') {
+        const user = authenticate(req, res, ['admin', 'secretariat', 'arbitrator']);
+        if (!user) return;
+        const body = await parseBody(req);
+        if (!body.caseId) {
+          return sendJSON(res, 400, { error: 'caseId is required' });
+        }
+
+        const agreementId = body.agreementId || `agreement-${Date.now()}`;
+        const agreementStatus = body.agreementStatus || 'signed';
+        const extracted = body.extracted || {};
+        const sourceDocumentName = body.sourceDocumentName || body.documentName || null;
+        const parties = Array.isArray(body.parties) ? body.parties : [];
+        const signatures = Array.isArray(body.signatures) ? body.signatures : [];
+        const extractionJson = JSON.stringify(extracted);
+        const keyTerms = JSON.stringify(extracted.keyTerms || []);
+        const missingInfo = JSON.stringify(extracted.missingInfo || []);
+
+        await oracleDb.executeQuery(
+          `INSERT INTO case_agreements (
+            agreement_id, case_id, source_document_name, source_document_type, template_name,
+            agreement_status, title, case_type, sector, dispute_category, description,
+            claimant_name, claimant_org, respondent_name, respondent_org, arbitrator_nominee,
+            nominee_qualifications, seat_of_arbitration, governing_law, arbitration_rules,
+            language_of_proceedings, num_arbitrators, confidentiality_level, relief_sought,
+            extracted_summary, extracted_json, key_terms, missing_info, signed_at, effective_date,
+            created_by
+          ) VALUES (
+            :agreementId, :caseId, :sourceDocumentName, :sourceDocumentType, :templateName,
+            :agreementStatus, :title, :caseType, :sector, :disputeCategory, :description,
+            :claimantName, :claimantOrg, :respondentName, :respondentOrg, :arbitratorNominee,
+            :nomineeQualifications, :seatOfArbitration, :governingLaw, :arbitrationRules,
+            :languageOfProceedings, :numArbitrators, :confidentialityLevel, :reliefSought,
+            :extractedSummary, :extractedJson, :keyTerms, :missingInfo, :signedAt, :effectiveDate,
+            :createdBy
+          )`,
+          {
+            agreementId,
+            caseId: body.caseId,
+            sourceDocumentName,
+            sourceDocumentType: body.sourceDocumentType || 'uploaded',
+            templateName: body.templateName || null,
+            agreementStatus,
+            title: extracted.title || body.title || null,
+            caseType: extracted.caseType || body.caseType || null,
+            sector: extracted.sector || body.sector || null,
+            disputeCategory: extracted.disputeCategory || body.disputeCategory || null,
+            description: extracted.description || body.description || null,
+            claimantName: extracted.claimantName || body.claimantName || null,
+            claimantOrg: extracted.claimantOrg || body.claimantOrg || null,
+            respondentName: extracted.respondentName || body.respondentName || null,
+            respondentOrg: extracted.respondentOrg || body.respondentOrg || null,
+            arbitratorNominee: extracted.arbitratorNominee || body.arbitratorNominee || null,
+            nomineeQualifications: extracted.nomineeQualifications || body.nomineeQualifications || null,
+            seatOfArbitration: extracted.seatOfArbitration || body.seatOfArbitration || null,
+            governingLaw: extracted.governingLaw || body.governingLaw || null,
+            arbitrationRules: extracted.arbitrationRules || body.arbitrationRules || null,
+            languageOfProceedings: extracted.languageOfProceedings || body.languageOfProceedings || null,
+            numArbitrators: extracted.numArbitrators || body.numArbitrators || 1,
+            confidentialityLevel: extracted.confidentialityLevel || body.confidentialityLevel || null,
+            reliefSought: extracted.reliefSought || body.reliefSought || null,
+            extractedSummary: extracted.summary || body.summary || null,
+            extractedJson: extractionJson,
+            keyTerms,
+            missingInfo,
+            signedAt: body.signedAt ? new Date(body.signedAt) : null,
+            effectiveDate: body.effectiveDate ? new Date(body.effectiveDate) : null,
+            createdBy: user.userId
+          }
+        );
+
+        for (const party of parties) {
+          await oracleDb.executeQuery(
+            `INSERT INTO case_agreement_parties (
+              agreement_id, party_role, full_name, organization_name, email, signature_status, signed_at
+            ) VALUES (
+              :agreementId, :partyRole, :fullName, :organizationName, :email, :signatureStatus, :signedAt
+            )`,
+            {
+              agreementId,
+              partyRole: party.partyRole || party.role || 'party',
+              fullName: party.fullName || party.name || null,
+              organizationName: party.organizationName || null,
+              email: party.email || null,
+              signatureStatus: party.signatureStatus || 'pending',
+              signedAt: party.signedAt ? new Date(party.signedAt) : null
+            }
+          );
+        }
+
+        for (const signature of signatures) {
+          await oracleDb.executeQuery(
+            `INSERT INTO case_agreement_signatures (
+              agreement_id, signer_role, signer_name, signature_status, signature_method, signed_at, signature_hash
+            ) VALUES (
+              :agreementId, :signerRole, :signerName, :signatureStatus, :signatureMethod, :signedAt, :signatureHash
+            )`,
+            {
+              agreementId,
+              signerRole: signature.signerRole || signature.role || 'party',
+              signerName: signature.signerName || signature.name || null,
+              signatureStatus: signature.signatureStatus || 'pending',
+              signatureMethod: signature.signatureMethod || 'manual_upload',
+              signedAt: signature.signedAt ? new Date(signature.signedAt) : null,
+              signatureHash: signature.signatureHash || null
+            }
+          );
+        }
+
+        await oracleDb.executeQuery(
+          `UPDATE cases SET
+            agreement_id = :agreementId,
+            agreement_status = :agreementStatus,
+            agreement_document_name = :agreementDocumentName,
+            updated_at = CURRENT_TIMESTAMP
+           WHERE case_id = :caseId`,
+          {
+            agreementId,
+            agreementStatus,
+            agreementDocumentName: sourceDocumentName,
+            caseId: body.caseId
+          }
+        );
+
+        await oracleDb.executeQuery(
+          `INSERT INTO case_agreement_extractions (
+            agreement_id, source_document_name, model_name, extracted_json, extracted_summary, confidence
+          ) VALUES (
+            :agreementId, :sourceDocumentName, :modelName, :extractedJson, :extractedSummary, :confidence
+          )`,
+          {
+            agreementId,
+            sourceDocumentName,
+            modelName: body.modelName || process.env.NVIDIA_MODEL || process.env.GROQ_MODEL || 'unknown',
+            extractedJson: extractionJson,
+            extractedSummary: extracted.summary || body.summary || null,
+            confidence: body.confidence || 'medium'
+          }
+        );
+
+        await auditTrail.logEvent({
+          type: 'case_agreement_created',
+          caseId: body.caseId,
+          userId: user.userId,
+          action: 'create_agreement',
+          details: { agreementId, sourceDocumentName, agreementStatus }
+        });
+
+        return sendJSON(res, 201, {
+          success: true,
+          agreementId,
+          agreementStatus,
+          caseId: body.caseId
         });
       }
 

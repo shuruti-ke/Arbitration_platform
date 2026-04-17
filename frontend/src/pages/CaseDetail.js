@@ -153,6 +153,10 @@ const CaseDetail = () => {
   const milestones = data.milestones || [];
   const documents = data.documents || [];
   const hearings = data.hearings || [];
+  const agreement = data.agreement || null;
+  const agreementParties = data.agreementParties || [];
+  const agreementSignatures = data.agreementSignatures || [];
+  const agreementExtractions = data.agreementExtractions || [];
   const auditLog = data.auditLog || [];
 
   const claimants = parties.filter(p => (p.PARTY_TYPE || p.partyType) === 'claimant');
@@ -537,6 +541,22 @@ const CaseDetail = () => {
                 label={t('Service Document')}
                 value={serviceDocs.length > 0 ? t('Uploaded and ready for signing / filing') : t('Not yet uploaded')}
               />
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 3 }}>
+              <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2 }}>{t('Agreement Record')}</Typography>
+              <Field label={t('Agreement Status')} value={agreement?.AGREEMENT_STATUS || agreement?.agreement_status || c.AGREEMENT_STATUS || c.agreementStatus || 'none'} />
+              <Field label={t('Agreement Document')} value={agreement?.SOURCE_DOCUMENT_NAME || agreement?.source_document_name || c.AGREEMENT_DOCUMENT_NAME || c.agreementDocumentName || '—'} />
+              <Field label={t('Agreement Template')} value={agreement?.TEMPLATE_NAME || agreement?.template_name || '—'} />
+              <Field label={t('Signed At')} value={agreement?.SIGNED_AT || agreement?.signed_at ? new Date(agreement.SIGNED_AT || agreement.signed_at).toLocaleString() : '—'} />
+              <Field label={t('Effective Date')} value={agreement?.EFFECTIVE_DATE || agreement?.effective_date ? new Date(agreement.EFFECTIVE_DATE || agreement.effective_date).toLocaleDateString() : '—'} />
+              <Field label={t('Agreement Parties')} value={agreementParties.length ? `${agreementParties.length} ${t('record(s)')}` : t('None recorded')} />
+              <Field label={t('Agreement Signatures')} value={agreementSignatures.length ? `${agreementSignatures.length} ${t('record(s)')}` : t('None recorded')} />
+              <Field label={t('Agreement Extractions')} value={agreementExtractions.length ? `${agreementExtractions.length} ${t('record(s)')}` : t('None recorded')} />
+              {agreementExtractions[0]?.EXTRACTED_SUMMARY || agreementExtractions[0]?.extracted_summary ? (
+                <Field label={t('Summary')} value={agreementExtractions[0].EXTRACTED_SUMMARY || agreementExtractions[0].extracted_summary} />
+              ) : null}
             </Paper>
           </Grid>
           <Grid item xs={12} md={6}>

@@ -177,6 +177,49 @@ const Cases = () => {
           content: agreementContent,
           mimeType: agreementFile.type
         });
+
+        await apiService.createCaseAgreement({
+          caseId: newCaseId,
+          sourceDocumentName: agreementFile.name,
+          sourceDocumentType: agreementMode === 'template' ? 'platform_template' : 'uploaded',
+          templateName: agreementMode === 'template' ? 'Arbitration Agreement' : null,
+          agreementStatus: 'signed',
+          extracted: {
+            title: form.title,
+            caseType: form.caseType,
+            sector: form.sector,
+            disputeCategory: form.disputeCategory,
+            description: form.description,
+            claimantName: form.claimantName,
+            claimantOrg: form.claimantOrg,
+            respondentName: form.respondentName,
+            respondentOrg: form.respondentOrg,
+            arbitratorNominee: form.arbitratorNominee,
+            nomineeQualifications: form.nomineeQualifications,
+            seatOfArbitration: form.seatOfArbitration,
+            governingLaw: form.governingLaw,
+            arbitrationRules: form.arbitrationRules,
+            languageOfProceedings: form.languageOfProceedings,
+            numArbitrators: parseInt(form.numArbitrators, 10) || 1,
+            confidentialityLevel: form.confidentialityLevel,
+            reliefSought: form.reliefSought,
+            summary: agreementAnalysis?.summary || '',
+            keyTerms: agreementAnalysis?.keyTerms || [],
+            missingInfo: agreementAnalysis?.missingInfo || []
+          },
+          parties: [
+            { partyRole: 'claimant', fullName: form.claimantName, organizationName: form.claimantOrg, email: form.claimantEmail, signatureStatus: 'signed' },
+            { partyRole: 'respondent', fullName: form.respondentName, organizationName: form.respondentOrg, email: form.respondentEmail, signatureStatus: 'signed' },
+          ],
+          signatures: [
+            { signerRole: 'claimant', signerName: form.claimantName, signatureStatus: 'signed', signatureMethod: agreementMode === 'template' ? 'platform_template' : 'uploaded' },
+            { signerRole: 'respondent', signerName: form.respondentName, signatureStatus: 'signed', signatureMethod: agreementMode === 'template' ? 'platform_template' : 'uploaded' },
+            { signerRole: 'arbitrator', signerName: form.arbitratorNominee, signatureStatus: 'signed', signatureMethod: agreementMode === 'template' ? 'platform_template' : 'uploaded' },
+          ],
+          signedAt: new Date().toISOString(),
+          effectiveDate: new Date().toISOString(),
+          modelName: 'agreement-intake'
+        });
       }
 
       setDialogOpen(false);

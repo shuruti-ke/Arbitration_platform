@@ -47,6 +47,7 @@ export const apiService = {
   getSigningReadiness: (type = 'legal document') => api.get(`/signing/readiness?type=${encodeURIComponent(type)}`),
   buildAwardPack: (awardData) => api.post('/awards/pack', awardData),
   analyzeAgreement: (agreementData) => api.post('/intake/agreement/analyze', agreementData),
+  createCaseAgreement: (agreementData) => api.post('/case-agreements', agreementData),
 
   // Intelligence
   getIntelligenceSummary: (days = 30) => api.get(`/intelligence/summary?days=${days}`),
