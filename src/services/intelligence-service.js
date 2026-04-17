@@ -231,6 +231,7 @@ Write like a polished analyst briefing a busy executive.
 Keep the tone crisp, factual, and easy to scan.
 Avoid jargon unless it adds real value, and explain it simply when needed.
 Do not sound robotic, inflated, or overly academic.
+Treat this as operational reporting only. Do not frame the output as a final legal conclusion or legal advice.
 
 Output requirements:
 - Return valid JSON only.
@@ -510,12 +511,13 @@ Last ${periodDays} days
     const languageName = this._languageName(language);
     const prompt = `
 You are an expert arbitration companion helping a neutral decision-maker.
-Respond in ${languageName}.
-Use plain, human language at about a 9th-grade reading level.
-Write like a careful legal assistant speaking to a smart non-lawyer.
-Keep the tone calm, crisp, and practical.
-Avoid jargon unless it is necessary, and explain it in simple words when used.
-Do not sound robotic or overly formal.
+  Respond in ${languageName}.
+  Use plain, human language at about a 9th-grade reading level.
+  Write like a careful legal assistant speaking to a smart non-lawyer.
+  Keep the tone calm, crisp, and practical.
+  Avoid jargon unless it is necessary, and explain it in simple words when used.
+  Do not sound robotic or overly formal.
+  Treat your output as decision support only. Do not make final legal conclusions. If the question needs a legal ruling, say that human review is required.
 
 Return valid JSON only with this structure:
 {
@@ -549,26 +551,28 @@ Keep each field short and easy to read.
 
     const parsed = safeParseJson(rawText) || this._buildCompanionFallback(rawText, context);
     const sanitized = this._sanitizeStructuredOutput(parsed);
-    const companion = {
-      ...sanitized,
-      executiveSummary: this._sentenceCase(sanitized.executiveSummary) || this._buildCompanionFallback(rawText, context).executiveSummary,
-      keyFindings: this._limitList(sanitized.keyFindings, 5).length ? this._limitList(sanitized.keyFindings, 5) : this._buildCompanionFallback(rawText, context).keyFindings,
-      risks: this._limitList(sanitized.risks, 5).length ? this._limitList(sanitized.risks, 5) : this._buildCompanionFallback(rawText, context).risks,
-      recommendations: this._limitList(sanitized.recommendations, 5).length ? this._limitList(sanitized.recommendations, 5) : this._buildCompanionFallback(rawText, context).recommendations,
-      followUpQuestions: this._limitList(sanitized.followUpQuestions, 5),
-      confidence: ['high', 'medium', 'low'].includes(String(sanitized.confidence || '').toLowerCase())
-        ? String(sanitized.confidence).toLowerCase()
-        : 'medium'
-    };
+      const companion = {
+        ...sanitized,
+        executiveSummary: this._sentenceCase(sanitized.executiveSummary) || this._buildCompanionFallback(rawText, context).executiveSummary,
+        keyFindings: this._limitList(sanitized.keyFindings, 5).length ? this._limitList(sanitized.keyFindings, 5) : this._buildCompanionFallback(rawText, context).keyFindings,
+        risks: this._limitList(sanitized.risks, 5).length ? this._limitList(sanitized.risks, 5) : this._buildCompanionFallback(rawText, context).risks,
+        recommendations: this._limitList(sanitized.recommendations, 5).length ? this._limitList(sanitized.recommendations, 5) : this._buildCompanionFallback(rawText, context).recommendations,
+        followUpQuestions: this._limitList(sanitized.followUpQuestions, 5),
+        requiresHumanReview: true,
+        reviewNote: 'Human review is required before any legal decision, filing, or award is finalized.',
+        confidence: ['high', 'medium', 'low'].includes(String(sanitized.confidence || '').toLowerCase())
+          ? String(sanitized.confidence).toLowerCase()
+          : 'medium'
+      };
 
-    const response = {
-      caseId,
-      caseTitle: context.case.title,
-      generatedAt: new Date().toISOString(),
-      language,
-      ...companion,
-      rawText: this._cleanText(rawText)
-    };
+      const response = {
+        caseId,
+        caseTitle: context.case.title,
+        generatedAt: new Date().toISOString(),
+        language,
+        ...companion,
+        rawText: this._cleanText(rawText)
+      };
 
     await this._storeReport({
       reportType: 'companion',

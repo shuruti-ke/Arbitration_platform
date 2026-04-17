@@ -36,11 +36,14 @@ const Login = () => {
   return (
     <Container maxWidth="sm" sx={{ mt: 10 }}>
       <Paper sx={{ p: 4 }}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 3 }}>
-          <LockIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />
-          <Typography variant="h5" fontWeight="bold">{t('Arbitration Platform')}</Typography>
-          <Typography variant="body2" color="textSecondary">{t('Sign in to your account')}</Typography>
-        </Box>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 3 }}>
+            <LockIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />
+            <Typography variant="h5" fontWeight="bold">{t('Arbitration Platform')}</Typography>
+            <Typography variant="body2" color="textSecondary">{t('Sign in to your account')}</Typography>
+            <Typography variant="body2" color="textSecondary" sx={{ mt: 1, textAlign: 'center' }}>
+              {t('The platform is designed to manage arbitration workflows in line with the Kenya Arbitration Act, Cap. 49.')}
+            </Typography>
+          </Box>
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 

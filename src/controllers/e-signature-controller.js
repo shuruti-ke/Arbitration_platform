@@ -91,6 +91,24 @@ class ESignatureController {
   async validateCertificate(certificate) {
     return await this.caService.validateCertificate(certificate);
   }
+
+  /**
+   * Summarize signing readiness for a production legal document
+   * @param {object} documentData
+   * @returns {object}
+   */
+  getSigningReadiness(documentData = {}) {
+    const providerList = this.caService.getProviders ? this.caService.getProviders() : [];
+    return {
+      productionReady: false,
+      requiresTrustedProvider: true,
+      providers: providerList,
+      recommendedPath: 'Use a certificate-backed signing provider and keep the signed PDF in the case file.',
+      fallbackPath: 'If a provider is unavailable, generate the PDF, obtain a wet signature, and upload the signed copy.',
+      documentType: documentData.type || 'legal document',
+      timestamp: new Date().toISOString()
+    };
+  }
 }
 
 module.exports = ESignatureController;

@@ -110,7 +110,7 @@ const config = {
   
   // Compliance configuration
   compliance: {
-    institutions: ['LCIA', 'SIAC', 'UNCITRAL', 'Kenya Arbitration Act'],
+      institutions: ['LCIA', 'SIAC', 'UNCITRAL', 'Arbitration Act (Cap. 49)'],
     certification: {
       required: true,
       template: 'standard-certification-clause'

@@ -506,7 +506,7 @@ const Cases = () => {
                 <FormControl fullWidth>
                   <InputLabel>{t('Arbitration Rules')}</InputLabel>
                   <Select value={form.arbitrationRules} label={t('Arbitration Rules')} onChange={set('arbitrationRules')}>
-                    <MenuItem value="Kenya Arbitration Act">{t('Kenya Arbitration Act')}</MenuItem>
+                    <MenuItem value="Arbitration Act (Cap. 49)">{t('Arbitration Act (Cap. 49)')}</MenuItem>
                     <MenuItem value="NCIA">{t('NCIA Rules')}</MenuItem>
                     <MenuItem value="KIAC">{t('KIAC Rules')}</MenuItem>
                     <MenuItem value="LCIA">{t('LCIA Rules')}</MenuItem>

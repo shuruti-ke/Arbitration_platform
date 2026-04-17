@@ -7,6 +7,7 @@ import {
   Description as DocumentsIcon,
   Analytics as AnalyticsIcon,
   AutoAwesome as IntelligenceIcon,
+  Policy as ComplianceIcon,
   Settings as SettingsIcon,
   VideoCall as HearingsIcon,
   Logout as LogoutIcon,
@@ -60,6 +61,9 @@ const Navigation = () => {
         </Button>
         <Button color="inherit" component={Link} to="/analytics" startIcon={<AnalyticsIcon />}>
           {t('Analytics')}
+        </Button>
+        <Button color="inherit" component={Link} to="/compliance" startIcon={<ComplianceIcon />}>
+          {t('Compliance')}
         </Button>
         <Button color="inherit" component={Link} to="/intelligence" startIcon={<IntelligenceIcon />}>
           {t('AI Intelligence')}

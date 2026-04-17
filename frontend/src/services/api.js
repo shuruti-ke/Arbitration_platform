@@ -40,6 +40,13 @@ export const apiService = {
   // Analytics
   getAnalytics: () => api.get('/analytics'),
 
+  // Compliance
+  getComplianceGapMap: () => api.get('/compliance/gap-map'),
+  getLegalSources: () => api.get('/legal-sources'),
+  assessArbitrability: (caseData) => api.post('/compliance/arbitrability-check', { case: caseData }),
+  getSigningReadiness: (type = 'legal document') => api.get(`/signing/readiness?type=${encodeURIComponent(type)}`),
+  buildAwardPack: (awardData) => api.post('/awards/pack', awardData),
+
   // Intelligence
   getIntelligenceSummary: (days = 30) => api.get(`/intelligence/summary?days=${days}`),
   getIntelligenceHistory: ({ caseId, limit = 10 } = {}) => {

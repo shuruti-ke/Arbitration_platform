@@ -5,6 +5,7 @@ class DisclosureWorkflowService {
   constructor() {
     this.disclosures = new Map();
     this.timers = new Map();
+    this.challenges = new Map();
   }
 
   /**
@@ -124,6 +125,67 @@ class DisclosureWorkflowService {
    */
   getAllDisclosures() {
     return Array.from(this.disclosures.values());
+  }
+
+  /**
+   * Create a challenge linked to a disclosure
+   * @param {string} disclosureId
+   * @param {object} challengeData
+   * @returns {string} Challenge ID
+   */
+  createChallenge(disclosureId, challengeData = {}) {
+    const challengeId = 'challenge-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+    const challenge = {
+      id: challengeId,
+      disclosureId,
+      status: 'pending',
+      grounds: challengeData.grounds || [],
+      reason: challengeData.reason || '',
+      submittedBy: challengeData.submittedBy || null,
+      submittedAt: new Date().toISOString(),
+      updatedAt: null,
+      resolution: null
+    };
+
+    this.challenges.set(challengeId, challenge);
+    console.log(`Challenge created: ${challengeId} for disclosure ${disclosureId}`);
+    return challengeId;
+  }
+
+  /**
+   * Update challenge status
+   * @param {string} challengeId
+   * @param {string} status
+   * @param {object} resolution
+   */
+  updateChallengeStatus(challengeId, status, resolution = {}) {
+    const challenge = this.challenges.get(challengeId);
+    if (!challenge) return;
+
+    challenge.status = status;
+    challenge.updatedAt = new Date().toISOString();
+    if (resolution && Object.keys(resolution).length > 0) {
+      challenge.resolution = resolution;
+    }
+
+    this.challenges.set(challengeId, challenge);
+  }
+
+  /**
+   * Get all challenges
+   * @returns {Array}
+   */
+  getAllChallenges() {
+    return Array.from(this.challenges.values());
+  }
+
+  /**
+   * Get challenges for a disclosure
+   * @param {string} disclosureId
+   * @returns {Array}
+   */
+  getChallengesForDisclosure(disclosureId) {
+    return Array.from(this.challenges.values()).filter((challenge) => challenge.disclosureId === disclosureId);
   }
 }
 

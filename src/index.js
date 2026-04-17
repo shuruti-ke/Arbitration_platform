@@ -148,6 +148,8 @@ const OfflineSyncService = require('./services/offline-sync');
 const DisclosureWorkflowService = require('./services/disclosure-workflow');
 const RiskMonitoringService = require('./services/risk-monitoring');
 const ODPCComplianceService = require('./services/odpc-compliance');
+const LegalSourceRegistry = require('./services/legal-source-registry');
+const ComplianceGapMapService = require('./services/compliance-gap-map');
 const OracleDatabaseService = require('./services/oracle-database-service');
 const IntelligenceService = require('./services/intelligence-service');
 const DocumentAnalysisService = require('./services/document-analysis-service');
@@ -208,7 +210,11 @@ function createServer(services) {
     aiConflictScanner, certificateValidator,
     authService, userService, hearingService,
     metricsDashboard, riskMonitoring, intelligenceService,
-    documentAnalysisService
+    documentAnalysisService,
+    disclosureWorkflow,
+    legalSourceRegistry,
+    complianceGapMapService,
+    eSignatureController
   } = services;
 
   // Auth middleware helper
@@ -270,7 +276,7 @@ function createServer(services) {
       if (path === '/api/rules' && method === 'GET') {
         return sendJSON(res, 200, {
           message: 'Rule engine initialized',
-          institutions: ['LCIA', 'SIAC', 'Kenya Arbitration Act']
+            institutions: ['LCIA', 'SIAC', 'Arbitration Act (Cap. 49)']
         });
       }
 
@@ -347,11 +353,16 @@ function createServer(services) {
 
       // --- POST /api/disclosure ---
       if (path === '/api/disclosure' && method === 'POST') {
+        const user = authenticate(req, res, ['admin', 'secretariat', 'arbitrator']);
+        if (!user) return;
         const requestData = await parseBody(req);
         if (!requestData.caseId) {
           return sendJSON(res, 400, { error: 'caseId is required' });
         }
-        const disclosureId = 'disclosure-' + Date.now();
+        const disclosureId = disclosureWorkflow.createDisclosure({
+          ...requestData,
+          createdBy: user.userId
+        });
         await auditTrail.logEvent({
           type: 'disclosure',
           caseId: requestData.caseId,
@@ -365,12 +376,96 @@ function createServer(services) {
         });
       }
 
+      // --- POST /api/disclosure/challenge ---
+      if (path === '/api/disclosure/challenge' && method === 'POST') {
+        const user = authenticate(req, res, ['admin', 'secretariat', 'arbitrator']);
+        if (!user) return;
+        const requestData = await parseBody(req);
+        if (!requestData.disclosureId) {
+          return sendJSON(res, 400, { error: 'disclosureId is required' });
+        }
+        const challengeId = disclosureWorkflow.createChallenge(requestData.disclosureId, {
+          ...requestData,
+          submittedBy: user.userId
+        });
+        await auditTrail.logEvent({
+          type: 'disclosure_challenge',
+          caseId: requestData.caseId,
+          action: 'create',
+          challengeId,
+          disclosureId: requestData.disclosureId
+        });
+        return sendJSON(res, 200, {
+          success: true,
+          message: 'Challenge request received',
+          challengeId
+        });
+      }
+
+      // --- POST /api/disclosure/challenge/:challengeId/resolve ---
+      if (path.startsWith('/api/disclosure/challenge/') && path.endsWith('/resolve') && method === 'POST') {
+        const user = authenticate(req, res, ['admin', 'secretariat']);
+        if (!user) return;
+        const challengeId = path.split('/')[4];
+        const requestData = await parseBody(req);
+        disclosureWorkflow.updateChallengeStatus(challengeId, requestData.status || 'resolved', {
+          resolvedBy: user.userId,
+          reason: requestData.reason || '',
+          note: requestData.note || ''
+        });
+        return sendJSON(res, 200, {
+          success: true,
+          challengeId,
+          status: requestData.status || 'resolved'
+        });
+      }
+
       // --- GET /api/compliance ---
       if (path === '/api/compliance' && method === 'GET') {
         return sendJSON(res, 200, {
           message: 'ODPC compliance reporting endpoint',
           status: 'operational'
         });
+      }
+
+      // --- GET /api/legal-sources ---
+      if (path === '/api/legal-sources' && method === 'GET') {
+        const user = authenticate(req, res, ['admin', 'secretariat']);
+        if (!user) return;
+        return sendJSON(res, 200, {
+          sources: legalSourceRegistry.getCurrentSources(),
+          citationSummary: legalSourceRegistry.getCitationSummary()
+        });
+      }
+
+      // --- GET /api/compliance/gap-map ---
+      if (path === '/api/compliance/gap-map' && method === 'GET') {
+        const user = authenticate(req, res, ['admin', 'secretariat']);
+        if (!user) return;
+        return sendJSON(res, 200, complianceGapMapService.getGapMap());
+      }
+
+      // --- POST /api/compliance/arbitrability-check ---
+      if (path === '/api/compliance/arbitrability-check' && method === 'POST') {
+        const user = authenticate(req, res, ['admin', 'secretariat', 'arbitrator']);
+        if (!user) return;
+        const body = await parseBody(req);
+        return sendJSON(res, 200, complianceGapMapService.assessArbitrability(body.case || body));
+      }
+
+      // --- GET /api/signing/readiness ---
+      if (path === '/api/signing/readiness' && method === 'GET') {
+        const user = authenticate(req, res, ['admin', 'secretariat']);
+        if (!user) return;
+        return sendJSON(res, 200, eSignatureController.getSigningReadiness({ type: parsedUrl.query.type || 'legal document' }));
+      }
+
+      // --- POST /api/awards/pack ---
+      if (path === '/api/awards/pack' && method === 'POST') {
+        const user = authenticate(req, res, ['admin', 'secretariat', 'arbitrator']);
+        if (!user) return;
+        const body = await parseBody(req);
+        return sendJSON(res, 200, AwardController.buildSection32AwardPack(body));
       }
 
       // --- POST /api/consent/record ---
@@ -1134,7 +1229,7 @@ function createServer(services) {
         const docSection = textContent
           ? `Document content:\n---\n${textContent.slice(0, 20000)}\n---`
           : `Note: Binary document — analysis based on metadata and library context only.`;
-        const aiPrompt = `You are a careful arbitration document analyst.\n\nWrite in plain English at about a 9th-grade reading level.\nReturn plain text only.\nDo not use JSON, markdown tables, code fences, or long legal jargon.\nBe direct, clear, and practical.\n\nUse this exact structure:\n1. Plain-English summary: 2 to 3 short sentences.\n2. Main issues: 3 bullet points maximum.\n3. Risks: 3 bullet points maximum.\n4. Missing information or next steps: 3 bullet points maximum.\n\nKeep the full answer under 300 words.\nIf you mention a law, rule, or legal concept, explain it in simple words.\n\nDocument being analyzed: "${docName}"\nCategory: ${docCategory}\n${docDesc ? `Description: ${docDesc}\n` : ''}${docSection}${libraryContext}${caseContext}\n\nUser request: ${body.prompt}\n\nFocus on the practical legal meaning, the strongest points, the weak points, and what the user should do next.`;
+        const aiPrompt = `You are a careful arbitration document analyst.\n\nWrite in plain English at about a 9th-grade reading level.\nReturn plain text only.\nDo not use JSON, markdown tables, code fences, or long legal jargon.\nBe direct, clear, and practical.\nTreat this as decision support only. Do not make final legal conclusions. If a point needs legal judgment, say that human review is required.\nWhen you mention Kenyan arbitration law, use the current consolidated citation: Arbitration Act, Cap. 49.\n\nUse this exact structure:\n1. Plain-English summary: 2 to 3 short sentences.\n2. Main issues: 3 bullet points maximum.\n3. Risks: 3 bullet points maximum.\n4. Missing information or next steps: 3 bullet points maximum.\n\nKeep the full answer under 300 words.\nIf you mention a law, rule, or legal concept, explain it in simple words.\n\nDocument being analyzed: "${docName}"\nCategory: ${docCategory}\n${docDesc ? `Description: ${docDesc}\n` : ''}${docSection}${libraryContext}${caseContext}\n\nUser request: ${body.prompt}\n\nFocus on the practical legal meaning, the strongest points, the weak points, and what the user should do next.`;
         const analysis = cleanModelText(await callAI(aiPrompt));
         if (!analysis) return sendJSON(res, 503, { error: 'AI not configured. Add NVIDIA_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY to .env.oracle' });
         const stored = await documentAnalysisService.storeAnalysis({
@@ -1320,7 +1415,7 @@ function createServer(services) {
         const seat = jurisdiction || seatOfArbitration || 'Kenya';
         const prompt = `For a ${caseType || 'commercial'} arbitration with seat in ${seat}, provide a JSON object with:
 - governingLaw: standard substantive law (e.g., "Laws of Kenya")
-- arbitrationLaw: primary arbitration statute with year
+- arbitrationLaw: primary arbitration statute and current consolidated citation (e.g., "Arbitration Act, Cap. 49")
 - arbitrationRules: top recommended institutional rules for this jurisdiction
 - institutions: array of top 3 arbitration institutions
 - notes: one sentence on the legal framework
@@ -1378,14 +1473,19 @@ async function startServer() {
   const wormStorage = new WORMStorage();
   const certificateValidator = new CertificateValidationService();
   const nyValidator = new NYConventionValidator();
-  const metricsDashboard = new MetricsDashboard();
-  const offlineSync = new OfflineSyncService();
-  const disclosureWorkflow = new DisclosureWorkflowService();
-  const riskMonitoring = new RiskMonitoringService();
-  const odpcCompliance = new ODPCComplianceService();
-  const conflictGraph = new ConflictGraph();
-  const complianceController = new ComplianceController();
-  const eSignatureController = new ESignatureController();
+    const metricsDashboard = new MetricsDashboard();
+    const offlineSync = new OfflineSyncService();
+    const disclosureWorkflow = new DisclosureWorkflowService();
+    const riskMonitoring = new RiskMonitoringService();
+    const odpcCompliance = new ODPCComplianceService();
+    const legalSourceRegistry = new LegalSourceRegistry();
+    const complianceGapMapService = new ComplianceGapMapService({
+      legalSourceRegistry,
+      disclosureWorkflow
+    });
+    const conflictGraph = new ConflictGraph();
+    const complianceController = new ComplianceController();
+    const eSignatureController = new ESignatureController();
   const documentController = new DocumentController();
   const systemController = new SystemController();
   const intelligenceService = new IntelligenceService({
@@ -1416,9 +1516,13 @@ async function startServer() {
     aiOrchestrator, ruleEngine, caService,
     aiConflictScanner, certificateValidator,
     authService, userService, hearingService,
-    metricsDashboard, riskMonitoring, intelligenceService,
-    documentAnalysisService
-  });
+      metricsDashboard, riskMonitoring, intelligenceService,
+      documentAnalysisService,
+      disclosureWorkflow,
+      legalSourceRegistry,
+      complianceGapMapService,
+      eSignatureController
+    });
 
   const PORT = config.server.port;
   const HOST = config.server.host;
