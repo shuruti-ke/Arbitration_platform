@@ -11,6 +11,13 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(localStorage.getItem('accessToken'));
   const [loading, setLoading] = useState(true);
 
+  const clearSession = () => {
+    localStorage.removeItem('accessToken');
+    delete axios.defaults.headers.common['Authorization'];
+    setToken(null);
+    setUser(null);
+  };
+
   useEffect(() => {
     if (token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -25,7 +32,7 @@ export const AuthProvider = ({ children }) => {
       const res = await axios.get(`${API_BASE_URL}/auth/me`);
       setUser(res.data.user);
     } catch {
-      logout();
+      clearSession();
     } finally {
       setLoading(false);
     }
@@ -45,10 +52,7 @@ export const AuthProvider = ({ children }) => {
     try {
       await axios.post(`${API_BASE_URL}/auth/logout`);
     } catch {}
-    localStorage.removeItem('accessToken');
-    delete axios.defaults.headers.common['Authorization'];
-    setToken(null);
-    setUser(null);
+    clearSession();
   };
 
   const hasRole = (...roles) => !!(user && (roles.includes(user.role) || user.role === 'admin'));

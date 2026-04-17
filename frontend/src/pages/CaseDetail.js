@@ -22,6 +22,7 @@ import {
 import { useParams, useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import { apiService } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { buildProofOfServicePdf } from '../utils/proofOfServicePdf';
 
@@ -45,6 +46,7 @@ const codeKey = (value) => String(value || '').trim().toLowerCase();
 const CaseDetail = () => {
   const { caseId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { t } = useLanguage();
   const [tab, setTab] = useState(0);
   const [loading, setLoading] = useState(true);
