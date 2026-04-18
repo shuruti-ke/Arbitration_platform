@@ -4,6 +4,7 @@ require('dotenv').config({ path: '.env.oracle' });
 
 const http = require('http');
 const url = require('url');
+const crypto = require('crypto');
 
 // AI client — uses NVIDIA Nemotron first, with Groq/Gemini as fallbacks
 const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || process.env.NGC_API_KEY;
@@ -151,6 +152,7 @@ const ODPCComplianceService = require('./services/odpc-compliance');
 const LegalSourceRegistry = require('./services/legal-source-registry');
 const ComplianceGapMapService = require('./services/compliance-gap-map');
 const OracleDatabaseService = require('./services/oracle-database-service');
+const NeonDatabaseService = require('./services/neon-database-service');
 const IntelligenceService = require('./services/intelligence-service');
 const DocumentAnalysisService = require('./services/document-analysis-service');
 const { UserService, ROLES } = require('./services/user-service');
@@ -199,6 +201,22 @@ function cleanModelText(value) {
     .replace(/[ \t]+/g, ' ')
     .replace(/\s+\n/g, '\n')
     .trim();
+}
+
+function normalizeRuleGuidanceKey({ seatOfArbitration, caseType, arbitrationRules }) {
+  const raw = [seatOfArbitration, caseType, arbitrationRules]
+    .map((value) => String(value || '').trim().toLowerCase().replace(/\s+/g, ' '))
+    .join('|');
+  return crypto.createHash('sha256').update(raw).digest('hex');
+}
+
+function buildRuleGuidanceSummary(data = {}) {
+  const summaryParts = [
+    data.notes,
+    data.proceduralGuidance,
+    data.tribunalGuidance,
+  ].filter(Boolean);
+  return cleanModelText(summaryParts.join(' '));
 }
 
 // --- Server factory ---
@@ -518,8 +536,21 @@ function createServer(services) {
         if (!email || !password) {
           return sendJSON(res, 400, { error: 'email and password are required' });
         }
-        const result = await authService.login(email, password, req.socket.remoteAddress);
-        return sendJSON(res, 200, result);
+        try {
+          const result = await authService.login(email, password, req.socket.remoteAddress);
+          return sendJSON(res, 200, result);
+        } catch (error) {
+          if (error.message === 'Invalid credentials') {
+            return sendJSON(res, 401, { error: 'Invalid credentials' });
+          }
+          if (error.message === 'Account is deactivated') {
+            return sendJSON(res, 403, { error: 'Account is deactivated' });
+          }
+          if (error.message === 'Email and password are required') {
+            return sendJSON(res, 400, { error: 'Email and password are required' });
+          }
+          throw error;
+        }
       }
 
       // --- POST /api/auth/logout ---
@@ -843,6 +874,7 @@ function createServer(services) {
           agreementParties: agreementPartiesResult.rows || [],
           agreementSignatures: agreementSignaturesResult.rows || [],
           agreementExtractions: agreementExtractionResult.rows || [],
+          ruleGuidance: caseResult.rows?.[0] || null,
           auditLog: auditResult || []
         });
       }
@@ -929,19 +961,26 @@ function createServer(services) {
         const body = await parseBody(req);
         if (!body.title) return sendJSON(res, 400, { error: 'title is required' });
         const caseId = 'case-' + Date.now();
+        const ruleGuidance = body.ruleGuidance || {};
         await oracleDb.executeQuery(
           `INSERT INTO cases (case_id, title, status, case_type, sector, dispute_category,
             description, dispute_amount, currency, governing_law, seat_of_arbitration,
             arbitration_rules, language_of_proceedings, institution_ref, filing_date,
             response_deadline, case_stage, num_arbitrators, confidentiality_level, third_party_funding,
             relief_sought, arbitrator_nominee, nominee_qualifications,
-            filing_fee, filing_fee_currency, service_confirmed)
+            filing_fee, filing_fee_currency, service_confirmed,
+            rule_guidance_summary, rule_guidance_json, rule_guidance_model,
+            rule_guidance_cache_key, rule_guidance_cached, rule_guidance_source,
+            rule_guidance_generated_at)
            VALUES (:caseId, :title, :status, :caseType, :sector, :disputeCategory,
             :description, :disputeAmount, :currency, :governingLaw, :seatOfArbitration,
             :arbitrationRules, :languageOfProceedings, :institutionRef, :filingDate,
             :responseDeadline, :caseStage, :numArbitrators, :confidentialityLevel, :thirdPartyFunding,
             :reliefSought, :arbitratorNominee, :nomineeQualifications,
-            :filingFee, :filingFeeCurrency, :serviceConfirmed)`,
+            :filingFee, :filingFeeCurrency, :serviceConfirmed,
+            :ruleGuidanceSummary, :ruleGuidanceJson, :ruleGuidanceModel,
+            :ruleGuidanceCacheKey, :ruleGuidanceCached, :ruleGuidanceSource,
+            :ruleGuidanceGeneratedAt)`,
           {
             caseId,
             title: body.title,
@@ -968,7 +1007,14 @@ function createServer(services) {
             nomineeQualifications: body.nomineeQualifications || null,
             filingFee: body.filingFee || null,
             filingFeeCurrency: body.filingFeeCurrency || 'KES',
-            serviceConfirmed: body.serviceConfirmed ? 1 : 0
+            serviceConfirmed: body.serviceConfirmed ? 1 : 0,
+            ruleGuidanceSummary: ruleGuidance.summary || null,
+            ruleGuidanceJson: Object.keys(ruleGuidance).length > 0 ? JSON.stringify(ruleGuidance) : null,
+            ruleGuidanceModel: ruleGuidance.modelName || ruleGuidance.model || null,
+            ruleGuidanceCacheKey: ruleGuidance.cacheKey || null,
+            ruleGuidanceCached: ruleGuidance.cached ? 1 : 0,
+            ruleGuidanceSource: ruleGuidance.source || (ruleGuidance.cached ? 'cache' : (Object.keys(ruleGuidance).length > 0 ? 'ai' : null)),
+            ruleGuidanceGeneratedAt: ruleGuidance.generatedAt ? new Date(ruleGuidance.generatedAt) : (Object.keys(ruleGuidance).length > 0 ? new Date() : null)
           }
         );
 
@@ -999,6 +1045,7 @@ function createServer(services) {
         if (!user) return;
         const caseId = path.split('/api/cases/')[1];
         const body = await parseBody(req);
+        const ruleGuidance = body.ruleGuidance || {};
         await oracleDb.executeQuery(
           `UPDATE cases SET
             title = :title, status = :status, case_type = :caseType, sector = :sector,
@@ -1012,6 +1059,13 @@ function createServer(services) {
             relief_sought = :reliefSought, arbitrator_nominee = :arbitratorNominee,
             nominee_qualifications = :nomineeQualifications, filing_fee = :filingFee,
             filing_fee_currency = :filingFeeCurrency, service_confirmed = :serviceConfirmed,
+            rule_guidance_summary = :ruleGuidanceSummary,
+            rule_guidance_json = :ruleGuidanceJson,
+            rule_guidance_model = :ruleGuidanceModel,
+            rule_guidance_cache_key = :ruleGuidanceCacheKey,
+            rule_guidance_cached = :ruleGuidanceCached,
+            rule_guidance_source = :ruleGuidanceSource,
+            rule_guidance_generated_at = :ruleGuidanceGeneratedAt,
             updated_at = CURRENT_TIMESTAMP
            WHERE case_id = :caseId`,
           {
@@ -1039,7 +1093,14 @@ function createServer(services) {
             nomineeQualifications: body.nomineeQualifications || null,
             filingFee: body.filingFee || null,
             filingFeeCurrency: body.filingFeeCurrency || 'KES',
-            serviceConfirmed: body.serviceConfirmed ? 1 : 0
+            serviceConfirmed: body.serviceConfirmed ? 1 : 0,
+            ruleGuidanceSummary: ruleGuidance.summary || null,
+            ruleGuidanceJson: Object.keys(ruleGuidance).length > 0 ? JSON.stringify(ruleGuidance) : null,
+            ruleGuidanceModel: ruleGuidance.modelName || ruleGuidance.model || null,
+            ruleGuidanceCacheKey: ruleGuidance.cacheKey || null,
+            ruleGuidanceCached: ruleGuidance.cached ? 1 : 0,
+            ruleGuidanceSource: ruleGuidance.source || (ruleGuidance.cached ? 'cache' : (Object.keys(ruleGuidance).length > 0 ? 'ai' : null)),
+            ruleGuidanceGeneratedAt: ruleGuidance.generatedAt ? new Date(ruleGuidance.generatedAt) : (Object.keys(ruleGuidance).length > 0 ? new Date() : null)
           }
         );
         await auditTrail.logEvent({ type: 'case_updated', caseId, userId: user.userId, action: 'update' });
@@ -1151,6 +1212,39 @@ function createServer(services) {
             console.warn('Background text extraction failed:', e.message);
           }
         });
+      }
+
+      // --- POST /api/forms/agreement/share ---
+      if (path === '/api/forms/agreement/share' && method === 'POST') {
+        const user = authenticate(req, res);
+        if (!user) return;
+        const body = await parseBody(req);
+        const recipients = Array.isArray(body.recipients) ? body.recipients : [];
+        if (recipients.length === 0 || !body.pdfBase64) {
+          return sendJSON(res, 400, { error: 'recipients and pdfBase64 are required' });
+        }
+
+        const sendResult = await emailService.sendAgreementForSigningEmail({
+          toEmails: recipients,
+          subject: body.subject,
+          message: body.message,
+          fileName: body.fileName,
+          pdfBase64: body.pdfBase64,
+          caseId: body.caseData?.caseId || body.caseId || ''
+        });
+
+        if (!sendResult.sent) {
+          return sendJSON(res, 500, { error: sendResult.error || 'Failed to email agreement template' });
+        }
+
+        await auditTrail.logEvent({
+          type: 'agreement_template_shared',
+          userId: user.userId,
+          action: 'share_agreement_template',
+          details: JSON.stringify({ recipients, caseId: body.caseData?.caseId || body.caseId || null })
+        });
+
+        return sendJSON(res, 200, { success: true, sent: true, recipients: sendResult.recipients || recipients });
       }
 
       // --- POST /api/intake/agreement/analyze ---
@@ -1689,17 +1783,56 @@ ${extractedText.slice(0, 25000)}
       if (path === '/api/ai/governing-law' && method === 'POST') {
         const user = authenticate(req, res);
         if (!user) return;
-        const { seatOfArbitration, caseType, jurisdiction } = await parseBody(req);
+        const { seatOfArbitration, caseType, jurisdiction, arbitrationRules } = await parseBody(req);
         if (!NVIDIA_API_KEY && !GROQ_API_KEY && !GEMINI_API_KEY) {
           return sendJSON(res, 200, { success: false, message: 'AI not configured. Add NVIDIA_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY to .env.oracle' });
         }
         const seat = jurisdiction || seatOfArbitration || 'Kenya';
-        const prompt = `For a ${caseType || 'commercial'} arbitration with seat in ${seat}, provide a JSON object with:
+        const cacheKey = normalizeRuleGuidanceKey({
+          seatOfArbitration: seat,
+          caseType: caseType || 'commercial',
+          arbitrationRules: arbitrationRules || 'unspecified'
+        });
+        const cachedRow = await oracleDb.getRuleGuidanceCache(cacheKey);
+        if (cachedRow) {
+          const cachedJson = cachedRow.GUIDANCE_JSON || cachedRow.guidance_json || null;
+          let cachedData = {};
+          try {
+            cachedData = cachedJson ? JSON.parse(cachedJson) : {};
+          } catch {
+            cachedData = { notes: cachedRow.GUIDANCE_SUMMARY || cachedRow.guidance_summary || '' };
+          }
+          const summary = cleanModelText(cachedRow.GUIDANCE_SUMMARY || cachedRow.guidance_summary || buildRuleGuidanceSummary(cachedData));
+          await oracleDb.saveRuleGuidanceCache({
+            cacheKey,
+            seatOfArbitration: seat,
+            caseType: caseType || 'commercial',
+            arbitrationRules: arbitrationRules || cachedData.arbitrationRules || null,
+            governingLaw: cachedData.governingLaw || null,
+            guidanceJson: cachedJson,
+            guidanceSummary: summary,
+            modelName: cachedRow.MODEL_NAME || cachedRow.model_name || null
+          });
+          return sendJSON(res, 200, {
+            success: true,
+            cached: true,
+            cacheKey,
+            source: 'cache',
+            modelName: cachedRow.MODEL_NAME || cachedRow.model_name || null,
+            ...cachedData,
+            summary,
+            guidanceSummary: summary
+          });
+        }
+
+        const prompt = `For a ${caseType || 'commercial'} arbitration with seat in ${seat}${arbitrationRules ? ` and selected rules ${arbitrationRules}` : ''}, provide a JSON object with:
 - governingLaw: standard substantive law (e.g., "Laws of Kenya")
 - arbitrationLaw: primary arbitration statute and current consolidated citation (e.g., "Arbitration Act, Cap. 49")
 - arbitrationRules: top recommended institutional rules for this jurisdiction
 - institutions: array of top 3 arbitration institutions
 - notes: one sentence on the legal framework
+- proceduralGuidance: short plain-English summary of how the selected rules should shape the case setup
+- tribunalGuidance: short plain-English summary of tribunal structure for the selected rules
 
 Respond ONLY with valid JSON, no markdown, no extra text.`;
         const text = await callAI(prompt);
@@ -1707,9 +1840,42 @@ Respond ONLY with valid JSON, no markdown, no extra text.`;
         try {
           const jsonMatch = text.match(/\{[\s\S]*\}/);
           const data = jsonMatch ? JSON.parse(jsonMatch[0]) : { notes: text };
-          return sendJSON(res, 200, { success: true, ...data });
+          const modelName = NVIDIA_API_KEY ? NVIDIA_MODEL : (GROQ_API_KEY ? GROQ_MODEL : 'gemini-2.0-flash');
+          const summary = cleanModelText(buildRuleGuidanceSummary(data));
+          await oracleDb.saveRuleGuidanceCache({
+            cacheKey,
+            seatOfArbitration: seat,
+            caseType: caseType || 'commercial',
+            arbitrationRules: arbitrationRules || data.arbitrationRules || null,
+            governingLaw: data.governingLaw || null,
+            guidanceJson: JSON.stringify(data),
+            guidanceSummary: summary,
+            modelName
+          });
+          return sendJSON(res, 200, {
+            success: true,
+            cached: false,
+            cacheKey,
+            source: 'ai',
+            modelName,
+            ...data,
+            summary,
+            guidanceSummary: summary
+          });
         } catch {
-          return sendJSON(res, 200, { success: true, notes: text });
+          const modelName = NVIDIA_API_KEY ? NVIDIA_MODEL : (GROQ_API_KEY ? GROQ_MODEL : 'gemini-2.0-flash');
+          const summary = cleanModelText(text);
+          await oracleDb.saveRuleGuidanceCache({
+            cacheKey,
+            seatOfArbitration: seat,
+            caseType: caseType || 'commercial',
+            arbitrationRules: arbitrationRules || null,
+            governingLaw: null,
+            guidanceJson: JSON.stringify({ notes: text }),
+            guidanceSummary: summary,
+            modelName
+          });
+          return sendJSON(res, 200, { success: true, cached: false, cacheKey, source: 'ai', modelName, notes: text, summary, guidanceSummary: summary });
         }
       }
 
@@ -1729,11 +1895,15 @@ Respond ONLY with valid JSON, no markdown, no extra text.`;
 // --- Bootstrap ---
 
 async function startServer() {
-  // 1. Initialize Oracle database
-  const oracleDb = new OracleDatabaseService(config);
-  const dbConnected = await oracleDb.initOracleDatabase();
+  // 1. Initialize database (Neon if DATABASE_URL set, otherwise Oracle)
+  const oracleDb = process.env.DATABASE_URL
+    ? new NeonDatabaseService(config)
+    : new OracleDatabaseService(config);
+  const dbConnected = process.env.DATABASE_URL
+    ? await oracleDb.initNeonDatabase()
+    : await oracleDb.initOracleDatabase();
   if (!dbConnected) {
-    console.warn('Warning: Oracle DB not connected. Audit logs will be in-memory only.');
+    console.warn('Warning: DB not connected. Audit logs will be in-memory only.');
   }
 
   // 2. Initialize services that depend on the DB
@@ -1826,13 +1996,33 @@ async function startServer() {
   });
 
   // Graceful shutdown
+  let shuttingDown = false;
   const shutdown = async () => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
     console.log('Shutting down server...');
-    server.close(async () => {
+    try {
+      await new Promise((resolve) => {
+        server.close(() => resolve());
+      });
+    } catch (error) {
+      if (!error || error.code !== 'ERR_SERVER_NOT_RUNNING') {
+        console.error('Shutdown error closing HTTP server:', error.message);
+      }
+    }
+
+    try {
       await oracleDb.closePool();
-      console.log('Server closed');
-      process.exit(0);
-    });
+    } catch (error) {
+      if (!error || error.code !== 'NJS-064') {
+        console.error('Shutdown error closing Oracle pool:', error.message);
+      }
+    }
+
+    console.log('Server closed');
+    process.exit(0);
   };
 
   process.on('SIGINT', shutdown);

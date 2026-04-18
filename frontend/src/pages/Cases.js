@@ -14,36 +14,122 @@ import {
   CheckCircle as CheckIcon, Cancel as CancelIcon
 } from '@mui/icons-material';
 import { DataGrid } from '@mui/x-data-grid';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import { apiService } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { buildCaseAgreementPdf } from '../utils/caseAgreementPdf';
+import { getRulePreset } from '../utils/ruleLibrary';
+import SearchableField from '../components/SearchableField';
+import {
+  AGREEMENT_SETUP_STORAGE_KEY,
+  createEmptyAgreementDraft,
+  createEmptyForm,
+} from '../utils/agreementFlow';
 
-const EMPTY_FORM = {
-  // Step 0 - Agreement intake
-  agreementSigned: false,
-  // Step 1 - Case Details
-  title: '', caseType: '', sector: '', disputeCategory: '',
-  description: '', disputeAmount: '', currency: 'USD', status: 'active',
-  // Step 2 - Parties
-  claimantName: '', claimantOrg: '', claimantEmail: '', claimantPhone: '',
-  claimantNationality: '', claimantAddress: '', claimantEntityType: 'corporation',
-  respondentName: '', respondentOrg: '', respondentEmail: '', respondentPhone: '',
-  respondentNationality: '', respondentAddress: '', respondentEntityType: 'corporation',
-  // Step 3 - Procedural
-  governingLaw: '', seatOfArbitration: '', arbitrationRules: '',
-  languageOfProceedings: 'English', numArbitrators: '1',
-  confidentialityLevel: 'confidential', thirdPartyFunding: false,
-  responseDeadline: '',
-  // Step 4 - Submission
-  reliefSought: '', arbitratorNominee: '', nomineeQualifications: '',
-  filingFee: '', filingFeeCurrency: 'KES',
-  feeAcknowledged: false,
-};
+const CASE_TYPE_OPTIONS = [
+  'commercial',
+  'employment',
+  'construction',
+  'ip',
+  'investment',
+  'consumer',
+  'insurance',
+  'real_estate',
+  'technology',
+  'other',
+];
+
+const SECTOR_OPTIONS = [
+  'finance',
+  'energy',
+  'construction',
+  'technology',
+  'agriculture',
+  'healthcare',
+  'transport',
+  'retail',
+  'government',
+  'other',
+];
+
+const DISPUTE_CATEGORY_OPTIONS = [
+  'b2b',
+  'b2c',
+  'investment',
+  'state',
+  'cross_border',
+];
+
+const ENTITY_TYPE_OPTIONS = [
+  'individual',
+  'corporation',
+  'partnership',
+  'government',
+  'ngo',
+];
+
+const ARBITRATION_RULE_OPTIONS = [
+  'Arbitration Act (Cap. 49)',
+  'NCIA',
+  'KIAC',
+  'LCIA',
+  'ICC',
+  'SIAC',
+  'UNCITRAL',
+  'AAA',
+  'AFSA',
+  'LCA',
+  'CRCICA',
+  'Ad Hoc',
+];
+
+const LANGUAGE_OPTIONS = [
+  'English',
+  'French',
+  'Arabic',
+  'Portuguese',
+  'Swahili',
+  'Other',
+];
+
+const CONFIDENTIALITY_OPTIONS = [
+  'confidential',
+  'restricted',
+  'public',
+];
+
+const CURRENCY_OPTIONS = [
+  'USD',
+  'KES',
+  'EUR',
+  'GBP',
+  'ZAR',
+  'NGN',
+  'GHS',
+  'UGX',
+  'TZS',
+];
+
+const CASE_STATUS_OPTIONS = [
+  'active',
+  'pending',
+  'completed',
+];
+
+const NUM_ARBITRATORS_OPTIONS = [
+  '1',
+  '3',
+];
+
+const FUNDING_OPTIONS = [
+  'Yes',
+  'No',
+];
 
 const Cases = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useLanguage();
   const [mainTab, setMainTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
@@ -55,16 +141,15 @@ const Cases = () => {
   const [activeStep, setActiveStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm] = useState(createEmptyForm);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState(null);
-  const [agreementFile, setAgreementFile] = useState(null);
-  const [agreementAnalyzing, setAgreementAnalyzing] = useState(false);
-  const [agreementError, setAgreementError] = useState(null);
   const [agreementAnalysis, setAgreementAnalysis] = useState(null);
-  const [agreementMode, setAgreementMode] = useState('template');
+  const [agreementDraft, setAgreementDraft] = useState(createEmptyAgreementDraft);
+  const [agreementPrepared, setAgreementPrepared] = useState(false);
+  const [agreementSigned, setAgreementSigned] = useState(false);
 
-  const STEPS = [t('Agreement'), t('Case Details'), t('Parties'), t('Procedural'), t('Submission')];
+  const STEPS = [t('Case Details'), t('Parties'), t('Procedural'), t('Submission')];
 
   const fetchCases = async () => {
     try {
@@ -94,23 +179,91 @@ const Cases = () => {
 
   useEffect(() => { fetchCases(); }, []);
 
+  useEffect(() => {
+    const pending = location.state?.agreementSetup;
+    const persisted = typeof window !== 'undefined'
+      ? window.sessionStorage.getItem(AGREEMENT_SETUP_STORAGE_KEY)
+      : null;
+
+    let setup = pending || null;
+    if (!setup && persisted) {
+      try {
+        setup = JSON.parse(persisted);
+      } catch (error) {
+        setup = null;
+      }
+    }
+
+    if (!setup) {
+      return;
+    }
+
+    if (setup.form) {
+      setForm((prev) => ({ ...prev, ...setup.form }));
+    }
+    if (setup.agreementDraft) {
+      setAgreementDraft((prev) => ({ ...prev, ...setup.agreementDraft }));
+    }
+    if (setup.agreementAnalysis) {
+      setAgreementAnalysis(setup.agreementAnalysis);
+    }
+    if (typeof setup.agreementSigned === 'boolean') {
+      setAgreementSigned(setup.agreementSigned);
+    }
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem(AGREEMENT_SETUP_STORAGE_KEY);
+    }
+
+    setAgreementPrepared(true);
+    setDialogOpen(true);
+    setActiveStep(0);
+  }, [location.state]);
+
+  useEffect(() => {
+    if (form.arbitrationRules) {
+      applyRulePreset(form.arbitrationRules);
+    }
+  }, [form.arbitrationRules]);
+
   const set = (field) => (e) => setForm({ ...form, [field]: e.target.value });
   const setCheck = (field) => (e) => setForm({ ...form, [field]: e.target.checked });
 
+  const applyRulePreset = (ruleName) => {
+    const preset = getRulePreset(ruleName);
+    if (!preset) return;
+
+    setForm((prev) => ({
+      ...prev,
+      governingLaw: prev.governingLaw || preset.governingLaw || prev.governingLaw,
+    }));
+
+    setAgreementDraft((prev) => ({
+      ...prev,
+      governingRulesText: prev.governingRulesText || preset.governingRulesText || '',
+      tribunalDetails: prev.tribunalDetails || preset.tribunalDetails || '',
+      procedure: prev.procedure || preset.procedure || '',
+      evidenceHearings: prev.evidenceHearings || preset.evidenceHearings || '',
+      powers: prev.powers || preset.powers || '',
+      costs: prev.costs || preset.costs || '',
+      enforcement: prev.enforcement || preset.enforcement || '',
+    }));
+
+    setAiSuggestion((prev) => (prev ? {
+      ...prev,
+      notes: prev.notes || preset.notes || prev.notes,
+    } : prev));
+  };
+
   const validateStep = () => {
-    if (activeStep === 0 && !agreementFile) {
-      setFormError(t('Please upload a signed agreement before creating the case.'));
-      return false;
-    }
-    if (activeStep === 1 && !form.title.trim()) {
+    if (activeStep === 0 && !form.title.trim()) {
       setFormError(t('Case title is required.'));
       return false;
     }
-    if (activeStep === 2 && (!form.claimantName.trim() || !form.respondentName.trim())) {
+    if (activeStep === 1 && (!form.claimantName.trim() || !form.respondentName.trim())) {
       setFormError(t('Claimant and Respondent names are required.'));
       return false;
     }
-    if (activeStep === 4 && !form.reliefSought.trim()) {
+    if (activeStep === 3 && !form.reliefSought.trim()) {
       setFormError(t('Relief Sought is required — describe the remedy you seek from the Tribunal.'));
       return false;
     }
@@ -145,6 +298,23 @@ const Cases = () => {
         nomineeQualifications: form.nomineeQualifications || null,
         filingFee: form.filingFee || null,
         filingFeeCurrency: form.filingFeeCurrency || 'KES',
+        ruleGuidance: aiSuggestion ? {
+          cacheKey: aiSuggestion.cacheKey || null,
+          caseType: form.caseType || null,
+          seatOfArbitration: form.seatOfArbitration || null,
+          arbitrationRules: form.arbitrationRules || null,
+          governingLaw: aiSuggestion.governingLaw || form.governingLaw || null,
+          summary: aiSuggestion.summary || aiSuggestion.guidanceSummary || aiSuggestion.notes || null,
+          notes: aiSuggestion.notes || null,
+          proceduralGuidance: aiSuggestion.proceduralGuidance || null,
+          tribunalGuidance: aiSuggestion.tribunalGuidance || null,
+          arbitrationLaw: aiSuggestion.arbitrationLaw || null,
+          institutions: aiSuggestion.institutions || [],
+          modelName: aiSuggestion.modelName || null,
+          cached: !!aiSuggestion.cached,
+          source: aiSuggestion.source || (aiSuggestion.cached ? 'cache' : 'ai'),
+          generatedAt: new Date().toISOString(),
+        } : null,
       });
 
       const newCaseId = res.data.caseId;
@@ -166,66 +336,72 @@ const Cases = () => {
         });
       }
 
-      if (agreementFile) {
-        const agreementContent = await fileToBase64(agreementFile);
-        await apiService.uploadDocument({
-          documentName: agreementFile.name,
-          caseId: newCaseId,
-          category: 'Arbitration Agreement',
-          description: 'Signed arbitration agreement uploaded during case setup',
-          accessLevel: 'case',
-          content: agreementContent,
-          mimeType: agreementFile.type
-        });
+      const filledAgreement = {
+        title: form.title,
+        effectiveDate: agreementDraft.effectiveDate || new Date().toLocaleDateString(),
+        claimantName: form.claimantName,
+        claimantOrg: form.claimantOrg,
+        respondentName: form.respondentName,
+        respondentOrg: form.respondentOrg,
+        arbitratorNominee: form.arbitratorNominee,
+        nomineeQualifications: form.nomineeQualifications,
+        seatOfArbitration: form.seatOfArbitration,
+        governingLaw: form.governingLaw,
+        arbitrationRules: form.arbitrationRules,
+        languageOfProceedings: form.languageOfProceedings,
+        numArbitrators: parseInt(form.numArbitrators, 10) || 1,
+        confidentialityLevel: form.confidentialityLevel,
+        reliefSought: form.reliefSought,
+        agreementDraft: {
+          ...agreementDraft,
+        },
+        summary: agreementAnalysis?.summary || '',
+        keyTerms: agreementAnalysis?.keyTerms || [],
+        missingInfo: agreementAnalysis?.missingInfo || [],
+      };
 
-        await apiService.createCaseAgreement({
-          caseId: newCaseId,
-          sourceDocumentName: agreementFile.name,
-          sourceDocumentType: agreementMode === 'template' ? 'platform_template' : 'uploaded',
-          templateName: agreementMode === 'template' ? 'Arbitration Agreement' : null,
-          agreementStatus: 'signed',
-          extracted: {
-            title: form.title,
-            caseType: form.caseType,
-            sector: form.sector,
-            disputeCategory: form.disputeCategory,
-            description: form.description,
-            claimantName: form.claimantName,
-            claimantOrg: form.claimantOrg,
-            respondentName: form.respondentName,
-            respondentOrg: form.respondentOrg,
-            arbitratorNominee: form.arbitratorNominee,
-            nomineeQualifications: form.nomineeQualifications,
-            seatOfArbitration: form.seatOfArbitration,
-            governingLaw: form.governingLaw,
-            arbitrationRules: form.arbitrationRules,
-            languageOfProceedings: form.languageOfProceedings,
-            numArbitrators: parseInt(form.numArbitrators, 10) || 1,
-            confidentialityLevel: form.confidentialityLevel,
-            reliefSought: form.reliefSought,
-            summary: agreementAnalysis?.summary || '',
-            keyTerms: agreementAnalysis?.keyTerms || [],
-            missingInfo: agreementAnalysis?.missingInfo || []
-          },
-          parties: [
-            { partyRole: 'claimant', fullName: form.claimantName, organizationName: form.claimantOrg, email: form.claimantEmail, signatureStatus: 'signed' },
-            { partyRole: 'respondent', fullName: form.respondentName, organizationName: form.respondentOrg, email: form.respondentEmail, signatureStatus: 'signed' },
-          ],
-          signatures: [
-            { signerRole: 'claimant', signerName: form.claimantName, signatureStatus: 'signed', signatureMethod: agreementMode === 'template' ? 'platform_template' : 'uploaded' },
-            { signerRole: 'respondent', signerName: form.respondentName, signatureStatus: 'signed', signatureMethod: agreementMode === 'template' ? 'platform_template' : 'uploaded' },
-            { signerRole: 'arbitrator', signerName: form.arbitratorNominee, signatureStatus: 'signed', signatureMethod: agreementMode === 'template' ? 'platform_template' : 'uploaded' },
-          ],
-          signedAt: new Date().toISOString(),
-          effectiveDate: new Date().toISOString(),
-          modelName: 'agreement-intake'
-        });
-      }
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      buildCaseAgreementPdf({ pdf, caseData: filledAgreement, user: null });
+      const pdfBase64 = pdf.output('datauristring').split(',')[1];
+      const agreementFileName = `${(form.title || 'arbitration-agreement').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-agreement.pdf`;
+
+      await apiService.uploadDocument({
+        documentName: agreementFileName,
+        caseId: newCaseId,
+        category: 'Arbitration Agreement',
+        description: 'Arbitration agreement generated from the arbitrator-filled draft',
+        accessLevel: 'case',
+        content: pdfBase64,
+        mimeType: 'application/pdf'
+      });
+
+      await apiService.createCaseAgreement({
+        caseId: newCaseId,
+        sourceDocumentName: agreementFileName,
+        sourceDocumentType: 'platform_generated',
+        templateName: 'Arbitration Agreement',
+        agreementStatus: agreementSigned ? 'signed' : 'draft',
+        extracted: filledAgreement,
+        parties: [
+          { partyRole: 'claimant', fullName: form.claimantName, organizationName: form.claimantOrg, email: form.claimantEmail, signatureStatus: agreementSigned ? 'signed' : 'pending' },
+          { partyRole: 'respondent', fullName: form.respondentName, organizationName: form.respondentOrg, email: form.respondentEmail, signatureStatus: agreementSigned ? 'signed' : 'pending' },
+        ],
+        signatures: [
+          { signerRole: 'claimant', signerName: form.claimantName, signatureStatus: agreementSigned ? 'signed' : 'pending', signatureMethod: 'platform_generated' },
+          { signerRole: 'respondent', signerName: form.respondentName, signatureStatus: agreementSigned ? 'signed' : 'pending', signatureMethod: 'platform_generated' },
+          { signerRole: 'arbitrator', signerName: form.arbitratorNominee, signatureStatus: 'signed', signatureMethod: 'platform_generated' },
+        ],
+        signedAt: agreementSigned ? new Date().toISOString() : null,
+        effectiveDate: agreementDraft.effectiveDate || new Date().toLocaleDateString(),
+        modelName: 'agreement-draft'
+      });
 
       setDialogOpen(false);
       setActiveStep(0);
-      setForm(EMPTY_FORM);
-      resetAgreementStep();
+      setForm(createEmptyForm());
+      setAgreementDraft(createEmptyAgreementDraft());
+      setAgreementPrepared(false);
+      setAgreementSigned(false);
       await fetchCases();
       navigate(`/cases/${newCaseId}`);
     } catch (err) {
@@ -242,7 +418,8 @@ const Cases = () => {
     try {
       const res = await apiService.getGoverningLaw({
         seatOfArbitration: form.seatOfArbitration,
-        caseType: form.caseType
+        caseType: form.caseType,
+        arbitrationRules: form.arbitrationRules,
       });
       const s = res.data;
       setAiSuggestion(s);
@@ -251,101 +428,15 @@ const Cases = () => {
         governingLaw: s.governingLaw || prev.governingLaw,
         arbitrationRules: s.arbitrationRules || prev.arbitrationRules,
       }));
+      setAgreementDraft((prev) => ({
+        ...prev,
+        governingRulesText: prev.governingRulesText || s.proceduralGuidance || '',
+        tribunalDetails: prev.tribunalDetails || s.tribunalGuidance || '',
+      }));
     } catch (err) {
       setFormError(t('AI suggestion failed. Check server configuration.'));
     } finally {
       setAiLoading(false);
-    }
-  };
-
-  const fileToBase64 = (file) => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result || '');
-      const commaIndex = result.indexOf(',');
-      resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : '');
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-
-  const resetAgreementStep = () => {
-    setAgreementFile(null);
-    setAgreementAnalyzing(false);
-    setAgreementError(null);
-    setAgreementAnalysis(null);
-    setAgreementMode('template');
-  };
-
-  const handleGenerateAgreementTemplate = () => {
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    buildCaseAgreementPdf({ pdf, caseData: form, user: null });
-    const caseLabel = (form.title || 'arbitration-agreement').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
-    pdf.save(`${caseLabel}-template.pdf`);
-  };
-
-  const applyAgreementAnalysis = (analysis) => {
-    if (!analysis) return;
-    setAgreementAnalysis(analysis);
-    setForm((prev) => ({
-      ...prev,
-      title: analysis.title || prev.title,
-      caseType: analysis.caseType || prev.caseType,
-      sector: analysis.sector || prev.sector,
-      disputeCategory: analysis.disputeCategory || prev.disputeCategory,
-      description: analysis.description || prev.description,
-      claimantName: analysis.claimantName || prev.claimantName,
-      claimantOrg: analysis.claimantOrg || prev.claimantOrg,
-      respondentName: analysis.respondentName || prev.respondentName,
-      respondentOrg: analysis.respondentOrg || prev.respondentOrg,
-      arbitratorNominee: analysis.arbitratorNominee || prev.arbitratorNominee,
-      nomineeQualifications: analysis.nomineeQualifications || prev.nomineeQualifications,
-      seatOfArbitration: analysis.seatOfArbitration || prev.seatOfArbitration,
-      governingLaw: analysis.governingLaw || prev.governingLaw,
-      arbitrationRules: analysis.arbitrationRules || prev.arbitrationRules,
-      languageOfProceedings: analysis.languageOfProceedings || prev.languageOfProceedings,
-      numArbitrators: String(analysis.numArbitrators || prev.numArbitrators || 1),
-      confidentialityLevel: analysis.confidentialityLevel || prev.confidentialityLevel,
-      reliefSought: analysis.reliefSought || prev.reliefSought,
-    }));
-  };
-
-  const analyzeAgreementFile = async (file) => {
-    if (!file) {
-      setAgreementError(t('Please upload a signed agreement first.'));
-      return;
-    }
-    setAgreementAnalyzing(true);
-    setAgreementError(null);
-    try {
-      const content = await fileToBase64(file);
-      const response = await apiService.analyzeAgreement({
-        documentName: file.name,
-        content,
-        mimeType: file.type
-      });
-      const analysis = response.data?.extracted || null;
-      if (analysis) {
-        applyAgreementAnalysis(analysis);
-      } else {
-        setAgreementError(t('Agreement analysis could not extract structured details.'));
-      }
-    } catch (err) {
-      setAgreementError(err.response?.data?.error || t('Agreement analysis failed.'));
-    } finally {
-      setAgreementAnalyzing(false);
-    }
-  };
-
-  const handleAnalyzeAgreement = () => analyzeAgreementFile(agreementFile);
-
-  const handleAgreementFileChange = (e) => {
-    const file = e.target.files?.[0] || null;
-    setAgreementFile(file);
-    setAgreementError(null);
-    if (file) {
-      setAgreementMode('upload');
-      analyzeAgreementFile(file);
     }
   };
 
@@ -420,7 +511,7 @@ const Cases = () => {
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4">{t('Case Management')}</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/cases/agreement')}>
           {t('New Case')}
         </Button>
       </Box>
@@ -469,7 +560,21 @@ const Cases = () => {
       </Paper>
 
       {/* New Case Dialog */}
-      <Dialog open={dialogOpen} onClose={() => { setDialogOpen(false); setActiveStep(0); setForm(EMPTY_FORM); resetAgreementStep(); }}
+      <Dialog
+        open={dialogOpen}
+        onClose={() => {
+          setDialogOpen(false);
+          setActiveStep(0);
+          setForm(createEmptyForm());
+          setAgreementDraft(createEmptyAgreementDraft());
+          setAgreementPrepared(false);
+          setAgreementSigned(false);
+          setAgreementAnalysis(null);
+          setFormError(null);
+          if (typeof window !== 'undefined') {
+            window.sessionStorage.removeItem(AGREEMENT_SETUP_STORAGE_KEY);
+          }
+        }}
         maxWidth="md" fullWidth>
         <DialogTitle>{t('New Arbitration Case')}</DialogTitle>
         <DialogContent>
@@ -479,144 +584,57 @@ const Cases = () => {
 
           {formError && <Alert severity="error" sx={{ mb: 2 }}>{formError}</Alert>}
 
-          {/* Step 0: Agreement */}
+          {/* Step 0: Case Details */}
           {activeStep === 0 && (
             <Grid container spacing={2}>
               <Grid item xs={12}>
                 <Alert severity="info">
-                  {t('Start here: the case begins with a signed arbitration agreement. You can generate a platform template or upload your own signed agreement, then let AI extract the case details.')}
+                  {t('Enter the case details after the agreement draft has been prepared in the full-page editor.')}
                 </Alert>
               </Grid>
               <Grid item xs={12} sm={6}>
-                <Button variant={agreementMode === 'template' ? 'contained' : 'outlined'} fullWidth onClick={() => { setAgreementMode('template'); handleGenerateAgreementTemplate(); }}>
-                  {t('Download Agreement Template')}
-                </Button>
+                <SearchableField
+                  label={t('Case Type')}
+                  value={form.caseType}
+                  onChange={(value) => setForm({ ...form, caseType: value })}
+                  options={CASE_TYPE_OPTIONS}
+                />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <Button variant={agreementMode === 'upload' ? 'contained' : 'outlined'} component="label" fullWidth>
-                  {t('Upload Signed Agreement')}
-                  <input hidden type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" onChange={handleAgreementFileChange} />
-                </Button>
-              </Grid>
-              <Grid item xs={12}>
-                <Box sx={{ p: 2, border: '1px dashed', borderColor: 'divider', borderRadius: 1, bgcolor: 'background.default' }}>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('Agreement Intake')}</Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    {agreementFile
-                      ? t('Selected file: {{name}}', { name: agreementFile.name })
-                      : t('No agreement uploaded yet. Use the template or upload a signed agreement to continue.')}
-                  </Typography>
-                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                    <Button variant="outlined" onClick={handleAnalyzeAgreement} disabled={!agreementFile || agreementAnalyzing}>
-                      {agreementAnalyzing ? t('Analyzing...') : t('Extract Details from Agreement')}
-                    </Button>
-                    <Button variant="text" onClick={() => setAgreementMode('template')}>
-                      {t('Use Template')}
-                    </Button>
-                    <Button variant="text" onClick={() => setAgreementMode('upload')}>
-                      {t('Use Own Agreement')}
-                    </Button>
-                  </Box>
-                  {agreementAnalysis && (
-                    <Alert severity="success" sx={{ mt: 2 }}>
-                      <strong>{t('Agreement Analysis')}:</strong> {agreementAnalysis.summary || t('Structured details extracted and applied to the case draft.')}
-                      {agreementAnalysis.missingInfo?.length > 0 && (
-                        <>
-                          <br />
-                          <strong>{t('Missing')}:</strong> {agreementAnalysis.missingInfo.join(', ')}
-                        </>
-                      )}
-                    </Alert>
-                  )}
-                  {agreementError && (
-                    <Alert severity="error" sx={{ mt: 2 }}>{agreementError}</Alert>
-                  )}
-                </Box>
-              </Grid>
-            </Grid>
-          )}
-
-          {/* Step 1: Case Details */}
-          {activeStep === 1 && (
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-        <TextField label={t('Case Title *')} fullWidth value={form.title} onChange={set('title')} />
+                <SearchableField
+                  label={t('Sector / Industry')}
+                  value={form.sector}
+                  onChange={(value) => setForm({ ...form, sector: value })}
+                  options={SECTOR_OPTIONS}
+                />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>{t('Case Type')}</InputLabel>
-                  <Select value={form.caseType} label={t('Case Type')} onChange={set('caseType')}>
-                    <MenuItem value="commercial">{t('Commercial')}</MenuItem>
-                    <MenuItem value="employment">{t('Employment')}</MenuItem>
-                    <MenuItem value="construction">{t('Construction')}</MenuItem>
-                    <MenuItem value="ip">{t('Intellectual Property')}</MenuItem>
-                    <MenuItem value="investment">{t('Investment')}</MenuItem>
-                    <MenuItem value="consumer">{t('Consumer')}</MenuItem>
-                    <MenuItem value="insurance">{t('Insurance')}</MenuItem>
-                    <MenuItem value="real_estate">{t('Real Estate')}</MenuItem>
-                    <MenuItem value="technology">{t('Technology')}</MenuItem>
-                    <MenuItem value="other">{t('Other')}</MenuItem>
-                  </Select>
-                </FormControl>
+                <SearchableField
+                  label={t('Dispute Category')}
+                  value={form.disputeCategory}
+                  onChange={(value) => setForm({ ...form, disputeCategory: value })}
+                  options={DISPUTE_CATEGORY_OPTIONS}
+                />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>{t('Sector / Industry')}</InputLabel>
-                  <Select value={form.sector} label={t('Sector / Industry')} onChange={set('sector')}>
-                    <MenuItem value="finance">{t('Finance & Banking')}</MenuItem>
-                    <MenuItem value="energy">{t('Energy & Resources')}</MenuItem>
-                    <MenuItem value="construction">{t('Construction')}</MenuItem>
-                    <MenuItem value="technology">{t('Technology')}</MenuItem>
-                    <MenuItem value="agriculture">{t('Agriculture')}</MenuItem>
-                    <MenuItem value="healthcare">{t('Healthcare')}</MenuItem>
-                    <MenuItem value="transport">{t('Transport & Logistics')}</MenuItem>
-                    <MenuItem value="retail">{t('Retail & Trade')}</MenuItem>
-                    <MenuItem value="government">{t('Government')}</MenuItem>
-                    <MenuItem value="other">{t('Other')}</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>{t('Dispute Category')}</InputLabel>
-                  <Select value={form.disputeCategory} label={t('Dispute Category')} onChange={set('disputeCategory')}>
-                    <MenuItem value="b2b">{t('Business to Business (B2B)')}</MenuItem>
-                    <MenuItem value="b2c">{t('Business to Consumer (B2C)')}</MenuItem>
-                    <MenuItem value="investment">{t('Investment Treaty')}</MenuItem>
-                    <MenuItem value="state">{t('State vs. Private')}</MenuItem>
-                    <MenuItem value="cross_border">{t('Cross-Border')}</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>{t('Status')}</InputLabel>
-                  <Select value={form.status} label={t('Status')} onChange={set('status')}>
-                    <MenuItem value="active">{t('Active')}</MenuItem>
-                    <MenuItem value="pending">{t('Pending')}</MenuItem>
-                    <MenuItem value="completed">{t('Completed')}</MenuItem>
-                  </Select>
-                </FormControl>
+                <SearchableField
+                  label={t('Status')}
+                  value={form.status}
+                  onChange={(value) => setForm({ ...form, status: value })}
+                  options={CASE_STATUS_OPTIONS}
+                />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField label={t('Dispute Amount')} fullWidth type="number"
                   value={form.disputeAmount} onChange={set('disputeAmount')} />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>{t('Currency')}</InputLabel>
-                  <Select value={form.currency} label={t('Currency')} onChange={set('currency')}>
-                    <MenuItem value="USD">USD</MenuItem>
-                    <MenuItem value="KES">KES</MenuItem>
-                    <MenuItem value="EUR">EUR</MenuItem>
-                    <MenuItem value="GBP">GBP</MenuItem>
-                    <MenuItem value="ZAR">ZAR</MenuItem>
-                    <MenuItem value="NGN">NGN</MenuItem>
-                    <MenuItem value="GHS">GHS</MenuItem>
-                    <MenuItem value="UGX">UGX</MenuItem>
-                    <MenuItem value="TZS">TZS</MenuItem>
-                  </Select>
-                </FormControl>
+                <SearchableField
+                  label={t('Currency')}
+                  value={form.currency}
+                  onChange={(value) => setForm({ ...form, currency: value })}
+                  options={CURRENCY_OPTIONS}
+                />
               </Grid>
               <Grid item xs={12}>
                 <TextField label={t('Description of Dispute / Nature of Claim')} fullWidth multiline rows={3}
@@ -625,8 +643,8 @@ const Cases = () => {
             </Grid>
           )}
 
-          {/* Step 2: Parties */}
-          {activeStep === 2 && (
+          {/* Step 1: Parties */}
+          {activeStep === 1 && (
             <Grid container spacing={2}>
               <Grid item xs={12}><Typography variant="subtitle1" fontWeight="bold">{t('Claimant')}</Typography></Grid>
               <Grid item xs={12} sm={6}>
@@ -636,16 +654,12 @@ const Cases = () => {
                 <TextField label={t('Organization / Company')} fullWidth value={form.claimantOrg} onChange={set('claimantOrg')} />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>{t('Entity Type')}</InputLabel>
-                  <Select value={form.claimantEntityType} label={t('Entity Type')} onChange={set('claimantEntityType')}>
-                    <MenuItem value="individual">{t('Individual')}</MenuItem>
-                    <MenuItem value="corporation">{t('Corporation')}</MenuItem>
-                    <MenuItem value="partnership">{t('Partnership')}</MenuItem>
-                    <MenuItem value="government">{t('Government / State')}</MenuItem>
-                    <MenuItem value="ngo">{t('NGO')}</MenuItem>
-                  </Select>
-                </FormControl>
+                <SearchableField
+                  label={t('Entity Type')}
+                  value={form.claimantEntityType}
+                  onChange={(value) => setForm({ ...form, claimantEntityType: value })}
+                  options={ENTITY_TYPE_OPTIONS}
+                />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField label={t('Nationality / Country')} fullWidth value={form.claimantNationality} onChange={set('claimantNationality')} />
@@ -668,16 +682,12 @@ const Cases = () => {
                 <TextField label={t('Organization / Company')} fullWidth value={form.respondentOrg} onChange={set('respondentOrg')} />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>{t('Entity Type')}</InputLabel>
-                  <Select value={form.respondentEntityType} label={t('Entity Type')} onChange={set('respondentEntityType')}>
-                    <MenuItem value="individual">{t('Individual')}</MenuItem>
-                    <MenuItem value="corporation">{t('Corporation')}</MenuItem>
-                    <MenuItem value="partnership">{t('Partnership')}</MenuItem>
-                    <MenuItem value="government">{t('Government / State')}</MenuItem>
-                    <MenuItem value="ngo">{t('NGO')}</MenuItem>
-                  </Select>
-                </FormControl>
+                <SearchableField
+                  label={t('Entity Type')}
+                  value={form.respondentEntityType}
+                  onChange={(value) => setForm({ ...form, respondentEntityType: value })}
+                  options={ENTITY_TYPE_OPTIONS}
+                />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField label={t('Nationality / Country')} fullWidth value={form.respondentNationality} onChange={set('respondentNationality')} />
@@ -694,8 +704,8 @@ const Cases = () => {
             </Grid>
           )}
 
-          {/* Step 3: Procedural */}
-          {activeStep === 3 && (
+          {/* Step 2: Procedural */}
+          {activeStep === 2 && (
             <Grid container spacing={2}>
               <Grid item xs={12}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1.5, bgcolor: 'primary.50', borderRadius: 1, border: '1px solid', borderColor: 'primary.200' }}>
@@ -720,59 +730,40 @@ const Cases = () => {
                   onChange={set('seatOfArbitration')} placeholder={t('e.g. Nairobi, Kenya')} />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>{t('Arbitration Rules')}</InputLabel>
-                  <Select value={form.arbitrationRules} label={t('Arbitration Rules')} onChange={set('arbitrationRules')}>
-                    <MenuItem value="Arbitration Act (Cap. 49)">{t('Arbitration Act (Cap. 49)')}</MenuItem>
-                    <MenuItem value="NCIA">{t('NCIA Rules')}</MenuItem>
-                    <MenuItem value="KIAC">{t('KIAC Rules')}</MenuItem>
-                    <MenuItem value="LCIA">{t('LCIA Rules')}</MenuItem>
-                    <MenuItem value="ICC">{t('ICC Rules')}</MenuItem>
-                    <MenuItem value="SIAC">{t('SIAC Rules')}</MenuItem>
-                    <MenuItem value="UNCITRAL">{t('UNCITRAL Rules')}</MenuItem>
-                    <MenuItem value="AAA">{t('AAA Rules')}</MenuItem>
-                    <MenuItem value="AFSA">{t('AFSA Rules')}</MenuItem>
-                    <MenuItem value="LCA">{t('LCA Rules')}</MenuItem>
-                    <MenuItem value="CRCICA">{t('CRCICA Rules')}</MenuItem>
-                    <MenuItem value="Ad Hoc">{t('Ad Hoc')}</MenuItem>
-                  </Select>
-                </FormControl>
+                <SearchableField
+                  label={t('Arbitration Rules')}
+                  value={form.arbitrationRules}
+                  onChange={(value) => setForm({ ...form, arbitrationRules: value })}
+                  options={ARBITRATION_RULE_OPTIONS}
+                />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField label={t('Governing Law')} fullWidth value={form.governingLaw}
                   onChange={set('governingLaw')} placeholder={t('e.g. Laws of Kenya')} />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>{t('Language of Proceedings')}</InputLabel>
-                  <Select value={form.languageOfProceedings} label={t('Language of Proceedings')} onChange={set('languageOfProceedings')}>
-                    <MenuItem value="English">{t('English')}</MenuItem>
-                    <MenuItem value="French">{t('French')}</MenuItem>
-                    <MenuItem value="Arabic">{t('Arabic')}</MenuItem>
-                    <MenuItem value="Portuguese">{t('Portuguese')}</MenuItem>
-                    <MenuItem value="Swahili">{t('Swahili')}</MenuItem>
-                    <MenuItem value="Other">{t('Other')}</MenuItem>
-                  </Select>
-                </FormControl>
+                <SearchableField
+                  label={t('Language of Proceedings')}
+                  value={form.languageOfProceedings}
+                  onChange={(value) => setForm({ ...form, languageOfProceedings: value })}
+                  options={LANGUAGE_OPTIONS}
+                />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>{t('Number of Arbitrators')}</InputLabel>
-                  <Select value={form.numArbitrators} label={t('Number of Arbitrators')} onChange={set('numArbitrators')}>
-                    <MenuItem value="1">{t('1 (Sole Arbitrator)')}</MenuItem>
-                    <MenuItem value="3">{t('3 (Tribunal)')}</MenuItem>
-                  </Select>
-                </FormControl>
+                <SearchableField
+                  label={t('Number of Arbitrators')}
+                  value={form.numArbitrators}
+                  onChange={(value) => setForm({ ...form, numArbitrators: value })}
+                  options={NUM_ARBITRATORS_OPTIONS}
+                />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>{t('Confidentiality Level')}</InputLabel>
-                  <Select value={form.confidentialityLevel} label={t('Confidentiality Level')} onChange={set('confidentialityLevel')}>
-                    <MenuItem value="confidential">{t('Confidential')}</MenuItem>
-                    <MenuItem value="restricted">{t('Restricted')}</MenuItem>
-                    <MenuItem value="public">{t('Public')}</MenuItem>
-                  </Select>
-                </FormControl>
+                <SearchableField
+                  label={t('Confidentiality Level')}
+                  value={form.confidentialityLevel}
+                  onChange={(value) => setForm({ ...form, confidentialityLevel: value })}
+                  options={CONFIDENTIALITY_OPTIONS}
+                />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField label={t('Response Deadline')} fullWidth type="date"
@@ -780,20 +771,18 @@ const Cases = () => {
                   InputLabelProps={{ shrink: true }} />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>{t('Third Party Funding')}</InputLabel>
-                  <Select value={form.thirdPartyFunding} label={t('Third Party Funding')}
-                    onChange={(e) => setForm({ ...form, thirdPartyFunding: e.target.value })}>
-                    <MenuItem value={false}>{t('No')}</MenuItem>
-                    <MenuItem value={true}>{t('Yes')}</MenuItem>
-                  </Select>
-                </FormControl>
+                <SearchableField
+                  label={t('Third Party Funding')}
+                  value={form.thirdPartyFunding ? 'Yes' : 'No'}
+                  onChange={(value) => setForm({ ...form, thirdPartyFunding: String(value).toLowerCase() === 'yes' })}
+                  options={FUNDING_OPTIONS}
+                />
               </Grid>
             </Grid>
           )}
 
-          {/* Step 4: Submission Details */}
-          {activeStep === 4 && (
+          {/* Step 3: Submission Details */}
+          {activeStep === 3 && (
             <Grid container spacing={2}>
               {/* NCIA Checklist preview */}
               <Grid item xs={12}>
@@ -857,15 +846,12 @@ const Cases = () => {
                   helperText={t('Per NCIA Schedule of Fees')} />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>{t('Fee Currency')}</InputLabel>
-                  <Select value={form.filingFeeCurrency} label={t('Fee Currency')} onChange={set('filingFeeCurrency')}>
-                    <MenuItem value="KES">{t('KES (Kenya Shillings)')}</MenuItem>
-                    <MenuItem value="USD">USD</MenuItem>
-                    <MenuItem value="EUR">EUR</MenuItem>
-                    <MenuItem value="GBP">GBP</MenuItem>
-                  </Select>
-                </FormControl>
+                <SearchableField
+                  label={t('Fee Currency')}
+                  value={form.filingFeeCurrency}
+                  onChange={(value) => setForm({ ...form, filingFeeCurrency: value })}
+                  options={['KES', 'USD', 'EUR', 'GBP', 'ZAR', 'NGN']}
+                />
               </Grid>
               <Grid item xs={12}>
                 <Alert severity="warning">
@@ -875,7 +861,7 @@ const Cases = () => {
 
               <Grid item xs={12}>
                 <Alert severity="info" sx={{ mt: 1 }}>
-                  {t('After creating the case, upload the signed agreement file to the case record. The agreement becomes the setup record and the AI can use it for filing extraction and review.')}
+                  {t('The agreement has already been prepared in the dedicated editor. When you create the case, the generated agreement record will be attached automatically for review and extraction.')}
                 </Alert>
               </Grid>
             </Grid>
@@ -883,7 +869,19 @@ const Cases = () => {
         </DialogContent>
 
         <DialogActions sx={{ px: 3, pb: 2 }}>
-            <Button onClick={() => { setDialogOpen(false); setActiveStep(0); setForm(EMPTY_FORM); resetAgreementStep(); }}>
+            <Button onClick={() => {
+              setDialogOpen(false);
+              setActiveStep(0);
+              setForm(createEmptyForm());
+              setAgreementDraft(createEmptyAgreementDraft());
+              setAgreementPrepared(false);
+              setAgreementSigned(false);
+              setAgreementAnalysis(null);
+              setFormError(null);
+              if (typeof window !== 'undefined') {
+                window.sessionStorage.removeItem(AGREEMENT_SETUP_STORAGE_KEY);
+              }
+            }}>
             {t('Cancel')}
             </Button>
           <Box sx={{ flex: 1 }} />

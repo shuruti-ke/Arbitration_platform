@@ -235,6 +235,23 @@ class OracleDatabaseService {
       )
     `);
 
+    await this._createTableSafe('RULE_GUIDANCE_CACHE', `
+      CREATE TABLE rule_guidance_cache (
+        id                  NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        cache_key           VARCHAR2(64) UNIQUE NOT NULL,
+        seat_of_arbitration VARCHAR2(255),
+        case_type           VARCHAR2(100),
+        arbitration_rules   VARCHAR2(255),
+        governing_law       VARCHAR2(255),
+        guidance_json       CLOB,
+        guidance_summary    CLOB,
+        model_name          VARCHAR2(120),
+        usage_count         NUMBER DEFAULT 1,
+        last_used_at        TIMESTAMP,
+        created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     await this._createTableSafe('CASE_AGREEMENTS', `
       CREATE TABLE case_agreements (
         id                    NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -407,6 +424,13 @@ class OracleDatabaseService {
     await this._addColumnSafe('cases', 'agreement_id', 'VARCHAR2(100)');
     await this._addColumnSafe('cases', 'agreement_status', "VARCHAR2(50) DEFAULT 'none'");
     await this._addColumnSafe('cases', 'agreement_document_name', 'VARCHAR2(255)');
+    await this._addColumnSafe('cases', 'rule_guidance_summary', 'CLOB');
+    await this._addColumnSafe('cases', 'rule_guidance_json', 'CLOB');
+    await this._addColumnSafe('cases', 'rule_guidance_model', 'VARCHAR2(120)');
+    await this._addColumnSafe('cases', 'rule_guidance_cache_key', 'VARCHAR2(64)');
+    await this._addColumnSafe('cases', 'rule_guidance_cached', 'NUMBER(1) DEFAULT 0');
+    await this._addColumnSafe('cases', 'rule_guidance_source', 'VARCHAR2(50)');
+    await this._addColumnSafe('cases', 'rule_guidance_generated_at', 'TIMESTAMP');
   }
 
   // --- Cases ---
@@ -430,6 +454,51 @@ class OracleDatabaseService {
       { caseId }
     );
     return result.rows[0] || null;
+  }
+
+  async getRuleGuidanceCache(cacheKey) {
+    const result = await this.executeQuery(
+      'SELECT * FROM rule_guidance_cache WHERE cache_key = :cacheKey',
+      { cacheKey }
+    );
+    return result.rows[0] || null;
+  }
+
+  async saveRuleGuidanceCache(entry) {
+    await this.executeQuery(
+      `MERGE INTO rule_guidance_cache tgt
+       USING (
+         SELECT :cacheKey AS cache_key FROM dual
+       ) src
+       ON (tgt.cache_key = src.cache_key)
+       WHEN MATCHED THEN UPDATE SET
+         seat_of_arbitration = :seatOfArbitration,
+         case_type = :caseType,
+         arbitration_rules = :arbitrationRules,
+         governing_law = :governingLaw,
+         guidance_json = :guidanceJson,
+         guidance_summary = :guidanceSummary,
+         model_name = :modelName,
+         usage_count = NVL(tgt.usage_count, 0) + 1,
+         last_used_at = CURRENT_TIMESTAMP
+       WHEN NOT MATCHED THEN INSERT (
+         cache_key, seat_of_arbitration, case_type, arbitration_rules, governing_law,
+         guidance_json, guidance_summary, model_name, usage_count, last_used_at
+       ) VALUES (
+         :cacheKey, :seatOfArbitration, :caseType, :arbitrationRules, :governingLaw,
+         :guidanceJson, :guidanceSummary, :modelName, 1, CURRENT_TIMESTAMP
+       )`,
+      {
+        cacheKey: entry.cacheKey,
+        seatOfArbitration: entry.seatOfArbitration || null,
+        caseType: entry.caseType || null,
+        arbitrationRules: entry.arbitrationRules || null,
+        governingLaw: entry.governingLaw || null,
+        guidanceJson: entry.guidanceJson || null,
+        guidanceSummary: entry.guidanceSummary || null,
+        modelName: entry.modelName || null
+      }
+    );
   }
 
   // --- Documents ---
@@ -529,10 +598,23 @@ class OracleDatabaseService {
   // --- Lifecycle ---
 
   async closePool() {
-    if (this.pool) {
-      await this.pool.close(10);
-      this.pool = null;
+    if (!this.pool) {
+      return;
+    }
+
+    const pool = this.pool;
+    this.pool = null;
+
+    try {
+      await pool.close(10);
       console.log('Oracle connection pool closed');
+    } catch (error) {
+      // PM2 can trigger multiple shutdown signals; treat a pool already closing
+      // as a normal shutdown path instead of surfacing a noisy startup error.
+      if (error && error.code === 'NJS-064') {
+        return;
+      }
+      throw error;
     }
   }
 

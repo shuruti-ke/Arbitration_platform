@@ -33,13 +33,26 @@ const ensurePage = (pdf, y, minHeight = 18) => {
   return y;
 };
 
+const drawPanel = (pdf, x, y, width, height, style = 'FD') => {
+  const values = [x, y, width, height].map((value) => Number(value));
+  if (values.some((value) => !Number.isFinite(value))) {
+    return;
+  }
+
+  try {
+    pdf.roundedRect(values[0], values[1], values[2], values[3], 2, 2, style);
+  } catch (error) {
+    pdf.rect(values[0], values[1], values[2], values[3], style);
+  }
+};
+
 const drawHeader = (pdf, { title, subtitle, documentCode, caseNumber }) => {
   const width = pdf.internal.pageSize.getWidth();
   pdf.setFillColor(21, 101, 192);
   pdf.rect(0, 0, width, 29, 'F');
 
   pdf.setFillColor(255, 255, 255);
-  pdf.roundedRect(14, 7, 15, 15, 2.5, 2.5, 'F');
+  drawPanel(pdf, 14, 7, 15, 15, 'F');
   pdf.setFillColor(21, 101, 192);
   pdf.circle(21.5, 14.5, 4.3, 'F');
   pdf.setDrawColor(255, 255, 255);
@@ -56,7 +69,7 @@ const drawHeader = (pdf, { title, subtitle, documentCode, caseNumber }) => {
 
   if (documentCode) {
     pdf.setFillColor(245, 124, 0);
-    pdf.roundedRect(width - 68, 7, 54, 15, 4, 4, 'F');
+    drawPanel(pdf, width - 68, 7, 54, 15, 'F');
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(8);
     pdf.text(documentCode, width - 41, 16.5, { align: 'center' });
@@ -79,7 +92,7 @@ const drawHeader = (pdf, { title, subtitle, documentCode, caseNumber }) => {
 
   pdf.setFillColor(246, 249, 253);
   pdf.setDrawColor(216, 227, 240);
-  pdf.roundedRect(width - 69, 41, 55, 18, 3, 3, 'FD');
+  drawPanel(pdf, width - 69, 41, 55, 18, 'FD');
   pdf.setTextColor(31, 41, 55);
   pdf.setFontSize(8);
   pdf.text('CASE', width - 61, 48);
@@ -90,16 +103,17 @@ const drawHeader = (pdf, { title, subtitle, documentCode, caseNumber }) => {
 
 const drawSectionHeader = (pdf, y, title) => {
   const width = pdf.internal.pageSize.getWidth();
+  const safeY = Number.isFinite(Number(y)) ? Number(y) : 18;
   pdf.setFillColor(246, 249, 253);
   pdf.setDrawColor(216, 227, 240);
-  pdf.roundedRect(14, y, width - 28, 10, 2.5, 2.5, 'FD');
+  drawPanel(pdf, 14, safeY, width - 28, 10, 'FD');
   pdf.setFillColor(245, 124, 0);
-  pdf.rect(14, y, 3, 10, 'F');
+  pdf.rect(14, safeY, 3, 10, 'F');
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(10.5);
   pdf.setTextColor(31, 41, 55);
-  pdf.text(title, 20, y + 6.7);
-  return y + 14;
+  pdf.text(title, 20, safeY + 6.7);
+  return safeY + 14;
 };
 
 const drawField = (pdf, y, label, value, options = {}) => {
@@ -114,7 +128,7 @@ const drawField = (pdf, y, label, value, options = {}) => {
 
   pdf.setFillColor(255, 255, 255);
   pdf.setDrawColor(216, 227, 240);
-  pdf.roundedRect(left, y, contentWidth, height, 2, 2, 'FD');
+  drawPanel(pdf, left, y, contentWidth, height, 'FD');
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(8.5);
   pdf.setTextColor(91, 107, 122);
@@ -135,7 +149,7 @@ const drawParagraph = (pdf, y, text) => {
 
   pdf.setFillColor(255, 255, 255);
   pdf.setDrawColor(216, 227, 240);
-  pdf.roundedRect(left, y, contentWidth, height, 2, 2, 'FD');
+  drawPanel(pdf, left, y, contentWidth, height, 'FD');
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(9);
   pdf.setTextColor(31, 41, 55);
@@ -153,7 +167,7 @@ const drawBulletList = (pdf, y, items) => {
     const height = Math.max(10, lines.length * 4.7 + 3);
     pdf.setFillColor(255, 255, 255);
     pdf.setDrawColor(216, 227, 240);
-    pdf.roundedRect(left, y, contentWidth, height, 2, 2, 'FD');
+    drawPanel(pdf, left, y, contentWidth, height, 'FD');
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(9);
     pdf.setTextColor(31, 41, 55);
@@ -197,101 +211,75 @@ const drawSignatureBlock = (pdf, y, title, fields) => {
 
 export const buildCaseAgreementPdf = ({ pdf, caseData = {}, user } = {}) => {
   const c = caseData || {};
+  const draft = c.agreementDraft || {};
   const caseNumber = c.caseId || c.CASE_ID || 'AGREEMENT-DRAFT';
   const caseTitle = c.title || c.TITLE || 'Arbitration Agreement';
   const firstParty = c.claimantName || c.CLAIMANT_NAME || 'First Party';
   const secondParty = c.respondentName || c.RESPONDENT_NAME || 'Second Party';
+  const firstPartyOrg = c.claimantOrg || c.CLAIMANT_ORG || '';
+  const secondPartyOrg = c.respondentOrg || c.RESPONDENT_ORG || '';
   const arbitrator = c.arbitratorNominee || c.ARBITRATOR_NOMINEE || 'Arbitrator';
   const seat = c.seatOfArbitration || c.SEAT_OF_ARBITRATION || '________';
   const language = c.languageOfProceedings || c.LANGUAGE_OF_PROCEEDINGS || 'English';
   const governingLaw = c.governingLaw || c.GOVERNING_LAW || 'Arbitration Act, Cap. 49';
   const rules = c.arbitrationRules || c.ARBITRATION_RULES || 'NCIA Rules';
-  const date = c.agreementDate || new Date().toLocaleDateString();
+  const date = draft.effectiveDate || c.agreementDate || new Date().toLocaleDateString();
   const documentCode = `AP-AGR-${String(caseNumber).replace(/[^a-z0-9]+/gi, '-').toUpperCase().slice(0, 18)}`;
+
+  const sectionText = (key, fallback) => String(draft[key] || fallback || '').trim();
 
   pdf.setProperties({
     title: 'Arbitration Agreement',
-    subject: 'Platform branded agreement template',
+    subject: 'Filled arbitration agreement drafted by the arbitrator',
     author: 'Arbitration Platform',
     creator: 'Arbitration Platform',
-    keywords: 'arbitration, agreement, template, NCIA, arbitrator, parties',
+    keywords: 'arbitration, agreement, arbitrator, parties, drafted agreement',
   });
 
   drawHeader(pdf, {
     title: 'Arbitration Agreement',
-    subtitle: 'Template agreement for parties and the arbitrator to sign before case setup',
+    subtitle: 'Filled agreement drafted from the arbitrator-led discussions with the parties',
     documentCode,
     caseNumber,
   });
 
   let y = 62;
-  y = drawSectionHeader(pdf, y, 'Agreement Details');
+  y = drawSectionHeader(pdf, y, 'Agreement Overview');
   y = drawField(pdf, y, 'Agreement Title', caseTitle);
   y = drawField(pdf, y, 'Effective Date', date);
   y = drawField(pdf, y, 'Seat of Arbitration', seat);
   y = drawField(pdf, y, 'Language of Proceedings', titleize(language));
   y = drawField(pdf, y, 'Governing Law', governingLaw);
   y = drawField(pdf, y, 'Arbitration Rules', rules);
-
-  y = ensurePage(pdf, y, 40);
-  y = drawSectionHeader(pdf, y, 'Parties');
-  y = drawField(pdf, y, 'First Party', c.claimantOrg || c.CLAIMANT_ORG || firstParty);
-  y = drawField(pdf, y, 'Second Party', c.respondentOrg || c.RESPONDENT_ORG || secondParty);
+  y = drawField(pdf, y, 'First Party', firstPartyOrg || firstParty);
+  y = drawField(pdf, y, 'Second Party', secondPartyOrg || secondParty);
   y = drawField(pdf, y, 'Arbitrator', arbitrator);
 
-  y = ensurePage(pdf, y, 40);
-  y = drawSectionHeader(pdf, y, 'Subject of the Agreement');
-  y = drawParagraph(pdf, y, c.subject || c.SUBJECT || 'This agreement sets the framework for arbitration of disputes, claims, or controversies arising from or related to the contract or relationship between the parties.');
-  y = drawParagraph(pdf, y, 'The parties agree that the arbitrator will manage the proceedings fairly, the hearing will take place in the agreed seat or virtually if necessary, and the award will be final and binding unless the agreement or applicable law provides otherwise.');
+  const sections = [
+    ['1. Preamble / Introduction', sectionText('preamble', `This Arbitration Agreement is entered into between ${firstParty} and ${secondParty} for the resolution of disputes by arbitration.`)],
+    ['2. Definitions and Interpretation', sectionText('definitions', 'Terms used in this agreement have the meanings given to them by the parties, the tribunal, and the applicable arbitration rules.')],
+    ['3. Scope of Arbitration', sectionText('scope', 'This agreement covers the dispute(s) identified by the parties and any connected claims, counterclaims, or procedural matters the arbitrator accepts.')],
+    ['4. Governing Rules', sectionText('governingRulesText', `The arbitration shall be conducted under ${rules} and any procedural directions issued by the arbitrator.`)],
+    ['5. Arbitration Tribunal Details', sectionText('tribunalDetails', `The tribunal shall consist of ${c.numArbitrators || 1} arbitrator(s), chaired or led by ${arbitrator}, with any qualifications and appointment details agreed by the parties.`)],
+    ['6. Arbitration Procedure', sectionText('procedure', 'The procedure will follow a fair, efficient process agreed by the parties and supervised by the arbitrator, including timelines for filings, replies, and directions.')],
+    ['7. Evidence and Hearings', sectionText('evidenceHearings', `Evidence will be exchanged in advance where possible. Hearings will be held at ${seat} or virtually if required, and witnesses may be heard according to the arbitrator's directions.`)],
+    ['8. Powers of the Arbitrator', sectionText('powers', 'The arbitrator may issue directions, control the timetable, determine admissibility, manage the hearing, and take any other procedural steps permitted by the arbitration rules.')],
+    ['9. Confidentiality', sectionText('confidentiality', 'The parties and the tribunal will keep confidential all non-public information, subject to any legal obligation to disclose or enforce an award.')],
+    ['10. Awards', sectionText('awards', 'The arbitrator will issue a written, reasoned award unless the parties agree otherwise, and the award will be communicated to the parties in writing.')],
+    ['11. Costs', sectionText('costs', 'Costs, fees, and expenses will be allocated in the final award or as otherwise agreed by the parties and directed by the arbitrator.')],
+    ['12. Enforcement', sectionText('enforcement', 'The parties agree that the award may be enforced in any court of competent jurisdiction or otherwise as permitted by law.')],
+    ['13. Miscellaneous Provisions', sectionText('miscellaneous', 'This agreement includes standard provisions on notices, amendments, severability, waiver, binding effect, and annexes or schedules as needed.')],
+  ];
 
-  y = ensurePage(pdf, y, 40);
-  y = drawSectionHeader(pdf, y, 'Prehearing Conference');
-  y = drawParagraph(pdf, y, 'Before the arbitration begins, the parties and the arbitrator should hold a prehearing conference to confirm the schedule, procedure, disclosure, witnesses, language, and any confidentiality measures.');
-  y = drawBulletList(pdf, y, [
-    'Scheduling of hearing',
-    'Procedural matters and document exchange',
-    'Witnesses and experts',
-    'Language and translation',
-    'Confidentiality and protective measures',
-  ]);
-
-  y = ensurePage(pdf, y, 40);
-  y = drawSectionHeader(pdf, y, 'Arbitration Costs and Fees');
-  y = drawBulletList(pdf, y, [
-    'Filing fees and administrative fees',
-    'Arbitrator fees and expenses',
-    'Legal fees and expenses of each party',
-    'Other agreed costs and expenses',
-  ]);
-
-  y = ensurePage(pdf, y, 40);
-  y = drawSectionHeader(pdf, y, 'The Hearing and Decision');
-  y = drawParagraph(pdf, y, 'The hearing will take place as specified in this agreement. After the hearing, the arbitrator will render a written decision based on the evidence, the applicable law, and the arbitration rules.');
-  y = drawParagraph(pdf, y, 'The decision will be communicated to the parties in writing and kept with the case record.');
-
-  y = ensurePage(pdf, y, 40);
-  y = drawSectionHeader(pdf, y, 'Notice and Governing Law');
-  y = drawParagraph(pdf, y, 'Any notice or communication under this agreement may be delivered personally, by certified mail, or by email to the addresses the parties provide. Each party may update its notice address in writing.');
-  y = drawParagraph(pdf, y, `This agreement is governed by the laws of ${governingLaw}. Any dispute about this agreement will be resolved in the agreed seat or by the competent court if required.`);
-
-  y = ensurePage(pdf, y, 40);
-  y = drawSectionHeader(pdf, y, 'Other Clauses');
-  y = drawBulletList(pdf, [
-    'Severability',
-    'Entire agreement',
-    'Waiver',
-    'Amendments',
-    'Binding effect',
-    'Annexes and schedules',
-  ]);
-
-  y = ensurePage(pdf, y, 44);
-  y = drawSectionHeader(pdf, y, 'Agreement Note');
-  y = drawParagraph(pdf, y, 'This template may be used to prepare an agreement for signing by the parties and the arbitrator before the case is opened in the platform. A signed copy should be uploaded to the case record once complete.');
-  y = drawParagraph(pdf, y, 'The platform will treat the uploaded signed agreement as the starting point for case setup and data extraction.');
+  sections.forEach(([title, text]) => {
+    y = ensurePage(pdf, y, 42);
+    y = drawSectionHeader(pdf, y, title);
+    y = drawParagraph(pdf, y, text);
+  });
 
   y = ensurePage(pdf, y, 72);
-  y = drawSectionHeader(pdf, y, 'Signatures');
+  y = drawSectionHeader(pdf, y, '14. Signatures');
+
   const left = 14;
   const blockGap = 6;
   const width = pdf.internal.pageSize.getWidth();
@@ -314,12 +302,21 @@ export const buildCaseAgreementPdf = ({ pdf, caseData = {}, user } = {}) => {
   pdf.setFont('helvetica', 'normal');
   pdf.setTextColor(31, 41, 55);
   pdf.text(secondParty, left + blockWidth + blockGap + 46, y + 16);
-  pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(91, 107, 122);
-  pdf.text('Date', left + blockWidth + blockGap + 6, y + 27);
-  pdf.setFont('helvetica', 'normal');
-  pdf.setTextColor(31, 41, 55);
-  pdf.text(date, left + blockWidth + blockGap + 46, y + 27);
+  if (secondPartyOrg) {
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(91, 107, 122);
+    pdf.text('Org', left + blockWidth + blockGap + 6, y + 27);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setTextColor(31, 41, 55);
+    pdf.text(secondPartyOrg, left + blockWidth + blockGap + 46, y + 27);
+  } else {
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(91, 107, 122);
+    pdf.text('Date', left + blockWidth + blockGap + 6, y + 27);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setTextColor(31, 41, 55);
+    pdf.text(date, left + blockWidth + blockGap + 46, y + 27);
+  }
   pdf.setDrawColor(31, 41, 55);
   pdf.line(left + blockWidth + blockGap + 6, y + 42, left + blockWidth + blockGap + blockWidth - 6, y + 42);
   pdf.setFont('helvetica', 'italic');
@@ -354,11 +351,11 @@ export const buildCaseAgreementPdf = ({ pdf, caseData = {}, user } = {}) => {
 
   pdf.setFillColor(246, 249, 253);
   pdf.setDrawColor(216, 227, 240);
-  pdf.roundedRect(14, pdf.internal.pageSize.getHeight() - 28, width - 28, 14, 2, 2, 'FD');
+  drawPanel(pdf, 14, pdf.internal.pageSize.getHeight() - 28, width - 28, 14, 'FD');
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(8.5);
   pdf.setTextColor(11, 61, 102);
-  pdf.text('This template should be reviewed, signed, and uploaded back to the platform before the case is created.', 17, pdf.internal.pageSize.getHeight() - 19, {
+  pdf.text('This agreement is generated from the arbitrator-filled draft and can be downloaded, emailed, or finalized for signing.', 17, pdf.internal.pageSize.getHeight() - 19, {
     maxWidth: width - 34,
   });
 

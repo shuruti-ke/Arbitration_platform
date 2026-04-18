@@ -48,6 +48,7 @@ export const apiService = {
   buildAwardPack: (awardData) => api.post('/awards/pack', awardData),
   analyzeAgreement: (agreementData) => api.post('/intake/agreement/analyze', agreementData),
   createCaseAgreement: (agreementData) => api.post('/case-agreements', agreementData),
+  shareAgreementTemplate: (payload) => api.post('/forms/agreement/share', payload),
 
   // Intelligence
   getIntelligenceSummary: (days = 30) => api.get(`/intelligence/summary?days=${days}`),

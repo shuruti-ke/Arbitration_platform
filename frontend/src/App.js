@@ -8,6 +8,7 @@ import { ThemeModeProvider, useThemeMode } from './context/ThemeModeContext';
 import { LanguageProvider, useLanguage } from './context/LanguageContext';
 import Dashboard from './pages/Dashboard';
 import Cases from './pages/Cases';
+import AgreementEditor from './pages/AgreementEditor';
 import CaseDetail from './pages/CaseDetail';
 import Documents from './pages/Documents';
 import Analytics from './pages/Analytics';
@@ -69,6 +70,7 @@ const AppRoutes = () => {
         <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
         <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/cases" element={<ProtectedRoute><Cases /></ProtectedRoute>} />
+        <Route path="/cases/agreement" element={<ProtectedRoute><AgreementEditor /></ProtectedRoute>} />
         <Route path="/cases/:caseId" element={<ProtectedRoute><CaseDetail /></ProtectedRoute>} />
         <Route path="/documents" element={<ProtectedRoute><Documents /></ProtectedRoute>} />
         <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />

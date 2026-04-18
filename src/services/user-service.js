@@ -28,10 +28,10 @@ class UserService {
   }
 
   async _seedAdmin() {
-    const existing = await this.findByEmail('admin@arbitration.platform');
+    const existing = await this.findByEmail('admin@rafikihr.com');
     if (!existing) {
       await this.createUser({
-        email: 'admin@arbitration.platform',
+        email: 'admin@rafikihr.com',
         password: 'Admin@2026!',
         firstName: 'System',
         lastName: 'Administrator',

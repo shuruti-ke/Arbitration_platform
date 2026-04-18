@@ -1,11 +1,12 @@
 // src/pages/Documents.js
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Container, Typography, Paper, Box, Button, Grid, Card,
   CardContent, CardActions, Chip, Alert, CircularProgress,
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, FormControl, InputLabel, Select, MenuItem,
-  LinearProgress, Tabs, Tab, IconButton, Tooltip, Divider
+  LinearProgress, Tabs, Tab, IconButton, Tooltip, Divider,
+  Accordion, AccordionSummary, AccordionDetails
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
@@ -20,11 +21,16 @@ import {
   Folder as CaseIcon,
   Lock as PrivateIcon,
   Public as GlobalIcon,
-  Delete as DeleteIcon
+  Delete as DeleteIcon,
+  ExpandMore as ExpandMoreIcon,
+  FolderOpen as FolderOpenIcon,
+  OpenInNew as OpenIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
+import SearchableField from '../components/SearchableField';
 
 const DOC_CATEGORIES = [
   'Constitution / Legislation',
@@ -61,9 +67,11 @@ const getFileIcon = (name) => {
 
 const Documents = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { t } = useLanguage();
   const [libraryDocs, setLibraryDocs] = useState([]);
   const [caseDocs, setCaseDocs] = useState([]);
+  const [caseMeta, setCaseMeta] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [tabValue, setTabValue] = useState(0);
@@ -101,11 +109,22 @@ const Documents = () => {
 
   const fetchDocuments = async () => {
     try {
-      const [libRes, caseRes] = await Promise.all([
+      const [libRes, caseRes, casesRes] = await Promise.all([
         apiService.getDocuments('global'),
         apiService.getDocuments('case'),
+        apiService.getCases(),
       ]);
       setLibraryDocs((libRes.data.documents || []).map(mapDoc));
+      const mappedCases = (casesRes.data.cases || []).reduce((acc, item) => {
+        const caseId = item.CASE_ID || item.caseId || '';
+        if (!caseId) return acc;
+        acc[caseId] = {
+          title: item.TITLE || item.title || caseId,
+          status: item.STATUS || item.status || '',
+        };
+        return acc;
+      }, {});
+      setCaseMeta(mappedCases);
       setCaseDocs((caseRes.data.documents || []).map(mapDoc));
       setError(null);
     } catch (err) {
@@ -184,6 +203,7 @@ const Documents = () => {
     setAnalyzeOpen(true);
   };
 
+
   const handleAnalyze = async () => {
     if (!analyzePrompt.trim()) { setAnalyzeError(t('Enter a question or analysis request.')); return; }
     setAnalyzing(true);
@@ -208,6 +228,70 @@ const Documents = () => {
       (d.description || '').toLowerCase().includes(q)
     );
   };
+
+  const groupedCaseDocs = useMemo(() => {
+    return filter(caseDocs).reduce((acc, doc) => {
+      const key = doc.caseId || 'unassigned';
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(doc);
+      return acc;
+    }, {});
+  }, [caseDocs, searchQuery]);
+
+  const caseFolders = useMemo(() => {
+    return Object.entries(groupedCaseDocs)
+      .map(([caseId, docs]) => ({
+        caseId,
+        title: caseMeta[caseId]?.title || caseId,
+        status: caseMeta[caseId]?.status || '',
+        docs,
+      }))
+      .sort((a, b) => (a.title || '').localeCompare(b.title || '') || a.caseId.localeCompare(b.caseId));
+  }, [groupedCaseDocs, caseMeta]);
+
+  const renderDocRow = (doc) => (
+    <Paper
+      key={doc.id}
+      variant="outlined"
+      sx={{ p: 1.5, mb: 1, borderColor: 'divider', bgcolor: 'background.paper' }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.25 }}>
+        {getFileIcon(doc.name)}
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Typography variant="subtitle2" sx={{ wordBreak: 'break-word' }}>
+            {doc.name}
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.75, mb: 0.75 }}>
+            <Chip label={displayDocCategory(doc.category)} size="small" color="primary" variant="outlined" />
+            {doc.description && <Chip label={doc.description} size="small" variant="outlined" />}
+            <Chip icon={<PrivateIcon />} label={`${t('Case')}: ${doc.caseId.slice(-8)}`} size="small" variant="outlined" />
+          </Box>
+          <Typography variant="caption" color="text.secondary">
+            {doc.createdAt}
+          </Typography>
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Tooltip title={t('Open case')}>
+            <IconButton size="small" onClick={() => navigate(`/cases/${doc.caseId}`)}>
+              <OpenIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={t('Analyze with AI — uses this doc + Platform Library as context')}>
+            <IconButton size="small" color="secondary" onClick={() => openAnalyze(doc)}>
+              <AIIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          {canDelete(doc) && (
+            <Tooltip title={t('Delete document')}>
+              <IconButton size="small" color="error" onClick={() => handleDelete(doc)}>
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Box>
+      </Box>
+    </Paper>
+  );
 
   const DocGrid = ({ docs, emptyText }) => (
     docs.length === 0 ? (
@@ -272,7 +356,7 @@ const Documents = () => {
         <Box>
         <Typography variant="h4">{t('Document Library')}</Typography>
         <Typography variant="body2" color="text.secondary">
-            {t('Two levels:')} <strong>{t('Platform Library')}</strong> {t('(global AI knowledge)')} · <strong>{t('Case Documents')}</strong> {t('(case-specific, AI-aware per case)')}
+            {t('Two levels:')} <strong>{t('Platform Library')}</strong> {t('(global AI knowledge)')} · <strong>{t('Case Documents')}</strong> {t('(case-specific folders for each arbitration matter)')}
         </Typography>
         </Box>
         <Button variant="contained" startIcon={<UploadIcon />} onClick={() => setUploadOpen(true)}>
@@ -314,7 +398,7 @@ const Documents = () => {
 
       {tabValue === 1 && (
         <Alert severity="info" icon={<PrivateIcon />} sx={{ mb: 2 }}>
-          <strong>{t('Case Documents')}</strong> — {t('Pleadings, evidence, contracts, and correspondence linked to specific cases.')}
+          <strong>{t('Case Documents')}</strong> — {t('Case folders for each arbitration matter, containing pleadings, evidence, contracts, correspondence, service records, and other filings.')}
           {t('The AI uses these only when analyzing that specific case, combined with the Platform Library.')}
         </Alert>
       )}
@@ -327,7 +411,47 @@ const Documents = () => {
             <DocGrid docs={filter(libraryDocs)} emptyText={t('No platform library documents yet. Upload laws, rules, and precedents here.')} />
           )}
           {tabValue === 1 && (
-            <DocGrid docs={filter(caseDocs)} emptyText={t('No case documents yet. Upload pleadings, evidence, and correspondence linked to a case.')} />
+            caseFolders.length === 0 ? (
+              <Paper sx={{ p: 4, textAlign: 'center', mt: 2 }}>
+                <FolderOpenIcon sx={{ fontSize: 50, color: 'text.secondary', mb: 1 }} />
+                <Typography color="text.secondary">
+                  {t('No case folders yet. Upload documents to a case to create its folder.')}
+                </Typography>
+                <Button variant="contained" sx={{ mt: 2 }} onClick={() => setUploadOpen(true)}>
+                  {t('Upload Document')}
+                </Button>
+              </Paper>
+            ) : (
+              <Box sx={{ mt: 1 }}>
+                {caseFolders.map((folder) => (
+                  <Accordion key={folder.caseId} defaultExpanded sx={{ mb: 1.5 }}>
+                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, width: '100%' }}>
+                        <FolderOpenIcon color="primary" />
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          <Typography variant="subtitle1" fontWeight="bold" sx={{ wordBreak: 'break-word' }}>
+                            {folder.title}
+                          </Typography>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 0.5 }}>
+                            <Chip label={`${t('Case ID')}: ${folder.caseId}`} size="small" variant="outlined" />
+                            {folder.status && <Chip label={t(folder.status)} size="small" color="primary" variant="outlined" />}
+                            <Chip label={`${folder.docs.length} ${t('document(s)')}`} size="small" color="secondary" variant="outlined" />
+                          </Box>
+                        </Box>
+                      </Box>
+                    </AccordionSummary>
+                    <AccordionDetails sx={{ pt: 0 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+                        <Button size="small" variant="text" onClick={() => navigate(`/cases/${folder.caseId}`)} startIcon={<OpenIcon />}>
+                          {t('Open case')}
+                        </Button>
+                      </Box>
+                      {folder.docs.map((doc) => renderDocRow(doc))}
+                    </AccordionDetails>
+                  </Accordion>
+                ))}
+              </Box>
+            )
           )}
         </>
       )}
@@ -387,13 +511,12 @@ const Documents = () => {
               )}
             </Box>
 
-            <FormControl fullWidth>
-                <InputLabel>{t('Category')}</InputLabel>
-              <Select value={uploadForm.category} label={t('Category')}
-                onChange={(e) => setUploadForm({ ...uploadForm, category: e.target.value })}>
-                {DOC_CATEGORIES.map((c) => <MenuItem key={c} value={c}>{displayDocCategory(c)}</MenuItem>)}
-              </Select>
-            </FormControl>
+            <SearchableField
+              label={t('Category')}
+              value={uploadForm.category}
+              onChange={(value) => setUploadForm({ ...uploadForm, category: value })}
+              options={DOC_CATEGORIES}
+            />
 
             {uploadForm.accessLevel === 'case' && (
               <TextField
@@ -503,6 +626,7 @@ const Documents = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
     </Container>
   );
 };

@@ -121,6 +121,79 @@ class EmailService {
       return { sent: false, error: err.message };
     }
   }
+
+  async sendAgreementForSigningEmail({ toEmails = [], subject, message, fileName, pdfBase64, caseId }) {
+    if (!this.enabled) {
+      console.warn(`Agreement email not sent to ${toEmails.join(', ')} — email service not configured`);
+      return { sent: false };
+    }
+
+    const recipients = Array.isArray(toEmails) ? toEmails.filter(Boolean) : String(toEmails || '')
+      .split(/[,;\n]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (recipients.length === 0) {
+      return { sent: false, error: 'No recipient email addresses provided' };
+    }
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:32px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+        <tr>
+          <td style="background:#1976d2;padding:28px 32px;">
+            <h1 style="margin:0;color:#fff;font-size:22px;">Arbitration Platform</h1>
+            <p style="margin:6px 0 0;color:#bbdefb;font-size:14px;">Agreement ready for signing${caseId ? ` - Case ${caseId}` : ''}</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px;">
+            <p style="margin:0 0 16px;font-size:16px;color:#333;">Dear Recipient,</p>
+            <p style="margin:0 0 18px;color:#555;">${message || 'Please review, sign, and return the attached arbitration agreement through the platform.'}</p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border:1px solid #e0e0e0;border-radius:6px;margin-bottom:24px;">
+              <tr>
+                <td style="padding:12px 16px;">
+                  <span style="font-size:12px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Attachment</span><br>
+                  <strong style="color:#333;font-size:15px;">${fileName || 'Arbitration Agreement.pdf'}</strong>
+                </td>
+              </tr>
+            </table>
+            <p style="color:#555;margin:0;">Once signed, please upload the completed copy back to the platform or return it by email so the case record can be updated.</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+    try {
+      const attachmentBuffer = Buffer.from(String(pdfBase64 || ''), 'base64');
+      await this.transporter.sendMail({
+        from: `"Arbitration Platform" <${this.from}>`,
+        to: recipients.join(', '),
+        bcc: this.from,
+        subject: subject || 'Agreement for signing',
+        html,
+        attachments: [
+          {
+            filename: fileName || 'arbitration-agreement.pdf',
+            content: attachmentBuffer,
+            contentType: 'application/pdf'
+          }
+        ]
+      });
+      console.log(`Agreement template email sent to ${recipients.join(', ')}`);
+      return { sent: true, recipients };
+    } catch (err) {
+      console.error(`Failed to send agreement email:`, err.message);
+      return { sent: false, error: err.message };
+    }
+  }
 }
 
 module.exports = EmailService;
