@@ -28,15 +28,21 @@ class UserService {
   }
 
   async _seedAdmin() {
-    const existing = await this.findByEmail('admin@rafikihr.com');
-    if (!existing) {
-      await this.createUser({
-        email: 'admin@rafikihr.com',
-        password: 'Admin@2026!',
-        firstName: 'System',
-        lastName: 'Administrator',
-        role: ROLES.ADMIN
-      });
+    const seeds = [
+      { email: 'admin@rafikihr.com', firstName: 'System', lastName: 'Administrator' },
+      { email: 'admin@arbitrationplatform.com', firstName: 'Platform', lastName: 'Admin' },
+    ];
+    for (const seed of seeds) {
+      const existing = await this.findByEmail(seed.email);
+      if (!existing) {
+        await this.createUser({
+          email: seed.email,
+          password: 'Admin@2026!',
+          firstName: seed.firstName,
+          lastName: seed.lastName,
+          role: ROLES.ADMIN
+        });
+      }
     }
   }
 
