@@ -17,6 +17,7 @@ import { DataGrid } from '@mui/x-data-grid';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import { apiService } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { buildCaseAgreementPdf } from '../utils/caseAgreementPdf';
 import { getRulePreset } from '../utils/ruleLibrary';
@@ -156,6 +157,8 @@ const FUNDING_OPTIONS = [
 const Cases = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const { t } = useLanguage();
   const [mainTab, setMainTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
@@ -501,7 +504,7 @@ const Cases = () => {
     { field: 'caseStage', headerName: t('Stage'), width: 120 },
     { field: 'disputeAmount', headerName: t('Amount'), width: 100 },
     { field: 'createdAt', headerName: t('Filed'), width: 100 },
-    {
+    ...(!isAdmin ? [{
       field: 'actions', headerName: '', width: 90, sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: 'flex', gap: 0.5 }}>
@@ -517,7 +520,7 @@ const Cases = () => {
           </Tooltip>
         </Box>
       )
-    },
+    }] : []),
   ];
 
   // NCIA checklist for Step 4 preview
@@ -580,8 +583,8 @@ const Cases = () => {
             getRowId={(row) => row.id || row.caseId}
             initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
             pageSizeOptions={[10, 25]}
-            onRowClick={(params) => navigate(`/cases/${params.row.caseId}`)}
-            sx={{ cursor: 'pointer' }}
+            onRowClick={isAdmin ? undefined : (params) => navigate(`/cases/${params.row.caseId}`)}
+            sx={{ cursor: isAdmin ? 'default' : 'pointer' }}
           />
         )}
       </Paper>

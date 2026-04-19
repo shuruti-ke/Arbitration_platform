@@ -75,7 +75,11 @@ const CaseDetail = () => {
       const res = await apiService.getCase(caseId);
       setData(res.data);
     } catch (err) {
-      setError(t('Failed to load case details.'));
+      if (err?.response?.status === 403) {
+        setError('__403__');
+      } else {
+        setError(t('Failed to load case details.'));
+      }
     } finally {
       setLoading(false);
     }
@@ -145,6 +149,22 @@ const CaseDetail = () => {
   const setF = (field) => (e) => setEditForm({ ...editForm, [field]: e.target.value });
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}><CircularProgress /></Box>;
+  if (error === '__403__') return (
+    <Container sx={{ mt: 6, maxWidth: 520 }}>
+      <Paper sx={{ p: 4, textAlign: 'center' }}>
+        <GavelIcon sx={{ fontSize: 56, color: 'text.disabled', mb: 2 }} />
+        <Typography variant="h6" gutterBottom>Case Contents Restricted</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          Administrators manage the platform but do not have access to case contents.
+          Case details are visible only to the arbitrator and parties involved,
+          ensuring confidentiality of proceedings.
+        </Typography>
+        <Button variant="outlined" startIcon={<BackIcon />} onClick={() => navigate('/cases')}>
+          Back to Cases
+        </Button>
+      </Paper>
+    </Container>
+  );
   if (error) return <Container sx={{ mt: 4 }}><Alert severity="error">{error}</Alert></Container>;
 
   const c = data.case;
