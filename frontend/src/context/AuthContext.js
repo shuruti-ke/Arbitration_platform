@@ -13,6 +13,7 @@ export const AuthProvider = ({ children }) => {
 
   const clearSession = () => {
     localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
     delete axios.defaults.headers.common['Authorization'];
     setToken(null);
     setUser(null);
@@ -31,7 +32,24 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await axios.get(`${API_BASE_URL}/auth/me`);
       setUser(res.data.user);
-    } catch {
+    } catch (err) {
+      // On 401, try to refresh the token before logging out
+      if (err?.response?.status === 401) {
+        const refreshToken = localStorage.getItem('refreshToken');
+        if (refreshToken) {
+          try {
+            const refreshRes = await axios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken });
+            const newToken = refreshRes.data.accessToken;
+            localStorage.setItem('accessToken', newToken);
+            axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+            setToken(newToken);
+            // fetchProfile will re-run via the token useEffect
+            return;
+          } catch {
+            // refresh also failed — clear everything
+          }
+        }
+      }
       clearSession();
     } finally {
       setLoading(false);
@@ -40,8 +58,9 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     const res = await axios.post(`${API_BASE_URL}/auth/login`, { email, password });
-    const { accessToken, user: userData } = res.data;
+    const { accessToken, refreshToken, user: userData } = res.data;
     localStorage.setItem('accessToken', accessToken);
+    if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
     axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
     setToken(accessToken);
     setUser(userData);

@@ -181,8 +181,8 @@ const Cases = () => {
     try {
       const response = await apiService.getCases();
       const rows = (response.data.cases || []).map((c) => ({
-        id: c.ID || c.id,
-        caseId: c.CASE_ID || c.caseId || '',
+        caseId: c.CASE_ID || c.case_id || c.caseId || '',
+        id: c.ID || c.id || c.CASE_ID || c.case_id || c.caseId || '',
         title: c.TITLE || c.title || '',
         status: c.STATUS || c.status || '',
         caseType: c.CASE_TYPE || c.caseType || '',
@@ -577,6 +577,7 @@ const Cases = () => {
           <Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}><CircularProgress /></Box>
         ) : (
           <DataGrid rows={displayCases} columns={columns}
+            getRowId={(row) => row.id || row.caseId}
             initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
             pageSizeOptions={[10, 25]}
             onRowClick={(params) => navigate(`/cases/${params.row.caseId}`)}
