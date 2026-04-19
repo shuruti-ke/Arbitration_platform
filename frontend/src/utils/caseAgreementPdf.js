@@ -177,7 +177,7 @@ const drawBulletList = (pdf, y, items) => {
   return y;
 };
 
-const drawSignatureBlock = (pdf, y, title, fields) => {
+const drawSignatureBlock = (pdf, y, title, fields, signatureImage) => {
   const width = pdf.internal.pageSize.getWidth();
   const left = 14;
   const blockWidth = (width - 34) / 2;
@@ -204,13 +204,24 @@ const drawSignatureBlock = (pdf, y, title, fields) => {
 
   pdf.setDrawColor(31, 41, 55);
   pdf.line(left + 6, y + 42, left + blockWidth - 6, y + 42);
-  pdf.setFont('helvetica', 'italic');
-  pdf.setFontSize(8);
-  pdf.text('(Place for signature)', left + 6, y + 48);
+  if (signatureImage) {
+    try {
+      pdf.addImage(signatureImage, 'PNG', left + 6, y + 26, blockWidth - 18, 16);
+    } catch (_) {
+      pdf.setFont('helvetica', 'italic');
+      pdf.setFontSize(8);
+      pdf.text('(Electronically signed)', left + 6, y + 38);
+    }
+  } else {
+    pdf.setFont('helvetica', 'italic');
+    pdf.setFontSize(8);
+    pdf.text('(Place for signature)', left + 6, y + 48);
+  }
 };
 
-export const buildCaseAgreementPdf = ({ pdf, caseData = {}, user } = {}) => {
+export const buildCaseAgreementPdf = ({ pdf, caseData = {}, user, signatures = {} } = {}) => {
   const c = caseData || {};
+  const sigs = signatures || c.signatures || {};
   const draft = c.agreementDraft || {};
   const caseNumber = c.caseId || c.CASE_ID || 'AGREEMENT-DRAFT';
   const caseTitle = c.title || c.TITLE || 'Arbitration Agreement';
@@ -287,8 +298,8 @@ export const buildCaseAgreementPdf = ({ pdf, caseData = {}, user } = {}) => {
 
   drawSignatureBlock(pdf, y, 'First Party', [
     { label: 'Name', value: firstParty },
-    { label: 'Date', value: date },
-  ]);
+    { label: 'Date', value: sigs.claimant ? new Date(sigs.claimant.signedAt).toLocaleDateString() : date },
+  ], sigs.claimant?.signatureImage || null);
   pdf.setPage(pdf.getCurrentPageInfo().pageNumber);
   pdf.setDrawColor(33, 37, 41);
   pdf.rect(left + blockWidth + blockGap, y, blockWidth, 60);
@@ -319,9 +330,18 @@ export const buildCaseAgreementPdf = ({ pdf, caseData = {}, user } = {}) => {
   }
   pdf.setDrawColor(31, 41, 55);
   pdf.line(left + blockWidth + blockGap + 6, y + 42, left + blockWidth + blockGap + blockWidth - 6, y + 42);
-  pdf.setFont('helvetica', 'italic');
-  pdf.setFontSize(8);
-  pdf.text('(Place for signature)', left + blockWidth + blockGap + 6, y + 48);
+  if (sigs.respondent?.signatureImage) {
+    try {
+      pdf.addImage(sigs.respondent.signatureImage, 'PNG', left + blockWidth + blockGap + 6, y + 26, blockWidth - 18, 16);
+    } catch (_) {
+      pdf.setFont('helvetica', 'italic'); pdf.setFontSize(8);
+      pdf.text('(Electronically signed)', left + blockWidth + blockGap + 6, y + 38);
+    }
+  } else {
+    pdf.setFont('helvetica', 'italic');
+    pdf.setFontSize(8);
+    pdf.text('(Place for signature)', left + blockWidth + blockGap + 6, y + 48);
+  }
 
   y += 68;
   y = ensurePage(pdf, y, 70);
@@ -342,12 +362,21 @@ export const buildCaseAgreementPdf = ({ pdf, caseData = {}, user } = {}) => {
   pdf.text('Date', left + 6, y + 27);
   pdf.setFont('helvetica', 'normal');
   pdf.setTextColor(31, 41, 55);
-  pdf.text(date, left + 46, y + 27);
+  pdf.text(sigs.arbitrator ? new Date(sigs.arbitrator.signedAt).toLocaleDateString() : date, left + 46, y + 27);
   pdf.setDrawColor(31, 41, 55);
   pdf.line(left + 6, y + 42, left + width - 34, y + 42);
-  pdf.setFont('helvetica', 'italic');
-  pdf.setFontSize(8);
-  pdf.text('(Place for signature)', left + 6, y + 48);
+  if (sigs.arbitrator?.signatureImage) {
+    try {
+      pdf.addImage(sigs.arbitrator.signatureImage, 'PNG', left + 6, y + 26, width - 42, 16);
+    } catch (_) {
+      pdf.setFont('helvetica', 'italic'); pdf.setFontSize(8);
+      pdf.text('(Electronically signed)', left + 6, y + 38);
+    }
+  } else {
+    pdf.setFont('helvetica', 'italic');
+    pdf.setFontSize(8);
+    pdf.text('(Place for signature)', left + 6, y + 48);
+  }
 
   pdf.setFillColor(246, 249, 253);
   pdf.setDrawColor(216, 227, 240);

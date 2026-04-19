@@ -9,7 +9,10 @@ import {
   Email as EmailIcon,
   FolderOpen as FolderOpenIcon,
   AutoAwesome as AutoAwesomeIcon,
+  Draw as SignIcon,
+  CheckCircle as SignedIcon,
 } from '@mui/icons-material';
+import SignaturePad from '../components/SignaturePad';
 import { jsPDF } from 'jspdf';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
@@ -95,6 +98,9 @@ const AgreementEditor = () => {
   const [agreementEmailing, setAgreementEmailing] = useState(false);
   const [agreementEmailError, setAgreementEmailError] = useState(null);
   const [loadedFromCaseFlow, setLoadedFromCaseFlow] = useState(false);
+  const [signatures, setSignatures] = useState({ claimant: null, respondent: null, arbitrator: null });
+  const [sigPadOpen, setSigPadOpen] = useState(false);
+  const [signingRole, setSigningRole] = useState(null);
   const [summaryUploads, setSummaryUploads] = useState({
     claimant: { file: null, fileName: '', analyzing: false, error: null, analysis: null },
     respondent: { file: null, fileName: '', analyzing: false, error: null, analysis: null },
@@ -671,6 +677,7 @@ const AgreementEditor = () => {
         agreementDraft,
       },
       user: null,
+      signatures,
     });
     const caseLabel = (form.title || 'arbitration-agreement').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
     pdf.save(`${caseLabel}-agreement.pdf`);
@@ -697,6 +704,7 @@ const AgreementEditor = () => {
           ...form,
           agreementDraft,
         },
+        signatures,
         user: null,
       });
       const pdfBase64 = pdf.output('datauristring').split(',')[1];
@@ -1086,6 +1094,37 @@ const AgreementEditor = () => {
               })}
             </Grid>
 
+            <Divider sx={{ my: 2.25 }} />
+            <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 700, letterSpacing: '-0.01em' }}>
+              {t('Electronic Signatures')}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, lineHeight: 1.65 }}>
+              {t('Parties and the arbitrator can sign the agreement directly on this platform. Signatures are embedded into the downloaded PDF.')}
+            </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 2 }}>
+              {[
+                { key: 'claimant', label: t('First Party'), name: form.claimantName || t('First Party') },
+                { key: 'respondent', label: t('Second Party'), name: form.respondentName || t('Second Party') },
+                { key: 'arbitrator', label: t('Arbitrator'), name: form.arbitratorNominee || t('Arbitrator') },
+              ].map((signer) => (
+                <Button
+                  key={signer.key}
+                  size="small"
+                  variant={signatures[signer.key] ? 'contained' : 'outlined'}
+                  color={signatures[signer.key] ? 'success' : 'primary'}
+                  startIcon={signatures[signer.key] ? <SignedIcon /> : <SignIcon />}
+                  onClick={() => { setSigningRole(signer); setSigPadOpen(true); }}
+                >
+                  {signatures[signer.key] ? `${signer.label} ✓` : `${t('Sign as')} ${signer.label}`}
+                </Button>
+              ))}
+              {Object.values(signatures).some(Boolean) && (
+                <Button size="small" variant="text" color="error" onClick={() => setSignatures({ claimant: null, respondent: null, arbitrator: null })}>
+                  {t('Clear signatures')}
+                </Button>
+              )}
+            </Stack>
+
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 0.5 }}>
               <Button size="small" variant="contained" startIcon={<EmailIcon />} onClick={handleEmailAgreementTemplate} disabled={agreementEmailing}>
                 {agreementEmailing ? t('Sending...') : t('Email for signing')}
@@ -1094,6 +1133,19 @@ const AgreementEditor = () => {
                 {t('Download Filled Agreement PDF')}
               </Button>
             </Box>
+
+            {sigPadOpen && signingRole && (
+              <SignaturePad
+                open={sigPadOpen}
+                onClose={() => setSigPadOpen(false)}
+                signerName={signingRole.name}
+                signerRole={signingRole.label}
+                onSign={(sigData) => {
+                  setSignatures((prev) => ({ ...prev, [signingRole.key]: sigData }));
+                  setSigPadOpen(false);
+                }}
+              />
+            )}
           </Paper>
         </Grid>
 

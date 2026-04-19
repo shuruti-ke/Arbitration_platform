@@ -98,6 +98,15 @@ export const apiService = {
   // Authentication
   login: (credentials) => api.post('/auth/login', credentials),
   logout: () => api.post('/auth/logout'),
+
+  // Generic request helper
+  request: (method, path, data) => {
+    const m = method.toLowerCase();
+    if (m === 'get') return api.get(path);
+    if (m === 'delete') return api.delete(path);
+    if (m === 'put') return api.put(path, data);
+    return api.post(path, data);
+  },
 };
 
 export default apiService;

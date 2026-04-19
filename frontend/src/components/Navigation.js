@@ -12,7 +12,8 @@ import {
   VideoCall as HearingsIcon,
   Logout as LogoutIcon,
   ManageAccounts as UsersIcon,
-  VerifiedUser as IPIcon
+  VerifiedUser as IPIcon,
+  Payment as PaymentIcon,
 } from '@mui/icons-material';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -45,9 +46,25 @@ const NavIcon = ({ to, icon, label }) => (
   </Tooltip>
 );
 
+// Nav items per role — lower roles see fewer items
+const NAV_ITEMS = [
+  { to: '/',              icon: <DashboardIcon />,   labelKey: 'Dashboard',        roles: ['admin', 'secretariat', 'arbitrator', 'counsel', 'party'] },
+  { to: '/cases',         icon: <CasesIcon />,       labelKey: 'Cases',            roles: ['admin', 'secretariat', 'arbitrator', 'counsel', 'party'] },
+  { to: '/hearings',      icon: <HearingsIcon />,    labelKey: 'Hearings',         roles: ['admin', 'secretariat', 'arbitrator', 'counsel', 'party'] },
+  { to: '/documents',     icon: <DocumentsIcon />,   labelKey: 'Document Library', roles: ['admin', 'secretariat', 'arbitrator', 'counsel', 'party'] },
+  { to: '/analytics',     icon: <AnalyticsIcon />,   labelKey: 'Analytics',        roles: ['admin', 'secretariat'] },
+  { to: '/compliance',    icon: <ComplianceIcon />,  labelKey: 'Compliance',       roles: ['admin', 'secretariat', 'arbitrator'] },
+  { to: '/intelligence',  icon: <IntelligenceIcon />,labelKey: 'AI Intelligence',  roles: ['admin', 'secretariat', 'arbitrator'] },
+  { to: '/ip-arbitration',icon: <IPIcon />,          labelKey: 'IP Arbitration',   roles: ['admin', 'secretariat', 'arbitrator', 'counsel'] },
+  { to: '/payments',      icon: <PaymentIcon />,     labelKey: 'Payments',         roles: ['admin', 'arbitrator'] },
+  { to: '/users',         icon: <UsersIcon />,       labelKey: 'Users',            roles: ['admin'] },
+  { to: '/settings',      icon: <SettingsIcon />,    labelKey: 'Settings',         roles: ['admin', 'secretariat'] },
+];
+
 const Navigation = () => {
   const { user, logout } = useAuth();
   const { t } = useLanguage();
+  const role = (user?.role || '').toLowerCase();
 
   return (
     <AppBar position="static">
@@ -56,16 +73,9 @@ const Navigation = () => {
           {t('Arbitration Platform')}
         </Typography>
 
-        <NavIcon to="/"            icon={<DashboardIcon />}    label={t('Dashboard')} />
-        <NavIcon to="/cases"       icon={<CasesIcon />}        label={t('Cases')} />
-        <NavIcon to="/hearings"    icon={<HearingsIcon />}     label={t('Hearings')} />
-        <NavIcon to="/documents"   icon={<DocumentsIcon />}    label={t('Document Library')} />
-        <NavIcon to="/analytics"   icon={<AnalyticsIcon />}    label={t('Analytics')} />
-        <NavIcon to="/compliance"  icon={<ComplianceIcon />}   label={t('Compliance')} />
-        <NavIcon to="/intelligence" icon={<IntelligenceIcon />} label={t('AI Intelligence')} />
-        <NavIcon to="/ip-arbitration" icon={<IPIcon />}          label={t('IP Arbitration')} />
-        <NavIcon to="/users"       icon={<UsersIcon />}        label={t('Users')} />
-        <NavIcon to="/settings"    icon={<SettingsIcon />}     label={t('Settings')} />
+        {NAV_ITEMS.filter(item => item.roles.includes(role)).map(item => (
+          <NavIcon key={item.to} to={item.to} icon={item.icon} label={t(item.labelKey)} />
+        ))}
 
         <Box sx={{ flexGrow: 1 }} />
 

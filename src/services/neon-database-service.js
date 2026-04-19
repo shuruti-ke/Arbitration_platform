@@ -510,12 +510,44 @@ class NeonDatabaseService {
       )
     `);
 
+    await this._createTableSafe('case_payments', `
+      CREATE TABLE IF NOT EXISTS case_payments (
+        id               INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        payment_id       VARCHAR(100) UNIQUE NOT NULL,
+        case_id          VARCHAR(50) NOT NULL,
+        arbitrator_id    VARCHAR(100) NOT NULL,
+        platform_fee     NUMERIC(12,2),
+        currency         VARCHAR(10) DEFAULT 'KES',
+        payment_method   VARCHAR(50),
+        invoice_number   VARCHAR(100),
+        invoice_issued_at TIMESTAMP,
+        invoice_issued_by VARCHAR(100),
+        proof_document   TEXT,
+        proof_file_name  VARCHAR(255),
+        proof_uploaded_at TIMESTAMP,
+        receipt_number   VARCHAR(100),
+        receipt_issued_at TIMESTAMP,
+        receipt_issued_by VARCHAR(100),
+        status           VARCHAR(50) DEFAULT 'pending_invoice',
+        notes            TEXT,
+        created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Cases — payment and access control columns
+    await this._addColumnSafe('cases', 'created_by', 'VARCHAR(100)');
+    await this._addColumnSafe('cases', 'payment_status', "VARCHAR(50) DEFAULT 'pending_payment'");
+    await this._addColumnSafe('cases', 'platform_fee', 'NUMERIC(12,2)');
+    await this._addColumnSafe('cases', 'platform_fee_currency', "VARCHAR(10) DEFAULT 'KES'");
+
     // Repair id sequences on all tables (safe no-op if already correct)
     const allTables = [
       'users','arbitrator_assignments','hearings','hearing_participants','cases','documents',
       'audit_logs','consents','ai_intelligence_reports','ai_document_analyses',
       'rule_guidance_cache','case_agreements','case_agreement_parties',
-      'case_agreement_signatures','case_agreement_extractions','parties','case_counsel','case_milestones'
+      'case_agreement_signatures','case_agreement_extractions','parties','case_counsel',
+      'case_milestones','case_payments'
     ];
     for (const t of allTables) await this._ensureIdSequence(t);
   }

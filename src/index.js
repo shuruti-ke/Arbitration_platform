@@ -729,6 +729,28 @@ function createServer(services) {
         }
         const hearing = await hearingService.scheduleHearing({ ...body, scheduledBy: user.userId });
         await auditTrail.logEvent({ type: 'hearing_scheduled', caseId: body.caseId, userId: user.userId, action: 'schedule', details: { hearingId: hearing.hearingId } });
+        // Notify participants of the scheduled hearing (fire-and-forget)
+        setImmediate(async () => {
+          try {
+            const caseRes = await oracleDb.executeQuery('SELECT title FROM cases WHERE case_id = :caseId', { caseId: body.caseId });
+            const caseTitle = caseRes.rows?.[0]?.TITLE || caseRes.rows?.[0]?.title || body.caseId;
+            const admins = await userService.listUsers({ role: 'admin' });
+            const toEmails = admins.map(u => u.email || u.EMAIL).filter(Boolean);
+            if (toEmails.length) {
+              const startDate = body.startTime ? new Date(body.startTime) : null;
+              await emailService.sendHearingScheduled({
+                toEmails,
+                caseTitle,
+                caseId: body.caseId,
+                hearingDate: startDate ? startDate.toLocaleDateString() : '—',
+                hearingTime: startDate ? startDate.toLocaleTimeString() : '—',
+                location: body.location || body.jitsiRoom || 'Virtual (platform)',
+                hearingType: body.hearingType || body.type || 'Procedural',
+                notes: body.notes || null,
+              });
+            }
+          } catch (e) { console.warn('Hearing scheduled email failed:', e.message); }
+        });
         return sendJSON(res, 201, { success: true, hearing });
       }
 
@@ -826,12 +848,34 @@ function createServer(services) {
         const user = authenticate(req, res);
         if (!user) return;
         const { status } = parsedUrl.query;
-        let sql = 'SELECT * FROM cases ORDER BY created_at DESC';
         const params = {};
-        if (status) {
-          sql = 'SELECT * FROM cases WHERE status = :status ORDER BY created_at DESC';
-          params.status = status;
+        let sql;
+
+        if (user.role === 'admin') {
+          // Admin sees limited invoice/payment info only — no case content
+          sql = 'SELECT case_id, title, status, payment_status, platform_fee, platform_fee_currency, created_by, created_at FROM cases ORDER BY created_at DESC';
+        } else if (user.role === 'secretariat') {
+          // Secretariat manages procedural side — can see all cases
+          sql = 'SELECT * FROM cases ORDER BY created_at DESC';
+          if (status) { sql = 'SELECT * FROM cases WHERE status = :status ORDER BY created_at DESC'; params.status = status; }
+        } else if (user.role === 'arbitrator') {
+          // Arbitrators see their own cases only
+          sql = 'SELECT * FROM cases WHERE created_by = :userId ORDER BY created_at DESC';
+          params.userId = user.userId;
+        } else {
+          // Party / counsel — cases where they appear as a participant
+          // Match by user email against parties and case_counsel tables
+          const profile = await userService.findById(user.userId);
+          const email = profile?.email || profile?.EMAIL || user.email || '';
+          sql = `SELECT DISTINCT c.* FROM cases c
+            LEFT JOIN parties p ON p.case_id = c.case_id AND LOWER(p.email) = LOWER(:email)
+            LEFT JOIN case_counsel cc ON cc.case_id = c.case_id AND LOWER(cc.email) = LOWER(:email2)
+            WHERE p.party_id IS NOT NULL OR cc.counsel_id IS NOT NULL
+            ORDER BY c.created_at DESC`;
+          params.email = email;
+          params.email2 = email;
         }
+
         const result = await oracleDb.executeQuery(sql, params);
         return sendJSON(res, 200, { cases: result.rows || [] });
       }
@@ -841,8 +885,46 @@ function createServer(services) {
         const user = authenticate(req, res);
         if (!user) return;
         const caseId = path.split('/api/cases/')[1];
+
+        // Admin cannot view case details — confidentiality wall
+        if (user.role === 'admin') {
+          return sendJSON(res, 403, { error: 'Administrators cannot access case details to preserve confidentiality. Use the dashboard for aggregate information.' });
+        }
+
         const caseResult = await oracleDb.executeQuery('SELECT * FROM cases WHERE case_id = :caseId', { caseId });
         if (!caseResult.rows || caseResult.rows.length === 0) return sendJSON(res, 404, { error: 'Case not found' });
+
+        // For party/counsel — verify they are actually a participant in this case, and the case is active
+        if (user.role === 'party' || user.role === 'counsel') {
+          const caseStatus = (caseResult.rows[0].STATUS || caseResult.rows[0].status || '').toLowerCase();
+          if (['closed', 'completed', 'terminated'].includes(caseStatus)) {
+            return sendJSON(res, 403, { error: 'This case has concluded. Your access has expired. Contact the arbitrator for any further communications.' });
+          }
+          const profile = await userService.findById(user.userId);
+          const email = profile?.email || profile?.EMAIL || '';
+          const partyCheck = await oracleDb.executeQuery(
+            'SELECT party_id FROM parties WHERE case_id = :caseId AND LOWER(email) = LOWER(:email)',
+            { caseId, email }
+          );
+          const counselCheck = await oracleDb.executeQuery(
+            'SELECT counsel_id FROM case_counsel WHERE case_id = :caseId AND LOWER(email) = LOWER(:email)',
+            { caseId, email }
+          );
+          const isParticipant = (partyCheck.rows?.length > 0) || (counselCheck.rows?.length > 0);
+          if (!isParticipant) return sendJSON(res, 403, { error: 'Access denied. You are not a participant in this case.' });
+        }
+        // For arbitrator — verify they are the case creator or assigned arbitrator
+        if (user.role === 'arbitrator') {
+          const caseRow = caseResult.rows[0];
+          const createdBy = caseRow.CREATED_BY || caseRow.created_by;
+          if (createdBy && createdBy !== user.userId) {
+            const assignCheck = await oracleDb.executeQuery(
+              'SELECT assignment_id FROM arbitrator_assignments WHERE case_id = :caseId AND arbitrator_id = :userId',
+              { caseId, userId: user.userId }
+            );
+            if (!assignCheck.rows?.length) return sendJSON(res, 403, { error: 'Access denied. You are not assigned to this case.' });
+          }
+        }
         const agreementResult = await oracleDb.executeQuery(
           'SELECT * FROM case_agreements WHERE case_id = :caseId ORDER BY created_at DESC',
           { caseId }
@@ -956,7 +1038,7 @@ function createServer(services) {
 
       // --- POST /api/cases ---
       if (path === '/api/cases' && method === 'POST') {
-        const user = authenticate(req, res, ['admin', 'secretariat']);
+        const user = authenticate(req, res, ['arbitrator', 'admin', 'secretariat']);
         if (!user) return;
         const body = await parseBody(req);
         if (!body.title) return sendJSON(res, 400, { error: 'title is required' });
@@ -971,7 +1053,7 @@ function createServer(services) {
             filing_fee, filing_fee_currency, service_confirmed,
             rule_guidance_summary, rule_guidance_json, rule_guidance_model,
             rule_guidance_cache_key, rule_guidance_cached, rule_guidance_source,
-            rule_guidance_generated_at)
+            rule_guidance_generated_at, created_by, payment_status)
            VALUES (:caseId, :title, :status, :caseType, :sector, :disputeCategory,
             :description, :disputeAmount, :currency, :governingLaw, :seatOfArbitration,
             :arbitrationRules, :languageOfProceedings, :institutionRef, :filingDate,
@@ -980,11 +1062,11 @@ function createServer(services) {
             :filingFee, :filingFeeCurrency, :serviceConfirmed,
             :ruleGuidanceSummary, :ruleGuidanceJson, :ruleGuidanceModel,
             :ruleGuidanceCacheKey, :ruleGuidanceCached, :ruleGuidanceSource,
-            :ruleGuidanceGeneratedAt)`,
+            :ruleGuidanceGeneratedAt, :createdBy, :paymentStatus)`,
           {
             caseId,
             title: body.title,
-            status: body.status || 'active',
+            status: user.role === 'arbitrator' ? 'pending_payment' : (body.status || 'active'),
             caseType: body.caseType || null,
             sector: body.sector || null,
             disputeCategory: body.disputeCategory || null,
@@ -1014,7 +1096,9 @@ function createServer(services) {
             ruleGuidanceCacheKey: ruleGuidance.cacheKey || null,
             ruleGuidanceCached: ruleGuidance.cached ? 1 : 0,
             ruleGuidanceSource: ruleGuidance.source || (ruleGuidance.cached ? 'cache' : (Object.keys(ruleGuidance).length > 0 ? 'ai' : null)),
-            ruleGuidanceGeneratedAt: ruleGuidance.generatedAt ? new Date(ruleGuidance.generatedAt) : (Object.keys(ruleGuidance).length > 0 ? new Date() : null)
+            ruleGuidanceGeneratedAt: ruleGuidance.generatedAt ? new Date(ruleGuidance.generatedAt) : (Object.keys(ruleGuidance).length > 0 ? new Date() : null),
+            createdBy: user.userId,
+            paymentStatus: user.role === 'arbitrator' ? 'pending_invoice' : 'paid'
           }
         );
 
@@ -1036,6 +1120,25 @@ function createServer(services) {
         }
 
         await auditTrail.logEvent({ type: 'case_created', caseId, userId: user.userId, action: 'create' });
+        // Notify admin + secretariat of new case (fire-and-forget)
+        setImmediate(async () => {
+          try {
+            const admins = await userService.listUsers({ role: 'admin' });
+            const secs = await userService.listUsers({ role: 'secretariat' });
+            const toEmails = [...admins, ...secs].map(u => u.email || u.EMAIL).filter(Boolean);
+            if (toEmails.length) {
+              await emailService.sendCaseCreated({
+                toEmails,
+                caseTitle: body.title,
+                caseId,
+                claimant: body.claimantName || null,
+                respondent: body.respondentName || null,
+                arbitrator: body.arbitratorNominee || null,
+                seat: body.seatOfArbitration || null,
+              });
+            }
+          } catch (e) { console.warn('Case created email failed:', e.message); }
+        });
         return sendJSON(res, 201, { success: true, caseId, title: body.title });
       }
 
@@ -1194,8 +1297,29 @@ function createServer(services) {
           }
         );
         await auditTrail.logEvent({ type: 'document_uploaded', caseId: body.caseId, userId: user.userId, action: 'upload', details: JSON.stringify({ documentName: body.documentName, category: body.category, accessLevel }) });
-        // Respond immediately — extract text in background
+        // Respond immediately — extract text + notify in background
         sendJSON(res, 201, { success: true, documentName: body.documentName, accessLevel });
+        // Background: notify case participants of document upload
+        setImmediate(async () => {
+          try {
+            if (body.caseId) {
+              const caseRes = await oracleDb.executeQuery('SELECT title FROM cases WHERE case_id = :caseId', { caseId: body.caseId });
+              const caseTitle = caseRes.rows?.[0]?.TITLE || caseRes.rows?.[0]?.title || body.caseId;
+              const admins = await userService.listUsers({ role: 'admin' });
+              const toEmails = admins.map(u => u.email || u.EMAIL).filter(Boolean);
+              if (toEmails.length) {
+                await emailService.sendDocumentUploaded({
+                  toEmails,
+                  caseTitle,
+                  caseId: body.caseId,
+                  documentName: body.documentName,
+                  uploadedBy: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
+                  category: body.category || 'Other',
+                });
+              }
+            }
+          } catch (e) { console.warn('Document uploaded email failed:', e.message); }
+        });
         // Background: extract text and update the record
         setImmediate(async () => {
           try {
@@ -1212,6 +1336,171 @@ function createServer(services) {
             console.warn('Background text extraction failed:', e.message);
           }
         });
+      }
+
+      // =============================================
+      // --- PAYMENT ROUTES ---
+      // =============================================
+
+      // --- GET /api/payments ---
+      if (path === '/api/payments' && method === 'GET') {
+        const user = authenticate(req, res, ['admin', 'arbitrator']);
+        if (!user) return;
+        let sql, params = {};
+        if (user.role === 'admin') {
+          sql = `SELECT cp.*, c.title as case_title
+                 FROM case_payments cp LEFT JOIN cases c ON c.case_id = cp.case_id
+                 ORDER BY cp.created_at DESC`;
+        } else {
+          sql = `SELECT cp.*, c.title as case_title
+                 FROM case_payments cp LEFT JOIN cases c ON c.case_id = cp.case_id
+                 WHERE cp.arbitrator_id = :userId
+                 ORDER BY cp.created_at DESC`;
+          params.userId = user.userId;
+        }
+        const result = await oracleDb.executeQuery(sql, params);
+        // Also include cases pending invoice (no payment record yet)
+        if (user.role === 'admin') {
+          const pendingSql = `SELECT case_id, title, created_by, payment_status, platform_fee, platform_fee_currency, created_at
+                              FROM cases WHERE payment_status = 'pending_invoice' ORDER BY created_at DESC`;
+          const pending = await oracleDb.executeQuery(pendingSql, {});
+          return sendJSON(res, 200, { payments: result.rows || [], pendingCases: pending.rows || [] });
+        }
+        const pendingSql = `SELECT case_id, title, created_by, payment_status, platform_fee, platform_fee_currency, created_at
+                            FROM cases WHERE payment_status = 'pending_invoice' AND created_by = :userId ORDER BY created_at DESC`;
+        const pending = await oracleDb.executeQuery(pendingSql, { userId: user.userId });
+        return sendJSON(res, 200, { payments: result.rows || [], pendingCases: pending.rows || [] });
+      }
+
+      // --- POST /api/payments/invoice --- (admin issues invoice to arbitrator for a case)
+      if (path === '/api/payments/invoice' && method === 'POST') {
+        const user = authenticate(req, res, ['admin']);
+        if (!user) return;
+        const body = await parseBody(req);
+        if (!body.caseId || !body.amount) return sendJSON(res, 400, { error: 'caseId and amount are required' });
+        const caseRes = await oracleDb.executeQuery('SELECT * FROM cases WHERE case_id = :caseId', { caseId: body.caseId });
+        if (!caseRes.rows?.length) return sendJSON(res, 404, { error: 'Case not found' });
+        const c = caseRes.rows[0];
+        const createdBy = c.CREATED_BY || c.created_by;
+        const paymentId = 'pay-' + Date.now();
+        const invoiceNumber = `INV-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+        await oracleDb.executeQuery(
+          `INSERT INTO case_payments (payment_id, case_id, arbitrator_id, platform_fee, currency, invoice_number, invoice_issued_at, invoice_issued_by, status)
+           VALUES (:paymentId, :caseId, :arbitratorId, :fee, :currency, :invoiceNumber, :now, :issuedBy, 'invoiced')`,
+          {
+            paymentId,
+            caseId: body.caseId,
+            arbitratorId: createdBy,
+            fee: body.amount,
+            currency: body.currency || 'KES',
+            invoiceNumber,
+            now: new Date(),
+            issuedBy: user.userId
+          }
+        );
+        await oracleDb.executeQuery(
+          `UPDATE cases SET payment_status = 'invoiced', platform_fee = :fee, platform_fee_currency = :currency WHERE case_id = :caseId`,
+          { fee: body.amount, currency: body.currency || 'KES', caseId: body.caseId }
+        );
+        // Notify arbitrator
+        setImmediate(async () => {
+          try {
+            const profile = await userService.findById(createdBy);
+            const email = profile?.email || profile?.EMAIL;
+            if (email) {
+              await emailService._send({
+                to: email,
+                subject: `Invoice Issued — ${c.TITLE || c.title}`,
+                html: `<p>An invoice has been issued for your case <strong>${c.TITLE || c.title}</strong>.<br>
+                       Invoice No: <strong>${invoiceNumber}</strong><br>
+                       Amount: <strong>${body.currency || 'KES'} ${body.amount}</strong><br>
+                       Payment methods: Bank Transfer, Bank Deposit, M-Pesa, Card.<br>
+                       Please attach proof of payment in the Payments section of the platform.</p>`,
+              });
+            }
+          } catch (e) { console.warn('Invoice email failed:', e.message); }
+        });
+        return sendJSON(res, 201, { success: true, paymentId, invoiceNumber });
+      }
+
+      // --- POST /api/payments/:paymentId/proof --- (arbitrator uploads proof of payment)
+      if (path.match(/^\/api\/payments\/[^/]+\/proof$/) && method === 'POST') {
+        const user = authenticate(req, res, ['arbitrator', 'admin', 'secretariat']);
+        if (!user) return;
+        const paymentId = path.split('/')[3];
+        const body = await parseBody(req);
+        if (!body.proofDocument) return sendJSON(res, 400, { error: 'proofDocument (base64) is required' });
+        await oracleDb.executeQuery(
+          `UPDATE case_payments SET proof_document = :proof, proof_file_name = :fileName, proof_uploaded_at = :now, status = 'proof_uploaded', updated_at = :now2
+           WHERE payment_id = :paymentId`,
+          {
+            proof: body.proofDocument,
+            fileName: body.fileName || 'proof-of-payment',
+            now: new Date(),
+            now2: new Date(),
+            paymentId
+          }
+        );
+        const payRes = await oracleDb.executeQuery('SELECT case_id FROM case_payments WHERE payment_id = :paymentId', { paymentId });
+        if (payRes.rows?.length) {
+          const caseId = payRes.rows[0].CASE_ID || payRes.rows[0].case_id;
+          await oracleDb.executeQuery(
+            `UPDATE cases SET payment_status = 'proof_uploaded' WHERE case_id = :caseId`,
+            { caseId }
+          );
+        }
+        return sendJSON(res, 200, { success: true });
+      }
+
+      // --- POST /api/payments/:paymentId/approve --- (admin issues receipt and activates case)
+      if (path.match(/^\/api\/payments\/[^/]+\/approve$/) && method === 'POST') {
+        const user = authenticate(req, res, ['admin']);
+        if (!user) return;
+        const paymentId = path.split('/')[3];
+        const body = await parseBody(req);
+        const receiptNumber = `RCP-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+        await oracleDb.executeQuery(
+          `UPDATE case_payments SET status = 'paid', receipt_number = :receiptNumber, receipt_issued_at = :now, receipt_issued_by = :issuedBy, notes = :notes, updated_at = :now2
+           WHERE payment_id = :paymentId`,
+          {
+            receiptNumber,
+            now: new Date(),
+            issuedBy: user.userId,
+            notes: body.notes || null,
+            now2: new Date(),
+            paymentId
+          }
+        );
+        const payRes = await oracleDb.executeQuery('SELECT case_id, arbitrator_id FROM case_payments WHERE payment_id = :paymentId', { paymentId });
+        let caseId;
+        if (payRes.rows?.length) {
+          caseId = payRes.rows[0].CASE_ID || payRes.rows[0].case_id;
+          const arbitratorId = payRes.rows[0].ARBITRATOR_ID || payRes.rows[0].arbitrator_id;
+          await oracleDb.executeQuery(
+            `UPDATE cases SET payment_status = 'paid', status = 'active' WHERE case_id = :caseId`,
+            { caseId }
+          );
+          await auditTrail.logEvent({ type: 'case_payment_approved', caseId, userId: user.userId, action: 'approve_payment' });
+          // Notify arbitrator
+          setImmediate(async () => {
+            try {
+              const profile = await userService.findById(arbitratorId);
+              const email = profile?.email || profile?.EMAIL;
+              const caseRes2 = await oracleDb.executeQuery('SELECT title FROM cases WHERE case_id = :caseId', { caseId });
+              const caseTitle = caseRes2.rows?.[0]?.TITLE || caseRes2.rows?.[0]?.title || caseId;
+              if (email) {
+                await emailService._send({
+                  to: email,
+                  subject: `Payment Approved — Case Activated: ${caseTitle}`,
+                  html: `<p>Your payment for case <strong>${caseTitle}</strong> has been confirmed.<br>
+                         Receipt No: <strong>${receiptNumber}</strong><br>
+                         Your case is now <strong>Active</strong>. You can proceed with case management.</p>`,
+                });
+              }
+            } catch (e) { console.warn('Receipt email failed:', e.message); }
+          });
+        }
+        return sendJSON(res, 200, { success: true, receiptNumber, caseId });
       }
 
       // --- POST /api/forms/agreement/share ---
@@ -1670,7 +1959,7 @@ ${extractedText.slice(0, 25000)}
       if (path === '/api/analytics' && method === 'GET') {
         const user = authenticate(req, res);
         if (!user) return;
-        const [casesByStatus, casesByType, monthlyCases, docCount, hearingsByStatus, userCount] = await Promise.all([
+        const [casesByStatus, casesByType, monthlyCases, docCount, hearingsByStatus, userCount, paymentStats, usersByRole, recentActivity] = await Promise.all([
           oracleDb.executeQuery('SELECT status, COUNT(*) AS cnt FROM cases GROUP BY status', {}),
           oracleDb.executeQuery('SELECT COALESCE(case_type, \'Unspecified\') AS case_type, COUNT(*) AS cnt FROM cases GROUP BY case_type', {}),
           oracleDb.executeQuery(
@@ -1680,10 +1969,20 @@ ${extractedText.slice(0, 25000)}
              ORDER BY mnum`, {}),
           oracleDb.executeQuery('SELECT COUNT(*) AS cnt FROM documents', {}),
           oracleDb.executeQuery('SELECT status, COUNT(*) AS cnt FROM hearings GROUP BY status', {}),
-          oracleDb.executeQuery('SELECT COUNT(*) AS cnt FROM users WHERE is_active = 1', {})
+          oracleDb.executeQuery('SELECT COUNT(*) AS cnt FROM users WHERE is_active = 1', {}),
+          oracleDb.executeQuery(
+            `SELECT status, COUNT(*) AS cnt, SUM(platform_fee) AS total_fee FROM case_payments GROUP BY status`, {}),
+          oracleDb.executeQuery('SELECT role, COUNT(*) AS cnt FROM users WHERE is_active = 1 GROUP BY role', {}),
+          oracleDb.executeQuery(
+            `SELECT event_type, action, created_at FROM audit_logs ORDER BY created_at DESC LIMIT 10`, {})
         ]);
         const totalCases = (casesByStatus.rows || []).reduce((s, r) => s + (parseInt(r.CNT || r.cnt || 0)), 0);
         const closedCases = (casesByStatus.rows || []).find(r => (r.STATUS || r.status || '').toLowerCase() === 'closed');
+        const totalRevenue = (paymentStats.rows || [])
+          .filter(r => (r.STATUS || r.status) === 'paid')
+          .reduce((s, r) => s + parseFloat(r.TOTAL_FEE || r.total_fee || 0), 0);
+        const pendingInvoices = (paymentStats.rows || [])
+          .find(r => (r.STATUS || r.status) === 'pending_invoice');
         return sendJSON(res, 200, {
           casesByStatus: casesByStatus.rows || [],
           casesByType: casesByType.rows || [],
@@ -1693,7 +1992,12 @@ ${extractedText.slice(0, 25000)}
           totalHearings: (hearingsByStatus.rows || []).reduce((s, r) => s + parseInt(r.CNT || r.cnt || 0), 0),
           totalUsers: parseInt((userCount.rows[0] || {}).CNT || (userCount.rows[0] || {}).cnt || 0),
           closedCases: closedCases ? parseInt(closedCases.CNT || closedCases.cnt || 0) : 0,
-          hearingsByStatus: hearingsByStatus.rows || []
+          hearingsByStatus: hearingsByStatus.rows || [],
+          paymentStats: paymentStats.rows || [],
+          totalRevenue,
+          pendingInvoicesCount: pendingInvoices ? parseInt(pendingInvoices.CNT || pendingInvoices.cnt || 0) : 0,
+          usersByRole: usersByRole.rows || [],
+          recentActivity: recentActivity.rows || []
         });
       }
 
