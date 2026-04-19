@@ -131,6 +131,17 @@ const RULE_PRESETS = {
     enforcement: 'Any award may be enforced according to the Arbitration Act, Cap. 49 and the relevant court process.',
     notes: 'Party-managed ad hoc arbitration under Kenyan law.',
   },
+  'WIPO Rules': {
+    governingLaw: 'WIPO Arbitration Rules (2021)',
+    governingRulesText: 'The arbitration shall be conducted under the WIPO Arbitration Rules administered by the World Intellectual Property Organization Arbitration and Mediation Center, Geneva. These Rules are specifically designed for IP and technology disputes and provide for confidentiality of proceedings, technical expertise, and flexible evidentiary procedures suited to IP matters.',
+    tribunalDetails: 'The tribunal shall be constituted in accordance with the WIPO Arbitration Rules. For IP disputes, arbitrators shall have appropriate technical and legal expertise in the relevant field of intellectual property. The WIPO Center shall assist parties in identifying suitable arbitrators with specialist IP qualifications.',
+    procedure: 'Proceedings shall follow the WIPO Arbitration Rules including provisions for: (i) early case management conferences; (ii) document production tailored to IP evidence including patent specifications, trademark registries, and licensing records; (iii) protective orders for trade secrets and confidential technical information; (iv) appointment of independent technical experts where the tribunal requires technical analysis.',
+    evidenceHearings: 'Evidence and hearing procedures shall accommodate IP-specific requirements including: patent claim charts, prior art submissions, technical expert testimony, product inspections, and infringement analyses. The tribunal may order protective orders to safeguard commercially sensitive technical information. Hearings may be conducted in person at the WIPO Arbitration and Mediation Center in Geneva, or by video conference.',
+    powers: 'The tribunal may: issue interim measures to preserve IP rights pending the award; appoint independent technical experts; order the production of IP registrations, licensing agreements, and technical specifications; grant injunctive relief as part of the final award; determine questions of IP validity and infringement within its jurisdiction.',
+    costs: 'Costs shall be determined under the WIPO Schedule of Fees. The tribunal may allocate costs including arbitrator fees, WIPO administrative fees, expert costs, and legal costs, having regard to the outcome and conduct of the parties.',
+    enforcement: 'Awards are enforceable under the New York Convention on the Recognition and Enforcement of Foreign Arbitral Awards (1958) in all signatory states. IP-specific remedies including injunctions, royalty orders, and declarations of non-infringement may be enforced through competent national courts.',
+    notes: 'WIPO arbitration is the leading institutional framework for international IP disputes including patent, trademark, copyright, trade secret, and technology licensing. Seat is typically Geneva, Switzerland.',
+  },
 };
 
 export const getRulePreset = (ruleName) => {

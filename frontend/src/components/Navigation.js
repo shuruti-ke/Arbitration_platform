@@ -11,7 +11,8 @@ import {
   Settings as SettingsIcon,
   VideoCall as HearingsIcon,
   Logout as LogoutIcon,
-  ManageAccounts as UsersIcon
+  ManageAccounts as UsersIcon,
+  VerifiedUser as IPIcon
 } from '@mui/icons-material';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -62,6 +63,7 @@ const Navigation = () => {
         <NavIcon to="/analytics"   icon={<AnalyticsIcon />}    label={t('Analytics')} />
         <NavIcon to="/compliance"  icon={<ComplianceIcon />}   label={t('Compliance')} />
         <NavIcon to="/intelligence" icon={<IntelligenceIcon />} label={t('AI Intelligence')} />
+        <NavIcon to="/ip-arbitration" icon={<IPIcon />}          label={t('IP Arbitration')} />
         <NavIcon to="/users"       icon={<UsersIcon />}        label={t('Users')} />
         <NavIcon to="/settings"    icon={<SettingsIcon />}     label={t('Settings')} />
 

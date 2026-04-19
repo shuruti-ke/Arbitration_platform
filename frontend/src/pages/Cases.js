@@ -81,7 +81,33 @@ const ARBITRATION_RULE_OPTIONS = [
   'AFSA',
   'LCA',
   'CRCICA',
+  'WIPO Rules',
   'Ad Hoc',
+];
+
+const IP_SUBTYPE_OPTIONS = [
+  'patent',
+  'trademark',
+  'copyright',
+  'trade_secret',
+  'design',
+  'software',
+  'domain_name',
+  'plant_variety',
+  'other_ip',
+];
+
+const IP_TECHNICAL_FIELD_OPTIONS = [
+  'Software / IT',
+  'Pharmaceutical / Biotech',
+  'Mechanical Engineering',
+  'Electronics / Semiconductors',
+  'Chemistry',
+  'Design / Fashion',
+  'Entertainment / Media',
+  'Agricultural Technology',
+  'Telecommunications',
+  'Other',
 ];
 
 const LANGUAGE_OPTIONS = [
@@ -640,6 +666,49 @@ const Cases = () => {
                 <TextField label={t('Description of Dispute / Nature of Claim')} fullWidth multiline rows={3}
                   value={form.description} onChange={set('description')} />
               </Grid>
+
+              {/* IP-specific fields */}
+              {form.caseType === 'ip' && (<>
+                <Grid item xs={12}>
+                  <Alert severity="info" icon={false} sx={{ borderLeft: '4px solid #1976d2' }}>
+                    <strong>IP Arbitration</strong> — Complete the fields below to enable IP-specific compliance checks, WIPO rule recommendations, and specialist arbitrator matching.
+                  </Alert>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <SearchableField
+                    label={t('IP Dispute Subtype *')}
+                    value={form.ipSubtype || ''}
+                    onChange={(value) => setForm({ ...form, ipSubtype: value })}
+                    options={IP_SUBTYPE_OPTIONS}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <SearchableField
+                    label={t('Technical Field')}
+                    value={form.ipTechnicalField || ''}
+                    onChange={(value) => setForm({ ...form, ipTechnicalField: value })}
+                    options={IP_TECHNICAL_FIELD_OPTIONS}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControlLabel
+                    control={<Checkbox checked={!!form.ipTradeSecret} onChange={setCheck('ipTradeSecret')} />}
+                    label={t('Trade Secret Protection Required')}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControlLabel
+                    control={<Checkbox checked={!!form.ipRequiresInjunction} onChange={setCheck('ipRequiresInjunction')} />}
+                    label={t('Injunctive Relief Sought')}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField label={t('IP Rights at Issue (Registration numbers, titles, or brief description)')}
+                    fullWidth multiline rows={2} value={form.ipRightsDescription || ''}
+                    onChange={set('ipRightsDescription')}
+                    placeholder="e.g. Patent EP1234567 — Method for data compression; Trademark 'Rafiki' Class 42" />
+                </Grid>
+              </>)}
             </Grid>
           )}
 
@@ -727,7 +796,13 @@ const Cases = () => {
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField label={t('Seat of Arbitration')} fullWidth value={form.seatOfArbitration}
-                  onChange={set('seatOfArbitration')} placeholder={t('e.g. Nairobi, Kenya')} />
+                  onChange={set('seatOfArbitration')}
+                  placeholder={form.caseType === 'ip' ? 'e.g. Geneva (WIPO), Singapore (SIAC), London (LCIA)' : 'e.g. Nairobi, Kenya'} />
+                {form.caseType === 'ip' && !form.seatOfArbitration && (
+                  <Typography variant="caption" color="primary">
+                    Recommended for IP: Geneva (WIPO), Singapore, London, Paris
+                  </Typography>
+                )}
               </Grid>
               <Grid item xs={12} sm={6}>
                 <SearchableField

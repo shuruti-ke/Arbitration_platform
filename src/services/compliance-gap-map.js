@@ -141,6 +141,29 @@ class ComplianceGapMapService {
       redFlags.push('The dispute may involve a non-arbitrable subject matter and should be reviewed by counsel.');
     }
 
+    if (caseType === 'ip') {
+      if (!caseData.ipSubtype) missing.push('IP dispute subtype (patent, trademark, copyright, trade secret)');
+      if (!caseData.ipTechnicalField) missing.push('Technical field of the IP dispute');
+      if (caseData.ipSubtype === 'trademark' && !caseData.ipTrademarkJurisdiction) {
+        redFlags.push('Trademark validity disputes may not be arbitrable in all jurisdictions — confirm with local IP counsel before commencing.');
+      }
+      if (caseData.ipSubtype === 'patent') {
+        redFlags.push('Patent validity challenges (invalidity counterclaims) may require review by the relevant patent office or court — confirm scope of arbitral jurisdiction with IP counsel.');
+      }
+      if (!caseData.arbitrationRules) {
+        redFlags.push('IP disputes benefit from specialist rules — consider WIPO Arbitration Rules, SIAC, or ICC for cross-border IP matters.');
+      }
+      if (caseData.arbitrationRules === 'WIPO Rules' && !caseData.seatOfArbitration) {
+        missing.push('Seat of arbitration (Geneva recommended for WIPO proceedings)');
+      }
+      if (caseData.ipRequiresInjunction) {
+        redFlags.push('Injunctive relief in IP matters may require parallel court proceedings for interim protection — advise parties accordingly.');
+      }
+      if (caseData.ipTradeSecret) {
+        redFlags.push('Trade secret cases require enhanced confidentiality protocols — ensure protective order provisions are included in the arbitration agreement.');
+      }
+    }
+
     const needsHumanReview = missing.length > 0 || redFlags.length > 0;
 
     return {

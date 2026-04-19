@@ -18,6 +18,7 @@ import Settings from './pages/Settings';
 import Hearings from './pages/Hearings';
 import Users from './pages/Users';
 import Login from './pages/Login';
+import IPArbitration from './pages/IPArbitration';
 import Navigation from './components/Navigation';
 import './styles/App.css';
 
@@ -79,6 +80,7 @@ const AppRoutes = () => {
         <Route path="/hearings" element={<ProtectedRoute><Hearings /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
+        <Route path="/ip-arbitration" element={<ProtectedRoute><IPArbitration /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>

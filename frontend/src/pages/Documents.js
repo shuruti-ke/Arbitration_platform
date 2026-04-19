@@ -48,6 +48,17 @@ const DOC_CATEGORIES = [
   'Contract / Agreement',
   'Proof of Service',
   'Certificate of Service',
+  // IP-specific categories
+  'Patent Specification / Claims',
+  'Patent Prior Art Evidence',
+  'Trademark Registration / Search',
+  'Copyright Certificate / Notice',
+  'Trade Secret Evidence',
+  'License Agreement',
+  'IP Valuation Report',
+  'Technical Expert Report (IP)',
+  'Infringement Analysis',
+  'IP Assignment Agreement',
   'Other',
 ];
 
