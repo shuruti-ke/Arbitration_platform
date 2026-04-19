@@ -1,6 +1,6 @@
 // src/components/Navigation.js
 import React from 'react';
-import { AppBar, Toolbar, Typography, Button, IconButton, Chip, Box } from '@mui/material';
+import { AppBar, Toolbar, Typography, IconButton, Chip, Box, Tooltip } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
   Gavel as CasesIcon,
@@ -23,7 +23,7 @@ const roleLabelKey = (role) => {
     case 'secretariat': return 'Secretariat';
     case 'arbitrator': return 'Arbitrator';
     case 'counsel': return 'Legal Counsel';
-    case 'party': return 'Party (Claimant / Respondent)';
+    case 'party': return 'Party';
     default: return role || '';
   }
 };
@@ -36,50 +36,40 @@ const roleColors = {
   party: 'default'
 };
 
+const NavIcon = ({ to, icon, label }) => (
+  <Tooltip title={label} arrow>
+    <IconButton color="inherit" component={Link} to={to} size="medium">
+      {icon}
+    </IconButton>
+  </Tooltip>
+);
+
 const Navigation = () => {
   const { user, logout } = useAuth();
   const { t } = useLanguage();
-  const canManageUsers = user && (user.role === 'admin' || user.role === 'secretariat');
 
   return (
     <AppBar position="static">
-      <Toolbar>
-        <Typography variant="h6" component="div" sx={{ mr: 2 }}>
+      <Toolbar variant="dense" sx={{ gap: 0.5 }}>
+        <Typography variant="subtitle1" fontWeight={700} sx={{ mr: 1, whiteSpace: 'nowrap' }}>
           {t('Arbitration Platform')}
         </Typography>
-        <Button color="inherit" component={Link} to="/" startIcon={<DashboardIcon />}>
-          {t('Dashboard')}
-        </Button>
-        <Button color="inherit" component={Link} to="/cases" startIcon={<CasesIcon />}>
-          {t('Cases')}
-        </Button>
-        <Button color="inherit" component={Link} to="/hearings" startIcon={<HearingsIcon />}>
-          {t('Hearings')}
-        </Button>
-        <Button color="inherit" component={Link} to="/documents" startIcon={<DocumentsIcon />}>
-          {t('Document Library')}
-        </Button>
-        <Button color="inherit" component={Link} to="/analytics" startIcon={<AnalyticsIcon />}>
-          {t('Analytics')}
-        </Button>
-        <Button color="inherit" component={Link} to="/compliance" startIcon={<ComplianceIcon />}>
-          {t('Compliance')}
-        </Button>
-        <Button color="inherit" component={Link} to="/intelligence" startIcon={<IntelligenceIcon />}>
-          {t('AI Intelligence')}
-        </Button>
-        <Button color="inherit" component={Link} to="/users" startIcon={<UsersIcon />}>
-          {t('Users')}
-        </Button>
-        <Button color="inherit" component={Link} to="/settings" startIcon={<SettingsIcon />}>
-          {t('Settings')}
-        </Button>
+
+        <NavIcon to="/"            icon={<DashboardIcon />}    label={t('Dashboard')} />
+        <NavIcon to="/cases"       icon={<CasesIcon />}        label={t('Cases')} />
+        <NavIcon to="/hearings"    icon={<HearingsIcon />}     label={t('Hearings')} />
+        <NavIcon to="/documents"   icon={<DocumentsIcon />}    label={t('Document Library')} />
+        <NavIcon to="/analytics"   icon={<AnalyticsIcon />}    label={t('Analytics')} />
+        <NavIcon to="/compliance"  icon={<ComplianceIcon />}   label={t('Compliance')} />
+        <NavIcon to="/intelligence" icon={<IntelligenceIcon />} label={t('AI Intelligence')} />
+        <NavIcon to="/users"       icon={<UsersIcon />}        label={t('Users')} />
+        <NavIcon to="/settings"    icon={<SettingsIcon />}     label={t('Settings')} />
 
         <Box sx={{ flexGrow: 1 }} />
 
         {user && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="body2" sx={{ opacity: 0.9 }}>
+            <Typography variant="body2" sx={{ opacity: 0.9, whiteSpace: 'nowrap' }}>
               {user.firstName} {user.lastName}
             </Typography>
             <Chip
@@ -88,9 +78,11 @@ const Navigation = () => {
               color={roleColors[user.role] || 'default'}
               sx={{ color: 'white', fontWeight: 'bold' }}
             />
-            <IconButton color="inherit" onClick={logout} title={t('Logout')}>
-              <LogoutIcon />
-            </IconButton>
+            <Tooltip title={t('Logout')} arrow>
+              <IconButton color="inherit" onClick={logout}>
+                <LogoutIcon />
+              </IconButton>
+            </Tooltip>
           </Box>
         )}
       </Toolbar>
