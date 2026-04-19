@@ -1,17 +1,9 @@
 // src/pages/Analytics.js
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  Container,
-  Typography,
-  Paper,
-  Grid,
-  Box
+  Container, Typography, Paper, Grid, Box, CircularProgress, Alert,
+  Card, CardContent
 } from '@mui/material';
-import {
-  BarChart as BarChartIcon,
-  PieChart as PieChartIcon,
-  Timeline as TimelineIcon
-} from '@mui/icons-material';
 import { Bar, Pie } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -23,135 +15,143 @@ import {
   Legend,
   ArcElement
 } from 'chart.js';
+import { apiService } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  ArcElement
+ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
+
+const CHART_COLORS = [
+  'rgba(25, 118, 210, 0.7)',
+  'rgba(56, 142, 60, 0.7)',
+  'rgba(211, 47, 47, 0.7)',
+  'rgba(245, 124, 0, 0.7)',
+  'rgba(123, 31, 162, 0.7)',
+  'rgba(0, 151, 167, 0.7)',
+];
+
+const StatCard = ({ label, value, color }) => (
+  <Card sx={{ height: '100%' }}>
+    <CardContent sx={{ textAlign: 'center' }}>
+      <Typography variant="h3" sx={{ color, fontWeight: 700 }}>{value}</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>{label}</Typography>
+    </CardContent>
+  </Card>
 );
 
 const Analytics = () => {
   const { t } = useLanguage();
-  // Sample data for charts
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    apiService.getAnalytics()
+      .then(res => setData(res.data))
+      .catch(err => setError(err.response?.data?.error || err.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress /></Box>;
+  if (error) return <Container sx={{ mt: 4 }}><Alert severity="error">{error}</Alert></Container>;
+
+  const monthlyLabels = (data.monthlyCases || []).map(r => r.MON || r.mon);
+  const monthlyCounts = (data.monthlyCases || []).map(r => parseInt(r.CNT || r.cnt || 0));
+
   const barData = {
-    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-    datasets: [
-      {
-        label: t('Cases Created'),
-        data: [12, 19, 3, 5, 2, 3],
-        backgroundColor: 'rgba(25, 118, 210, 0.5)',
-      },
-      {
-        label: t('Cases Completed'),
-        data: [8, 15, 2, 3, 1, 2],
-        backgroundColor: 'rgba(56, 210, 25, 0.5)',
-      }
-    ],
+    labels: monthlyLabels.length ? monthlyLabels : ['No data'],
+    datasets: [{
+      label: t('Cases Filed'),
+      data: monthlyCounts.length ? monthlyCounts : [0],
+      backgroundColor: 'rgba(25, 118, 210, 0.6)',
+      borderColor: 'rgba(25, 118, 210, 1)',
+      borderWidth: 1,
+    }]
   };
+
+  const typeLabels = (data.casesByType || []).map(r => r.CASE_TYPE || r.case_type);
+  const typeCounts = (data.casesByType || []).map(r => parseInt(r.CNT || r.cnt || 0));
 
   const pieData = {
-    labels: [t('Commercial'), t('Employment'), t('IP'), t('Other')],
-    datasets: [
-      {
-        data: [300, 150, 100, 50],
-        backgroundColor: [
-          'rgba(255, 99, 132, 0.8)',
-          'rgba(54, 162, 235, 0.8)',
-          'rgba(255, 206, 86, 0.8)',
-          'rgba(75, 192, 192, 0.8)',
-        ],
-      },
-    ],
+    labels: typeLabels.length ? typeLabels : ['No data'],
+    datasets: [{
+      data: typeCounts.length ? typeCounts : [1],
+      backgroundColor: CHART_COLORS.slice(0, typeLabels.length || 1),
+    }]
   };
 
-  const options = {
-    responsive: true,
-    plugins: {
-      legend: {
-        position: 'top',
-      },
-      title: {
-        display: true,
-        text: 'Chart.js',
-      },
-    },
-  };
+  const chartOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } };
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Typography variant="h4" component="h1" gutterBottom>
-        {t('Analytics Dashboard')}
-      </Typography>
+      <Typography variant="h4" component="h1" gutterBottom>{t('Analytics Dashboard')}</Typography>
+
+      <Grid container spacing={3} sx={{ mb: 3 }}>
+        <Grid item xs={6} sm={3}>
+          <StatCard label={t('Total Cases')} value={data.totalCases} color="#1976d2" />
+        </Grid>
+        <Grid item xs={6} sm={3}>
+          <StatCard label={t('Documents')} value={data.totalDocuments} color="#388e3c" />
+        </Grid>
+        <Grid item xs={6} sm={3}>
+          <StatCard label={t('Hearings')} value={data.totalHearings} color="#f57c00" />
+        </Grid>
+        <Grid item xs={6} sm={3}>
+          <StatCard label={t('Active Users')} value={data.totalUsers} color="#7b1fa2" />
+        </Grid>
+      </Grid>
 
       <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
+        <Grid item xs={12} md={7}>
           <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              {t('Cases Overview')}
-            </Typography>
-            <Box sx={{ height: 300 }}>
-              <Bar data={barData} options={options} />
+            <Typography variant="h6" gutterBottom>{t('Cases Filed (Last 6 Months)')}</Typography>
+            <Box sx={{ height: 280 }}>
+              <Bar data={barData} options={chartOptions} />
+            </Box>
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12} md={5}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" gutterBottom>{t('Case Types')}</Typography>
+            <Box sx={{ height: 280 }}>
+              <Pie data={pieData} options={chartOptions} />
             </Box>
           </Paper>
         </Grid>
 
         <Grid item xs={12} md={6}>
           <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              {t('Case Types Distribution')}
-            </Typography>
-            <Box sx={{ height: 300 }}>
-              <Pie data={pieData} options={options} />
-            </Box>
+            <Typography variant="h6" gutterBottom>{t('Cases by Status')}</Typography>
+            {(data.casesByStatus || []).length === 0
+              ? <Typography color="text.secondary">No cases yet</Typography>
+              : (data.casesByStatus || []).map((r, i) => {
+                  const status = r.STATUS || r.status || '—';
+                  const count = parseInt(r.CNT || r.cnt || 0);
+                  return (
+                    <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5, borderBottom: '1px solid #f0f0f0' }}>
+                      <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>{status}</Typography>
+                      <Typography variant="body2" fontWeight={600}>{count}</Typography>
+                    </Box>
+                  );
+                })}
           </Paper>
         </Grid>
 
         <Grid item xs={12} md={6}>
           <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              {t('Performance Metrics')}
-            </Typography>
-            <Box sx={{ minHeight: 200 }}>
-              <Typography variant="body1">
-                • {t('Average case resolution time: 45 days')}
-              </Typography>
-              <Typography variant="body1">
-                • {t('Compliance rate: 98.5%')}
-              </Typography>
-              <Typography variant="body1">
-                • {t('User satisfaction: 4.7/5.0')}
-              </Typography>
-              <Typography variant="body1">
-                • {t('Active arbitrators: 24')}
-              </Typography>
-            </Box>
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              {t('System Health')}
-            </Typography>
-            <Box sx={{ minHeight: 200 }}>
-              <Typography variant="body1">
-                • {t('API Response Time: 120ms')}
-              </Typography>
-              <Typography variant="body1">
-                • {t('Uptime: 99.9%')}
-              </Typography>
-              <Typography variant="body1">
-                • {t('Active Users: 42')}
-              </Typography>
-              <Typography variant="body1">
-                • {t('Storage Used: 2.4 GB')}
-              </Typography>
-            </Box>
+            <Typography variant="h6" gutterBottom>{t('Hearings by Status')}</Typography>
+            {(data.hearingsByStatus || []).length === 0
+              ? <Typography color="text.secondary">No hearings yet</Typography>
+              : (data.hearingsByStatus || []).map((r, i) => {
+                  const status = r.STATUS || r.status || '—';
+                  const count = parseInt(r.CNT || r.cnt || 0);
+                  return (
+                    <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5, borderBottom: '1px solid #f0f0f0' }}>
+                      <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>{status}</Typography>
+                      <Typography variant="body2" fontWeight={600}>{count}</Typography>
+                    </Box>
+                  );
+                })}
           </Paper>
         </Grid>
       </Grid>

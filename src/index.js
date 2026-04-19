@@ -151,8 +151,8 @@ const RiskMonitoringService = require('./services/risk-monitoring');
 const ODPCComplianceService = require('./services/odpc-compliance');
 const LegalSourceRegistry = require('./services/legal-source-registry');
 const ComplianceGapMapService = require('./services/compliance-gap-map');
-const OracleDatabaseService = require('./services/oracle-database-service');
 const NeonDatabaseService = require('./services/neon-database-service');
+const OracleDatabaseService = process.env.DATABASE_URL ? null : require('./services/oracle-database-service');
 const IntelligenceService = require('./services/intelligence-service');
 const DocumentAnalysisService = require('./services/document-analysis-service');
 const { UserService, ROLES } = require('./services/user-service');
@@ -1670,13 +1670,30 @@ ${extractedText.slice(0, 25000)}
       if (path === '/api/analytics' && method === 'GET') {
         const user = authenticate(req, res);
         if (!user) return;
-        const casesResult = await oracleDb.executeQuery('SELECT status, COUNT(*) AS count FROM cases GROUP BY status', {});
-        const docsResult = await oracleDb.executeQuery('SELECT COUNT(*) AS count FROM documents', {});
-        const hearingsResult = await oracleDb.executeQuery('SELECT status, COUNT(*) AS count FROM hearings GROUP BY status', {});
+        const [casesByStatus, casesByType, monthlyCases, docCount, hearingsByStatus, userCount] = await Promise.all([
+          oracleDb.executeQuery('SELECT status, COUNT(*) AS cnt FROM cases GROUP BY status', {}),
+          oracleDb.executeQuery('SELECT COALESCE(case_type, \'Unspecified\') AS case_type, COUNT(*) AS cnt FROM cases GROUP BY case_type', {}),
+          oracleDb.executeQuery(
+            `SELECT TO_CHAR(filing_date, 'Mon') AS mon, EXTRACT(MONTH FROM filing_date) AS mnum, COUNT(*) AS cnt
+             FROM cases WHERE filing_date >= CURRENT_DATE - INTERVAL '6 months'
+             GROUP BY TO_CHAR(filing_date, 'Mon'), EXTRACT(MONTH FROM filing_date)
+             ORDER BY mnum`, {}),
+          oracleDb.executeQuery('SELECT COUNT(*) AS cnt FROM documents', {}),
+          oracleDb.executeQuery('SELECT status, COUNT(*) AS cnt FROM hearings GROUP BY status', {}),
+          oracleDb.executeQuery('SELECT COUNT(*) AS cnt FROM users WHERE is_active = 1', {})
+        ]);
+        const totalCases = (casesByStatus.rows || []).reduce((s, r) => s + (parseInt(r.CNT || r.cnt || 0)), 0);
+        const closedCases = (casesByStatus.rows || []).find(r => (r.STATUS || r.status || '').toLowerCase() === 'closed');
         return sendJSON(res, 200, {
-          cases: casesResult.rows || [],
-          documents: docsResult.rows || [],
-          hearings: hearingsResult.rows || []
+          casesByStatus: casesByStatus.rows || [],
+          casesByType: casesByType.rows || [],
+          monthlyCases: monthlyCases.rows || [],
+          totalCases,
+          totalDocuments: parseInt((docCount.rows[0] || {}).CNT || (docCount.rows[0] || {}).cnt || 0),
+          totalHearings: (hearingsByStatus.rows || []).reduce((s, r) => s + parseInt(r.CNT || r.cnt || 0), 0),
+          totalUsers: parseInt((userCount.rows[0] || {}).CNT || (userCount.rows[0] || {}).cnt || 0),
+          closedCases: closedCases ? parseInt(closedCases.CNT || closedCases.cnt || 0) : 0,
+          hearingsByStatus: hearingsByStatus.rows || []
         });
       }
 
