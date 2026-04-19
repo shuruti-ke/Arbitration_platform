@@ -178,6 +178,14 @@ const Cases = () => {
   const [agreementPrepared, setAgreementPrepared] = useState(false);
   const [agreementSigned, setAgreementSigned] = useState(false);
 
+  // Admin: assign-arbitrator dialog
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignCase, setAssignCase] = useState(null);
+  const [arbitrators, setArbitrators] = useState([]);
+  const [selectedArbitrator, setSelectedArbitrator] = useState('');
+  const [assigning, setAssigning] = useState(false);
+  const [assignError, setAssignError] = useState(null);
+
   const STEPS = [t('Case Details'), t('Parties'), t('Procedural'), t('Submission')];
 
   const fetchCases = async () => {
@@ -195,6 +203,10 @@ const Cases = () => {
         caseStage: c.CASE_STAGE || c.caseStage || '',
         submissionStatus: c.SUBMISSION_STATUS || c.submissionStatus || 'draft',
         createdAt: c.CREATED_AT ? new Date(c.CREATED_AT).toLocaleDateString() : '',
+        createdBy: c.created_by || c.CREATED_BY || c.createdBy || null,
+        arbitratorName: c.arbitrator_name || c.ARBITRATOR_NAME || c.arbitratorName || '',
+        arbitratorEmail: c.arbitrator_email || c.ARBITRATOR_EMAIL || c.arbitratorEmail || '',
+        paymentStatus: c.payment_status || c.PAYMENT_STATUS || c.paymentStatus || '',
       }));
       setCases(rows);
       setError(null);
@@ -207,6 +219,38 @@ const Cases = () => {
   };
 
   useEffect(() => { fetchCases(); }, []);
+
+  const openAssignDialog = async (row) => {
+    setAssignCase(row);
+    setSelectedArbitrator(row.createdBy || '');
+    setAssignError(null);
+    setAssignOpen(true);
+    if (arbitrators.length === 0) {
+      try {
+        const res = await apiService.getUsers('arbitrator');
+        setArbitrators((res.data.users || []).map(u => ({
+          userId: u.USER_ID || u.userId || u.user_id,
+          name: `${u.FIRST_NAME || u.firstName || ''} ${u.LAST_NAME || u.lastName || ''}`.trim(),
+          email: u.EMAIL || u.email || ''
+        })));
+      } catch (_) {}
+    }
+  };
+
+  const handleAssign = async () => {
+    if (!selectedArbitrator) { setAssignError('Please select an arbitrator.'); return; }
+    setAssigning(true);
+    setAssignError(null);
+    try {
+      await apiService.assignCaseArbitrator(assignCase.caseId, selectedArbitrator);
+      setAssignOpen(false);
+      await fetchCases();
+    } catch (err) {
+      setAssignError(err?.response?.data?.error || 'Failed to assign arbitrator.');
+    } finally {
+      setAssigning(false);
+    }
+  };
 
   useEffect(() => {
     const pending = location.state?.agreementSetup;
@@ -480,7 +524,43 @@ const Cases = () => {
     return matchesSearch && matchesStatus;
   });
 
-  const columns = [
+  const columns = isAdmin ? [
+    { field: 'caseId', headerName: t('Case ID'), width: 180 },
+    { field: 'title', headerName: t('Title'), width: 220 },
+    {
+      field: 'status', headerName: t('Status'), width: 110,
+      renderCell: (params) => (
+        <Chip label={t(params.value)}
+          color={params.value === 'active' ? 'primary' : params.value === 'completed' ? 'success' : 'warning'}
+          size="small" variant="outlined" />
+      )
+    },
+    {
+      field: 'paymentStatus', headerName: t('Payment'), width: 130,
+      renderCell: (params) => (
+        <Chip label={t(params.value || 'pending')}
+          color={params.value === 'paid' ? 'success' : params.value === 'invoiced' ? 'info' : 'warning'}
+          size="small" variant="outlined" />
+      )
+    },
+    {
+      field: 'arbitratorName', headerName: t('Arbitrator'), width: 180,
+      renderCell: (params) => params.value
+        ? <Box><Typography variant="body2" fontSize="0.8rem">{params.value}</Typography><Typography variant="caption" color="text.secondary">{params.row.arbitratorEmail}</Typography></Box>
+        : <Chip label="Unassigned" size="small" color="error" variant="outlined" />
+    },
+    { field: 'createdAt', headerName: t('Filed'), width: 100 },
+    {
+      field: 'assign', headerName: '', width: 120, sortable: false,
+      renderCell: (params) => (
+        <Button size="small" variant={params.row.createdBy ? 'outlined' : 'contained'}
+          color={params.row.createdBy ? 'inherit' : 'primary'}
+          onClick={(e) => { e.stopPropagation(); openAssignDialog(params.row); }}>
+          {params.row.createdBy ? t('Reassign') : t('Assign')}
+        </Button>
+      )
+    },
+  ] : [
     { field: 'caseId', headerName: t('Case ID'), width: 160 },
     { field: 'title', headerName: t('Title'), width: 240 },
     { field: 'caseType', headerName: t('Type'), width: 110 },
@@ -504,7 +584,7 @@ const Cases = () => {
     { field: 'caseStage', headerName: t('Stage'), width: 120 },
     { field: 'disputeAmount', headerName: t('Amount'), width: 100 },
     { field: 'createdAt', headerName: t('Filed'), width: 100 },
-    ...(!isAdmin ? [{
+    {
       field: 'actions', headerName: '', width: 90, sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: 'flex', gap: 0.5 }}>
@@ -520,7 +600,7 @@ const Cases = () => {
           </Tooltip>
         </Box>
       )
-    }] : []),
+    },
   ];
 
   // NCIA checklist for Step 4 preview
@@ -540,9 +620,11 @@ const Cases = () => {
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4">{t('Case Management')}</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/cases/agreement')}>
-          {t('New Case')}
-        </Button>
+        {!isAdmin && (
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/cases/agreement')}>
+            {t('New Case')}
+          </Button>
+        )}
       </Box>
 
       {error && <Alert severity="warning" sx={{ mb: 2 }}>{error}</Alert>}
@@ -971,6 +1053,52 @@ const Cases = () => {
                 {submitting ? t('Creating...') : t('Create Case')}
               </Button>
           }
+        </DialogActions>
+      </Dialog>
+
+      {/* Assign Arbitrator Dialog (admin only) */}
+      <Dialog open={assignOpen} onClose={() => setAssignOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {assignCase?.createdBy ? t('Reassign Arbitrator') : t('Assign Arbitrator')}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 1 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              <strong>{assignCase?.title}</strong> · {assignCase?.caseId}
+            </Typography>
+            {assignCase?.arbitratorName && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Currently assigned to: <strong>{assignCase.arbitratorName}</strong> ({assignCase.arbitratorEmail})
+              </Alert>
+            )}
+            {assignError && <Alert severity="error" sx={{ mb: 2 }}>{assignError}</Alert>}
+            <FormControl fullWidth>
+              <InputLabel>{t('Select Arbitrator')}</InputLabel>
+              <Select
+                value={selectedArbitrator}
+                label={t('Select Arbitrator')}
+                onChange={e => setSelectedArbitrator(e.target.value)}
+              >
+                {arbitrators.length === 0 && (
+                  <MenuItem disabled>{t('No arbitrators registered')}</MenuItem>
+                )}
+                {arbitrators.map(arb => (
+                  <MenuItem key={arb.userId} value={arb.userId}>
+                    <Box>
+                      <Typography variant="body2">{arb.name || arb.email}</Typography>
+                      <Typography variant="caption" color="text.secondary">{arb.email}</Typography>
+                    </Box>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAssignOpen(false)}>{t('Cancel')}</Button>
+          <Button variant="contained" onClick={handleAssign} disabled={assigning || !selectedArbitrator}>
+            {assigning ? t('Assigning...') : t('Assign')}
+          </Button>
         </DialogActions>
       </Dialog>
     </Container>

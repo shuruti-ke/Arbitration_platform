@@ -90,6 +90,7 @@ export const apiService = {
   resetUserPassword: (userId, newPassword) => api.post(`/users/${userId}/reset-password`, { newPassword }),
   getArbitratorCases: () => api.get('/admin/arbitrators'),
   getCaseDocuments: (caseId) => api.get(`/documents?caseId=${encodeURIComponent(caseId)}`),
+  assignCaseArbitrator: (caseId, arbitratorId) => api.post(`/cases/${caseId}/assign`, { arbitratorId }),
 
   // Hearings
   getHearings: () => api.get('/hearings'),

@@ -945,7 +945,14 @@ function createServer(services) {
 
         if (user.role === 'admin') {
           // Admin sees limited invoice/payment info only — no case content
-          sql = 'SELECT case_id, title, status, payment_status, platform_fee, platform_fee_currency, created_by, created_at FROM cases ORDER BY created_at DESC';
+          // JOIN users to get arbitrator name
+          sql = `SELECT c.case_id, c.title, c.status, c.payment_status, c.platform_fee, c.platform_fee_currency,
+                   c.created_by, c.created_at,
+                   COALESCE(u.first_name || ' ' || u.last_name, '') AS arbitrator_name,
+                   u.email AS arbitrator_email
+                 FROM cases c
+                 LEFT JOIN users u ON u.user_id = c.created_by AND u.role = 'arbitrator'
+                 ORDER BY c.created_at DESC`;
         } else if (user.role === 'secretariat') {
           // Secretariat manages procedural side — can see all cases
           sql = 'SELECT * FROM cases ORDER BY created_at DESC';
@@ -1327,6 +1334,30 @@ function createServer(services) {
           details: { missingItems: missing, submittedAt: new Date().toISOString() }
         });
         return sendJSON(res, 200, { success: true, missingItems: missing, message: 'Case submitted to registrar' });
+      }
+
+      // --- POST /api/cases/:caseId/assign --- (admin assigns a case to an arbitrator)
+      if (path.match(/^\/api\/cases\/[^/]+\/assign$/) && method === 'POST') {
+        const user = authenticate(req, res, ['admin']);
+        if (!user) return;
+        const caseId = path.split('/')[3];
+        const body = await parseBody(req);
+        const { arbitratorId } = body;
+        if (!arbitratorId) return sendJSON(res, 400, { error: 'arbitratorId is required' });
+        // Verify the target user is actually an arbitrator
+        const arbCheck = await oracleDb.executeQuery(
+          `SELECT user_id FROM users WHERE user_id = :arbitratorId AND role = 'arbitrator'`,
+          { arbitratorId }
+        );
+        if (!arbCheck.rows || arbCheck.rows.length === 0) {
+          return sendJSON(res, 400, { error: 'Target user is not an arbitrator' });
+        }
+        await oracleDb.executeQuery(
+          `UPDATE cases SET created_by = :arbitratorId, updated_at = CURRENT_TIMESTAMP WHERE case_id = :caseId`,
+          { arbitratorId, caseId }
+        );
+        await auditTrail.logEvent({ type: 'case_assigned', userId: user.userId, action: 'assign_arbitrator', details: { caseId, arbitratorId } });
+        return sendJSON(res, 200, { success: true });
       }
 
       // --- DELETE /api/cases/:caseId ---
