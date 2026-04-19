@@ -4,6 +4,8 @@ import {
   Container, Grid, Paper, Typography, Card, CardContent,
   CardActions, Button, Box, Alert, CircularProgress, Chip, Divider, List,
   ListItem, ListItemIcon, ListItemText, LinearProgress, Stack,
+  Dialog, DialogTitle, DialogContent, DialogActions, Table,
+  TableHead, TableBody, TableRow, TableCell, IconButton, Tooltip,
 } from '@mui/material';
 import {
   Gavel as CasesIcon,
@@ -29,6 +31,9 @@ import {
   ManageAccounts as UsersIcon,
   Timeline as TimelineIcon,
   Notifications as AlertIcon,
+  Archive as ArchiveIcon,
+  Download as DownloadIcon,
+  OpenInNew as OpenIcon,
 } from '@mui/icons-material';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
@@ -455,9 +460,30 @@ const Dashboard = () => {
   const [stats, setStats] = useState({ total: 0, active: 0, completed: 0, pending: 0, documents: 0 });
   const [analytics, setAnalytics] = useState({});
   const [recentCases, setRecentCases] = useState([]);
+  const [closedCases, setClosedCases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const isAdmin = (user?.role || '').toLowerCase() === 'admin';
+  const isArbitrator = (user?.role || '').toLowerCase() === 'arbitrator';
+
+  // File archive dialog state
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiveCase, setArchiveCase] = useState(null);
+  const [archiveDocs, setArchiveDocs] = useState([]);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+
+  const openArchive = async (c) => {
+    const caseId = c.CASE_ID || c.case_id || c.caseId;
+    setArchiveCase(c);
+    setArchiveOpen(true);
+    setArchiveDocs([]);
+    setArchiveLoading(true);
+    try {
+      const res = await apiService.getCaseDocuments(caseId);
+      setArchiveDocs(res.data.documents || []);
+    } catch (_) {}
+    finally { setArchiveLoading(false); }
+  };
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -480,7 +506,12 @@ const Dashboard = () => {
 
         if (!isAdmin) {
           const casesRes = await apiService.getCases();
-          setRecentCases((casesRes.data.cases || []).slice(0, 5));
+          const allCases = casesRes.data.cases || [];
+          const CLOSED_STATUSES = ['completed', 'closed', 'terminated'];
+          setRecentCases(allCases.filter(c => !CLOSED_STATUSES.includes((c.STATUS || c.status || '').toLowerCase())).slice(0, 5));
+          if (isArbitrator) {
+            setClosedCases(allCases.filter(c => CLOSED_STATUSES.includes((c.STATUS || c.status || '').toLowerCase())));
+          }
         }
         setError(null);
       } catch (err) {
@@ -490,7 +521,7 @@ const Dashboard = () => {
       }
     };
     fetchAll();
-  }, [isAdmin]);
+  }, [isAdmin, isArbitrator]);
 
   if (loading) {
     return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}><CircularProgress /></Box>;
@@ -597,20 +628,20 @@ const Dashboard = () => {
       </Grid>
 
       <Grid container spacing={3}>
-        {/* Recent Cases */}
+        {/* Active Cases */}
         <Grid item xs={12} md={8}>
           <Paper sx={{ p: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6">{t('Recent Cases')}</Typography>
+              <Typography variant="h6">{t('Active Cases')}</Typography>
               <Button size="small" component={Link} to="/cases">{t('View All')}</Button>
             </Box>
             {recentCases.length === 0 ? (
               <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
-                {t('No cases yet. Create your first case.')}
+                {t('No active cases.')}
               </Typography>
             ) : (
               recentCases.map((c, i) => {
-                const id = c.CASE_ID || c.caseId;
+                const id = c.CASE_ID || c.case_id || c.caseId;
                 const title = c.TITLE || c.title || 'Untitled';
                 const status = c.STATUS || c.status || 'pending';
                 const type = c.CASE_TYPE || c.caseType || '';
@@ -632,6 +663,50 @@ const Dashboard = () => {
               })
             )}
           </Paper>
+
+          {/* Closed Case File Archive — arbitrator only */}
+          {isArbitrator && (
+            <Paper sx={{ p: 2, mt: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                <ArchiveIcon color="action" />
+                <Typography variant="h6">{t('Closed Case Files')}</Typography>
+                <Chip label={closedCases.length} size="small" />
+              </Box>
+              {closedCases.length === 0 ? (
+                <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+                  {t('No closed cases yet.')}
+                </Typography>
+              ) : (
+                closedCases.map((c, i) => {
+                  const id = c.CASE_ID || c.case_id || c.caseId;
+                  const title = c.TITLE || c.title || 'Untitled';
+                  const status = c.STATUS || c.status || 'closed';
+                  return (
+                    <Box key={id || i}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', py: 1.5, px: 1, borderRadius: 1 }}>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="body2" fontWeight="medium">{title}</Typography>
+                          <Typography variant="caption" color="text.secondary">{id}</Typography>
+                        </Box>
+                        <Chip label={t(status)} size="small" variant="outlined" sx={{ mr: 1 }} />
+                        <Tooltip title={t('Browse case files')}>
+                          <IconButton size="small" onClick={() => openArchive(c)}>
+                            <RepoIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title={t('Open case')}>
+                          <IconButton size="small" onClick={() => navigate(`/cases/${id}`)}>
+                            <OpenIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                      {i < closedCases.length - 1 && <Divider />}
+                    </Box>
+                  );
+                })
+              )}
+            </Paper>
+          )}
         </Grid>
 
         {/* Platform Overview */}
@@ -659,6 +734,76 @@ const Dashboard = () => {
           </Paper>
         </Grid>
       </Grid>
+
+      {/* File Archive Dialog */}
+      <Dialog open={archiveOpen} onClose={() => setArchiveOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <ArchiveIcon />
+            <Box>
+              <Typography variant="subtitle1" fontWeight={600}>
+                {archiveCase ? (archiveCase.TITLE || archiveCase.title || 'Case Files') : ''}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {archiveCase ? (archiveCase.CASE_ID || archiveCase.case_id || archiveCase.caseId) : ''}
+              </Typography>
+            </Box>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          {archiveLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
+          ) : archiveDocs.length === 0 ? (
+            <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
+              No documents found for this case.
+            </Typography>
+          ) : (
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Document Name</TableCell>
+                  <TableCell>Category</TableCell>
+                  <TableCell>Uploaded</TableCell>
+                  <TableCell align="right">Action</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {archiveDocs.map((doc, i) => {
+                  const name = doc.DOCUMENT_NAME || doc.document_name || doc.documentName || `Document ${i + 1}`;
+                  const category = doc.CATEGORY || doc.category || '—';
+                  const date = doc.CREATED_AT || doc.created_at ? new Date(doc.CREATED_AT || doc.created_at).toLocaleDateString() : '—';
+                  const docId = doc.ID || doc.id;
+                  return (
+                    <TableRow key={docId || i} hover>
+                      <TableCell>
+                        <Typography variant="body2">{name}</Typography>
+                        {doc.DESCRIPTION || doc.description ? (
+                          <Typography variant="caption" color="text.secondary">{doc.DESCRIPTION || doc.description}</Typography>
+                        ) : null}
+                      </TableCell>
+                      <TableCell><Chip label={category} size="small" variant="outlined" /></TableCell>
+                      <TableCell><Typography variant="caption">{date}</Typography></TableCell>
+                      <TableCell align="right">
+                        <Tooltip title="View document">
+                          <IconButton size="small" onClick={() => navigate(`/documents`)}>
+                            <OpenIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setArchiveOpen(false)}>Close</Button>
+          <Button variant="outlined" onClick={() => { setArchiveOpen(false); navigate('/documents'); }}>
+            Go to Document Library
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };

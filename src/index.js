@@ -592,25 +592,117 @@ function createServer(services) {
       }
 
       // --- PUT /api/users/:userId ---
-      if (path.startsWith('/api/users/') && method === 'PUT') {
+      if (path.startsWith('/api/users/') && !path.includes('/reset-password') && method === 'PUT') {
         const user = authenticate(req, res, ['admin', 'secretariat']);
         if (!user) return;
         const targetId = path.split('/api/users/')[1];
         const body = await parseBody(req);
-        // Only admin can change roles
         if (body.role && user.role !== 'admin') {
           return sendJSON(res, 403, { error: 'Only admin can change user roles' });
         }
         let sql = 'UPDATE users SET first_name = :firstName, last_name = :lastName';
         const params = { firstName: body.firstName || null, lastName: body.lastName || null, userId: targetId };
-        if (body.role && user.role === 'admin') {
-          sql += ', role = :role';
-          params.role = body.role;
-        }
+        if (body.role && user.role === 'admin') { sql += ', role = :role'; params.role = body.role; }
+        if (body.email && user.role === 'admin') { sql += ', email = :email'; params.email = body.email; }
         sql += ' WHERE user_id = :userId';
         await oracleDb.executeQuery(sql, params);
         await auditTrail.logEvent({ type: 'user_updated', userId: user.userId, action: 'update', details: { targetId } });
         return sendJSON(res, 200, { success: true });
+      }
+
+      // --- POST /api/users/:userId/reset-password ---
+      if (path.match(/^\/api\/users\/[^/]+\/reset-password$/) && method === 'POST') {
+        const user = authenticate(req, res, ['admin']);
+        if (!user) return;
+        const targetId = path.split('/')[3];
+        const body = await parseBody(req);
+        if (!body.newPassword || body.newPassword.length < 6) {
+          return sendJSON(res, 400, { error: 'newPassword must be at least 6 characters' });
+        }
+        await userService.resetPassword(targetId, body.newPassword);
+        await auditTrail.logEvent({ type: 'password_reset', userId: user.userId, action: 'reset_password', details: { targetId } });
+        return sendJSON(res, 200, { success: true });
+      }
+
+      // --- GET /api/admin/arbitrators ---
+      if (path === '/api/admin/arbitrators' && method === 'GET') {
+        const user = authenticate(req, res, ['admin']);
+        if (!user) return;
+        // Fetch all arbitrators
+        const arbResult = await oracleDb.executeQuery(
+          `SELECT user_id, first_name, last_name, email, is_active, created_at FROM users WHERE role = 'arbitrator' ORDER BY last_name, first_name`,
+          {}
+        );
+        const arbitrators = (arbResult.rows || []);
+        // For each arbitrator fetch their cases (no content — just metadata)
+        const arbIds = arbitrators.map(a => a.user_id || a.USER_ID).filter(Boolean);
+        const casesMap = {};
+        if (arbIds.length > 0) {
+          const caseResult = await oracleDb.executeQuery(
+            `SELECT case_id, title, status, payment_status, platform_fee, platform_fee_currency, created_by, created_at FROM cases WHERE created_by = ANY(:arbIds::text[]) ORDER BY created_at DESC`,
+            { arbIds }
+          ).catch(async () => {
+            // Fallback for databases that don't support ANY(:array)
+            const rows = [];
+            for (const arbId of arbIds) {
+              const r = await oracleDb.executeQuery(
+                `SELECT case_id, title, status, payment_status, platform_fee, platform_fee_currency, created_by, created_at FROM cases WHERE created_by = :arbId ORDER BY created_at DESC`,
+                { arbId }
+              );
+              rows.push(...(r.rows || []));
+            }
+            return { rows };
+          });
+          for (const c of (caseResult.rows || [])) {
+            const owner = c.created_by || c.CREATED_BY;
+            if (!casesMap[owner]) casesMap[owner] = [];
+            // Fetch participants for this case
+            const caseId = c.case_id || c.CASE_ID;
+            const [partyResult, counselResult] = await Promise.all([
+              oracleDb.executeQuery(`SELECT party_id, full_name, party_type, email FROM parties WHERE case_id = :caseId`, { caseId }),
+              oracleDb.executeQuery(`SELECT counsel_id, full_name, email, law_firm FROM case_counsel WHERE case_id = :caseId`, { caseId })
+            ]);
+            casesMap[owner].push({
+              caseId,
+              title: c.title || c.TITLE || '',
+              status: c.status || c.STATUS || '',
+              paymentStatus: c.payment_status || c.PAYMENT_STATUS || '',
+              platformFee: c.platform_fee || c.PLATFORM_FEE || null,
+              currency: c.platform_fee_currency || c.PLATFORM_FEE_CURRENCY || 'KES',
+              createdAt: c.created_at || c.CREATED_AT,
+              participants: [
+                ...(partyResult.rows || []).map(p => ({
+                  type: 'party',
+                  id: p.party_id || p.PARTY_ID,
+                  name: p.full_name || p.FULL_NAME || '',
+                  role: p.party_type || p.PARTY_TYPE || 'party',
+                  email: p.email || p.EMAIL || ''
+                })),
+                ...(counselResult.rows || []).map(cc => ({
+                  type: 'counsel',
+                  id: cc.counsel_id || cc.COUNSEL_ID,
+                  name: cc.full_name || cc.FULL_NAME || '',
+                  role: 'counsel',
+                  lawFirm: cc.law_firm || cc.LAW_FIRM || '',
+                  email: cc.email || cc.EMAIL || ''
+                }))
+              ]
+            });
+          }
+        }
+        const result = arbitrators.map(a => {
+          const arbId = a.user_id || a.USER_ID;
+          return {
+            userId: arbId,
+            firstName: a.first_name || a.FIRST_NAME || '',
+            lastName: a.last_name || a.LAST_NAME || '',
+            email: a.email || a.EMAIL || '',
+            isActive: (a.is_active ?? a.IS_ACTIVE) !== 0,
+            createdAt: a.created_at || a.CREATED_AT,
+            cases: casesMap[arbId] || []
+          };
+        });
+        return sendJSON(res, 200, { arbitrators: result });
       }
 
       // --- DELETE /api/users/:userId ---

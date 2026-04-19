@@ -1,11 +1,13 @@
 // src/pages/Users.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Container, Typography, Paper, Box, Button, TextField,
   FormControl, InputLabel, Select, MenuItem, Chip,
   Alert, CircularProgress, Dialog, DialogTitle,
   DialogContent, DialogActions, Grid, Tabs, Tab,
-  IconButton, Tooltip, InputAdornment
+  IconButton, Tooltip, InputAdornment, Accordion,
+  AccordionSummary, AccordionDetails, List, ListItem,
+  ListItemText, ListItemSecondaryAction, Divider, Badge
 } from '@mui/material';
 import {
   PersonAdd as AddIcon,
@@ -15,7 +17,14 @@ import {
   Refresh as RefreshIcon,
   Visibility as ShowIcon,
   VisibilityOff as HideIcon,
-  ContentCopy as CopyIcon
+  ContentCopy as CopyIcon,
+  ExpandMore as ExpandMoreIcon,
+  FolderOpen as FolderIcon,
+  Gavel as GavelIcon,
+  Person as PartyIcon,
+  Balance as CounselIcon,
+  Lock as PasswordIcon,
+  FiberManualRecord as DotIcon
 } from '@mui/icons-material';
 import { DataGrid } from '@mui/x-data-grid';
 import { useAuth } from '../context/AuthContext';
@@ -39,6 +48,16 @@ const ROLE_COLORS = {
   arbitrator: 'warning',
   counsel: 'info',
   party: 'success'
+};
+
+const STATUS_COLORS = {
+  active: 'success',
+  pending_invoice: 'warning',
+  invoiced: 'info',
+  proof_uploaded: 'info',
+  paid: 'success',
+  completed: 'default',
+  closed: 'default'
 };
 
 const roleLabelKey = (role) => {
@@ -66,6 +85,274 @@ const generatePassword = () => {
   return pwd;
 };
 
+// ─── Arbitrators & Cases tab ────────────────────────────────────────────────
+
+const ParticipantPasswordDialog = ({ open, participant, onClose, onSuccess }) => {
+  const { t } = useLanguage();
+  const [newPassword, setNewPassword] = useState('');
+  const [show, setShow] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    if (open) { setNewPassword(''); setShow(false); setError(null); setDone(false); }
+  }, [open]);
+
+  const handleSave = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await apiService.resetUserPassword(participant.userId, newPassword);
+      setDone(true);
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to reset password.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!participant) return null;
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle>Change Password — {participant.name}</DialogTitle>
+      <DialogContent>
+        {done ? (
+          <Alert severity="success" sx={{ mt: 1 }}>
+            Password updated successfully for <strong>{participant.name}</strong>.
+          </Alert>
+        ) : (
+          <Box sx={{ mt: 1 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {participant.role} · {participant.email}
+            </Typography>
+            {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+            <TextField
+              label="New Password"
+              fullWidth
+              type={show ? 'text' : 'password'}
+              value={newPassword}
+              autoComplete="new-password"
+              onChange={e => setNewPassword(e.target.value)}
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <Tooltip title="Show/hide">
+                      <IconButton size="small" onClick={() => setShow(s => !s)}>
+                        {show ? <HideIcon fontSize="small" /> : <ShowIcon fontSize="small" />}
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Generate password">
+                      <IconButton size="small" onClick={() => { setNewPassword(generatePassword()); setShow(true); }}>
+                        <RefreshIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Copy">
+                      <IconButton size="small" onClick={() => navigator.clipboard.writeText(newPassword)}>
+                        <CopyIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </InputAdornment>
+                )
+              }}
+            />
+          </Box>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => { onClose(); if (done && onSuccess) onSuccess(); }}>{done ? 'Close' : 'Cancel'}</Button>
+        {!done && (
+          <Button variant="contained" onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving...' : 'Set Password'}
+          </Button>
+        )}
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+const CaseFolder = ({ caseData, onResetPassword }) => {
+  const statusColor = STATUS_COLORS[caseData.status] || 'default';
+  return (
+    <Accordion disableGutters variant="outlined" sx={{ mb: 0.5, '&:before': { display: 'none' } }}>
+      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%', pr: 1 }}>
+          <FolderIcon fontSize="small" color="action" />
+          <Typography variant="body2" sx={{ flexGrow: 1, fontWeight: 500 }}>
+            {caseData.title || caseData.caseId}
+          </Typography>
+          <Chip label={caseData.status} size="small" color={statusColor} variant="outlined" />
+          {caseData.paymentStatus && caseData.paymentStatus !== caseData.status && (
+            <Chip label={caseData.paymentStatus?.replace(/_/g, ' ')} size="small" variant="outlined" />
+          )}
+          <Typography variant="caption" color="text.disabled">
+            {caseData.caseId}
+          </Typography>
+        </Box>
+      </AccordionSummary>
+      <AccordionDetails sx={{ pt: 0 }}>
+        {caseData.participants.length === 0 ? (
+          <Typography variant="caption" color="text.secondary" sx={{ pl: 1 }}>
+            No participants registered yet.
+          </Typography>
+        ) : (
+          <List dense disablePadding>
+            {caseData.participants.map((p, i) => (
+              <React.Fragment key={p.id || i}>
+                {i > 0 && <Divider component="li" />}
+                <ListItem sx={{ pl: 1 }}>
+                  <Box sx={{ mr: 1.5, color: p.type === 'counsel' ? 'info.main' : 'success.main' }}>
+                    {p.type === 'counsel' ? <CounselIcon fontSize="small" /> : <PartyIcon fontSize="small" />}
+                  </Box>
+                  <ListItemText
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body2">{p.name || '—'}</Typography>
+                        <Chip
+                          label={p.type === 'counsel' ? 'Counsel' : (p.role || 'party')}
+                          size="small"
+                          color={p.type === 'counsel' ? 'info' : 'success'}
+                          variant="outlined"
+                          sx={{ fontSize: '0.65rem', height: 18 }}
+                        />
+                        {p.lawFirm && (
+                          <Typography variant="caption" color="text.secondary">· {p.lawFirm}</Typography>
+                        )}
+                      </Box>
+                    }
+                    secondary={p.email || 'No email on file'}
+                  />
+                  <ListItemSecondaryAction>
+                    <Tooltip title="Change password">
+                      <IconButton size="small" onClick={() => onResetPassword(p)}>
+                        <PasswordIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </ListItemSecondaryAction>
+                </ListItem>
+              </React.Fragment>
+            ))}
+          </List>
+        )}
+        {caseData.platformFee && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1, pl: 1 }}>
+            Platform fee: {caseData.currency} {Number(caseData.platformFee).toLocaleString()}
+          </Typography>
+        )}
+      </AccordionDetails>
+    </Accordion>
+  );
+};
+
+const ArbitratorCasesTab = () => {
+  const [arbitrators, setArbitrators] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [pwdTarget, setPwdTarget] = useState(null); // { userId, name, email, role }
+  const [expandedArb, setExpandedArb] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiService.getArbitratorCases();
+      setArbitrators(res.data.arbitrators || []);
+      setError(null);
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to load arbitrator data.'));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleResetPassword = (participant) => {
+    // participant from case data has name, email, role, type but no userId
+    // We need to find userId by email from the users list — but participants are parties/counsel
+    // not platform users necessarily. We pass what we have; backend can find by email if needed.
+    // For now open the dialog with what we have.
+    setPwdTarget(participant);
+  };
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', pt: 6 }}><CircularProgress /></Box>;
+  if (error) return <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>;
+  if (arbitrators.length === 0) return (
+    <Box sx={{ textAlign: 'center', pt: 6, color: 'text.secondary' }}>
+      <GavelIcon sx={{ fontSize: 48, mb: 1, opacity: 0.3 }} />
+      <Typography>No arbitrators registered yet.</Typography>
+    </Box>
+  );
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Tooltip title="Refresh">
+          <IconButton onClick={load}><RefreshIcon /></IconButton>
+        </Tooltip>
+      </Box>
+      {arbitrators.map((arb) => {
+        const arbId = arb.userId;
+        const activeCases = arb.cases.filter(c => !['closed', 'completed'].includes(c.status));
+        const isExpanded = expandedArb === arbId;
+        return (
+          <Accordion
+            key={arbId}
+            expanded={isExpanded}
+            onChange={(_, open) => setExpandedArb(open ? arbId : null)}
+            sx={{ mb: 1 }}
+          >
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%', pr: 1 }}>
+                <GavelIcon color={arb.isActive ? 'warning' : 'disabled'} />
+                <Box sx={{ flexGrow: 1 }}>
+                  <Typography variant="subtitle1" fontWeight={600}>
+                    {arb.firstName} {arb.lastName}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">{arb.email}</Typography>
+                </Box>
+                <Badge badgeContent={activeCases.length} color="primary" showZero>
+                  <Chip
+                    icon={<FolderIcon />}
+                    label={`${arb.cases.length} case${arb.cases.length !== 1 ? 's' : ''}`}
+                    size="small"
+                    variant="outlined"
+                  />
+                </Badge>
+                {!arb.isActive && <Chip label="Archived" size="small" color="default" />}
+              </Box>
+            </AccordionSummary>
+            <AccordionDetails>
+              {arb.cases.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">No cases opened yet.</Typography>
+              ) : (
+                arb.cases.map((c) => (
+                  <CaseFolder
+                    key={c.caseId}
+                    caseData={c}
+                    onResetPassword={handleResetPassword}
+                  />
+                ))
+              )}
+            </AccordionDetails>
+          </Accordion>
+        );
+      })}
+
+      <ParticipantPasswordDialog
+        open={!!pwdTarget}
+        participant={pwdTarget}
+        onClose={() => setPwdTarget(null)}
+      />
+    </Box>
+  );
+};
+
+// ─── Main Users page ─────────────────────────────────────────────────────────
+
 const Users = () => {
   const { user: currentUser } = useAuth();
   const { t } = useLanguage();
@@ -75,6 +362,7 @@ const Users = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [mainTab, setMainTab] = useState(0); // 0=Users, 1=Arbitrators & Cases (admin only)
   const [roleTab, setRoleTab] = useState('all');
 
   // Create dialog
@@ -91,6 +379,7 @@ const Users = () => {
   const [editUserId, setEditUserId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState(null);
+  const [showEditPassword, setShowEditPassword] = useState(false);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -140,7 +429,17 @@ const Users = () => {
     setSaving(true);
     setEditError(null);
     try {
-      await apiService.updateUser(editUserId, editForm);
+      const payload = {
+        firstName: editForm.firstName,
+        lastName: editForm.lastName,
+        role: editForm.role,
+        email: editForm.email
+      };
+      await apiService.updateUser(editUserId, payload);
+      // If a new password was entered, reset it separately
+      if (editForm.newPassword && editForm.newPassword.trim()) {
+        await apiService.resetUserPassword(editUserId, editForm.newPassword.trim());
+      }
       setEditOpen(false);
       await fetchUsers();
     } catch (err) {
@@ -172,8 +471,9 @@ const Users = () => {
 
   const openEdit = (row) => {
     setEditUserId(row.userId);
-    setEditForm({ firstName: row.firstName, lastName: row.lastName, role: row.role });
+    setEditForm({ firstName: row.firstName, lastName: row.lastName, email: row.email, role: row.role, newPassword: '' });
     setEditError(null);
+    setShowEditPassword(false);
     setEditOpen(true);
   };
 
@@ -191,22 +491,14 @@ const Users = () => {
     {
       field: 'role', headerName: t('Role'), width: 180,
       renderCell: (params) => (
-        <Chip
-          label={t(roleLabelKey(params.value))}
-          size="small"
-          color={ROLE_COLORS[params.value] || 'default'}
-        />
+        <Chip label={t(roleLabelKey(params.value))} size="small" color={ROLE_COLORS[params.value] || 'default'} />
       )
     },
     {
       field: 'isActive', headerName: t('Status'), width: 100,
       renderCell: (params) => (
-        <Chip
-          label={params.value ? t('Active') : t('Archived')}
-          size="small"
-          color={params.value ? 'success' : 'default'}
-          variant="outlined"
-        />
+        <Chip label={params.value ? t('Active') : t('Archived')} size="small"
+          color={params.value ? 'success' : 'default'} variant="outlined" />
       )
     },
     { field: 'createdAt', headerName: t('Created'), width: 110 },
@@ -216,8 +508,7 @@ const Users = () => {
         <Box sx={{ display: 'flex', gap: 0.5 }}>
           <Tooltip title={t('Edit user')}>
             <span>
-              <IconButton size="small" onClick={() => openEdit(params.row)}
-                disabled={!canManage}>
+              <IconButton size="small" onClick={() => openEdit(params.row)} disabled={!canManage}>
                 <EditIcon fontSize="small" />
               </IconButton>
             </span>
@@ -274,47 +565,63 @@ const Users = () => {
 
       {error && <Alert severity="warning" sx={{ mb: 2 }}>{error}</Alert>}
 
-      {/* Role summary chips */}
-      <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-        {ROLES.map(r => {
-          const count = users.filter(u => u.role === r && u.isActive).length;
-          return (
-            <Chip key={r}
-              label={`${t(roleLabelKey(r))}: ${count}`}
-              color={ROLE_COLORS[r]}
-              variant="outlined"
-              size="small"
-              onClick={() => setRoleTab(r === roleTab ? 'all' : r)}
-              sx={{ cursor: 'pointer', fontWeight: roleTab === r ? 'bold' : 'normal' }}
-            />
-          );
-        })}
-        <Chip label={`Total: ${users.filter(u => u.isActive).length}`} size="small" />
-      </Box>
-
-      <Paper sx={{ mb: 2 }}>
-        <Tabs value={roleTabs.indexOf(roleTab)} onChange={(_, v) => setRoleTab(roleTabs[v])}
-          variant="scrollable" scrollButtons="auto">
-          <Tab label={`${t('All')} (${users.length})`} />
-          {ROLES.map(r => (
-            <Tab key={r} label={`${t(roleLabelKey(r))} (${users.filter(u => u.role === r).length})`} />
-          ))}
+      {/* Main tabs — admin gets "Arbitrators & Cases" tab */}
+      {isAdmin && (
+        <Tabs value={mainTab} onChange={(_, v) => setMainTab(v)} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
+          <Tab label="All Users" />
+          <Tab label="Arbitrators & Cases" icon={<FolderIcon />} iconPosition="start" />
         </Tabs>
-      </Paper>
+      )}
 
-      <Paper sx={{ height: 480 }}>
-        {loading
-          ? <Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}><CircularProgress /></Box>
-          : <DataGrid
-              rows={displayUsers}
-              columns={columns}
-              initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
-              pageSizeOptions={[10, 25]}
-            />
-        }
-      </Paper>
+      {/* ── Tab 0: All Users ── */}
+      {mainTab === 0 && (
+        <>
+          {/* Role summary chips */}
+          <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+            {ROLES.map(r => {
+              const count = users.filter(u => u.role === r && u.isActive).length;
+              return (
+                <Chip key={r}
+                  label={`${t(roleLabelKey(r))}: ${count}`}
+                  color={ROLE_COLORS[r]}
+                  variant="outlined"
+                  size="small"
+                  onClick={() => setRoleTab(r === roleTab ? 'all' : r)}
+                  sx={{ cursor: 'pointer', fontWeight: roleTab === r ? 'bold' : 'normal' }}
+                />
+              );
+            })}
+            <Chip label={`Total: ${users.filter(u => u.isActive).length}`} size="small" />
+          </Box>
 
-      {/* Create User Dialog */}
+          <Paper sx={{ mb: 2 }}>
+            <Tabs value={roleTabs.indexOf(roleTab)} onChange={(_, v) => setRoleTab(roleTabs[v])}
+              variant="scrollable" scrollButtons="auto">
+              <Tab label={`${t('All')} (${users.length})`} />
+              {ROLES.map(r => (
+                <Tab key={r} label={`${t(roleLabelKey(r))} (${users.filter(u => u.role === r).length})`} />
+              ))}
+            </Tabs>
+          </Paper>
+
+          <Paper sx={{ height: 480 }}>
+            {loading
+              ? <Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}><CircularProgress /></Box>
+              : <DataGrid rows={displayUsers} columns={columns}
+                  initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
+                  pageSizeOptions={[10, 25]}
+                />
+            }
+          </Paper>
+        </>
+      )}
+
+      {/* ── Tab 1: Arbitrators & Cases (admin only) ── */}
+      {mainTab === 1 && isAdmin && (
+        <ArbitratorCasesTab />
+      )}
+
+      {/* ── Create User Dialog ── */}
       <Dialog open={createOpen} onClose={() => { if (!creating) setCreateOpen(false); }} maxWidth="sm" fullWidth>
         <DialogTitle>{t('Create New User')}</DialogTitle>
         <DialogContent>
@@ -331,7 +638,7 @@ const Users = () => {
             <Grid container spacing={2} sx={{ mt: 0.5 }}>
               {createError && <Grid item xs={12}><Alert severity="error">{createError}</Alert></Grid>}
               <Grid item xs={6}>
-              <TextField label={t('First Name *')} fullWidth value={createForm.firstName}
+                <TextField label={t('First Name *')} fullWidth value={createForm.firstName}
                   onChange={e => setCreateForm({ ...createForm, firstName: e.target.value })} />
               </Grid>
               <Grid item xs={6}>
@@ -344,8 +651,7 @@ const Users = () => {
                   onChange={e => setCreateForm({ ...createForm, email: e.target.value })} />
               </Grid>
               <Grid item xs={12}>
-                <TextField
-                  label={t('Password *')} fullWidth
+                <TextField label={t('Password *')} fullWidth
                   type={showPassword ? 'text' : 'password'}
                   value={createForm.password}
                   autoComplete="new-password"
@@ -421,7 +727,7 @@ const Users = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Edit User Dialog */}
+      {/* ── Edit User Dialog ── */}
       <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{t('Edit User')}</DialogTitle>
         <DialogContent>
@@ -435,6 +741,12 @@ const Users = () => {
               <TextField label={t('Last Name')} fullWidth value={editForm.lastName || ''}
                 onChange={e => setEditForm({ ...editForm, lastName: e.target.value })} />
             </Grid>
+            {isAdmin && (
+              <Grid item xs={12}>
+                <TextField label={t('Email Address')} fullWidth type="email" value={editForm.email || ''}
+                  onChange={e => setEditForm({ ...editForm, email: e.target.value })} />
+              </Grid>
+            )}
             {isAdmin && (
               <Grid item xs={12}>
                 <FormControl fullWidth>
@@ -451,6 +763,43 @@ const Users = () => {
                     ))}
                   </Select>
                 </FormControl>
+              </Grid>
+            )}
+            {isAdmin && (
+              <Grid item xs={12}>
+                <TextField
+                  label={t('New Password (leave blank to keep current)')}
+                  fullWidth
+                  type={showEditPassword ? 'text' : 'password'}
+                  value={editForm.newPassword || ''}
+                  autoComplete="new-password"
+                  onChange={e => setEditForm({ ...editForm, newPassword: e.target.value })}
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <Tooltip title={t('Show/hide')}>
+                          <IconButton size="small" onClick={() => setShowEditPassword(s => !s)}>
+                            {showEditPassword ? <HideIcon fontSize="small" /> : <ShowIcon fontSize="small" />}
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title={t('Generate password')}>
+                          <IconButton size="small" onClick={() => {
+                            setEditForm(f => ({ ...f, newPassword: generatePassword() }));
+                            setShowEditPassword(true);
+                          }}>
+                            <RefreshIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title={t('Copy')}>
+                          <IconButton size="small" onClick={() => navigator.clipboard.writeText(editForm.newPassword || '')}>
+                            <CopyIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </InputAdornment>
+                    )
+                  }}
+                  helperText={t('Optional — only fill in to change the user\'s password.')}
+                />
               </Grid>
             )}
           </Grid>

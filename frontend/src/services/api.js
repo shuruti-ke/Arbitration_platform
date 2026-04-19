@@ -87,6 +87,9 @@ export const apiService = {
   deleteUser: (userId) => api.delete(`/users/${userId}`),
   archiveUser: (userId) => api.post(`/users/${userId}/archive`),
   restoreUser: (userId) => api.post(`/users/${userId}/restore`),
+  resetUserPassword: (userId, newPassword) => api.post(`/users/${userId}/reset-password`, { newPassword }),
+  getArbitratorCases: () => api.get('/admin/arbitrators'),
+  getCaseDocuments: (caseId) => api.get(`/documents?caseId=${encodeURIComponent(caseId)}`),
 
   // Hearings
   getHearings: () => api.get('/hearings'),

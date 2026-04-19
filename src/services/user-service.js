@@ -200,6 +200,20 @@ class UserService {
     return true;
   }
 
+  async resetPassword(userId, newPassword) {
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    if (this.dbService && this.dbService.isConnected()) {
+      await this.dbService.executeQuery(
+        'UPDATE users SET password_hash = :passwordHash WHERE user_id = :userId',
+        { passwordHash, userId }
+      );
+    }
+    if (this.users.has(userId)) {
+      this.users.get(userId).passwordHash = passwordHash;
+    }
+    return true;
+  }
+
   async deleteUser(userId) {
     let exists = this.users.has(userId);
     if (!exists && this.dbService && this.dbService.isConnected()) {
