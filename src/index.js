@@ -511,6 +511,94 @@ function createServer(services) {
         return sendJSON(res, 200, { verified: true, ...record });
       }
 
+      // =============================================
+      // --- TRAINING ROUTES ---
+      // =============================================
+
+      // --- POST /api/training/generate-module ---
+      if (path === '/api/training/generate-module' && method === 'POST') {
+        const user = authenticate(req, res, ['admin']);
+        if (!user) return;
+        const { topic } = await parseBody(req);
+        if (!topic) return sendJSON(res, 400, { error: 'topic is required' });
+        const prompt = `You are an expert international arbitration trainer. Generate a comprehensive training module on: "${topic}".
+Audience: legal professionals working in international arbitration.
+Respond with ONLY a valid JSON object (no markdown fences, no explanation outside the JSON):
+{
+  "title": "Concise module title (max 8 words)",
+  "description": "One sentence describing what participants will learn",
+  "level": "Beginner",
+  "duration": "25 min",
+  "topics": ["Subtopic 1","Subtopic 2","Subtopic 3","Subtopic 4","Subtopic 5"],
+  "content": "Detailed module text (400-600 words) covering key concepts, practical applications, and important considerations."
+}
+level must be one of: Beginner, Intermediate, Advanced. duration between 15-60 min.`;
+        try {
+          const raw = await callAI(prompt);
+          const match = raw.match(/\{[\s\S]*\}/);
+          if (!match) throw new Error('No JSON in AI response');
+          const mod = JSON.parse(match[0]);
+          mod.id = `ai_${Date.now()}`;
+          mod.aiGenerated = true;
+          mod.generatedAt = new Date().toISOString();
+          return sendJSON(res, 200, { module: mod });
+        } catch (err) {
+          return sendJSON(res, 500, { error: 'AI module generation failed', detail: err.message });
+        }
+      }
+
+      // --- POST /api/training/trending-topics ---
+      if (path === '/api/training/trending-topics' && method === 'POST') {
+        const user = authenticate(req, res, ['admin']);
+        if (!user) return;
+        const prompt = `You are an expert in international arbitration. List 6 trending or emerging topics in international arbitration that would make excellent training modules for legal professionals in 2025.
+Respond with ONLY a valid JSON array of short topic strings (no markdown, no explanation):
+["Topic 1","Topic 2","Topic 3","Topic 4","Topic 5","Topic 6"]`;
+        try {
+          const raw = await callAI(prompt);
+          const match = raw.match(/\[[\s\S]*\]/);
+          if (!match) throw new Error('No JSON array in AI response');
+          const topics = JSON.parse(match[0]);
+          return sendJSON(res, 200, { topics });
+        } catch (err) {
+          return sendJSON(res, 500, { error: 'AI topic generation failed', detail: err.message });
+        }
+      }
+
+      // --- POST /api/training/exam/question ---
+      if (path === '/api/training/exam/question' && method === 'POST') {
+        const user = authenticate(req, res);
+        if (!user) return;
+        const { moduleTitle, moduleTopics = [], difficulty = 3, coveredTopics = [] } = await parseBody(req);
+        const diffLabel = { 1: 'basic recall', 2: 'foundational conceptual', 3: 'intermediate application', 4: 'advanced analytical', 5: 'expert scenario-based' }[difficulty] || 'intermediate';
+        const topicsStr = moduleTopics.join(', ') || moduleTitle;
+        const avoidStr = coveredTopics.length > 0 ? `Avoid repeating these already-covered subtopics: ${coveredTopics.join(', ')}.` : '';
+        const prompt = `You are an arbitration examiner. Generate a ${diffLabel} multiple-choice question about "${moduleTitle}".
+Topics to draw from: ${topicsStr}.
+${avoidStr}
+The question must test practical knowledge for legal professionals. Make the wrong options plausible but clearly distinguishable.
+Respond with ONLY a valid JSON object (no markdown fences):
+{
+  "text": "Full question text?",
+  "options": ["A. option","B. option","C. option","D. option"],
+  "correctIndex": 0,
+  "explanation": "Brief explanation of the correct answer and why the others are wrong.",
+  "topic": "Specific subtopic this question covers"
+}
+correctIndex must be 0, 1, 2, or 3.`;
+        try {
+          const raw = await callAI(prompt);
+          const match = raw.match(/\{[\s\S]*\}/);
+          if (!match) throw new Error('No JSON in AI response');
+          const q = JSON.parse(match[0]);
+          q.questionId = `q_${Date.now()}`;
+          q.difficulty = difficulty;
+          return sendJSON(res, 200, { question: q });
+        } catch (err) {
+          return sendJSON(res, 500, { error: 'AI question generation failed', detail: err.message });
+        }
+      }
+
       // --- POST /api/consent/record ---
       if (path === '/api/consent/record' && method === 'POST') {
         const { userId, consentData } = await parseBody(req);
