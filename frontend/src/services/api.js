@@ -50,6 +50,7 @@ export const apiService = {
   generateTrainingModule: (topic) => api.post('/training/generate-module', { topic }),
   getTrendingTopics: () => api.post('/training/trending-topics', {}),
   getExamQuestion: (data) => api.post('/training/exam/question', data),
+  checkCourtFilingCompliance: (jurisdiction, documentText) => api.post('/court-filing/compliance-check', { jurisdiction, documentText }),
   analyzeAgreement: (agreementData) => api.post('/intake/agreement/analyze', agreementData),
   createCaseAgreement: (agreementData) => api.post('/case-agreements', agreementData),
   shareAgreementTemplate: (payload) => api.post('/forms/agreement/share', payload),

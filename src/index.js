@@ -599,6 +599,68 @@ correctIndex must be 0, 1, 2, or 3.`;
         }
       }
 
+      // --- POST /api/court-filing/compliance-check ---
+      if (path === '/api/court-filing/compliance-check' && method === 'POST') {
+        const user = authenticate(req, res, ['admin', 'secretariat', 'arbitrator', 'counsel']);
+        if (!user) return;
+        const { jurisdiction, documentText } = await parseBody(req);
+        if (!jurisdiction || !documentText) return sendJSON(res, 400, { error: 'jurisdiction and documentText are required' });
+
+        const reqList  = (jurisdiction.requirements || []).map((r, i) => `${i+1}. ${r}`).join('\n');
+        const gndList  = (jurisdiction.grounds || []).map((g, i) => `${i+1}. ${g}`).join('\n');
+        const docSnip  = documentText.slice(0, 6000); // cap to avoid token limits
+
+        const prompt = `You are an expert arbitration lawyer specialising in award enforcement under the New York Convention.
+
+Analyse the following document for compliance with the filing requirements for enforcing an arbitral award in ${jurisdiction.country}.
+
+JURISDICTION:
+Court: ${jurisdiction.court}
+Time limit: ${jurisdiction.timeLimit}
+Notes: ${jurisdiction.notes || ''}
+
+FILING REQUIREMENTS:
+${reqList}
+
+GROUNDS TO REFUSE ENFORCEMENT:
+${gndList}
+
+DOCUMENT:
+"""
+${docSnip}
+"""
+
+Provide a detailed compliance assessment. Respond with ONLY a valid JSON object (no markdown fences):
+{
+  "overallCompliance": "compliant",
+  "score": 85,
+  "summary": "One paragraph summary of the assessment.",
+  "checks": [
+    { "requirement": "requirement text", "status": "met", "finding": "specific finding from the document" }
+  ],
+  "potentialGrounds": [
+    { "ground": "ground text", "risk": "low", "finding": "assessment" }
+  ],
+  "recommendations": ["Action item 1", "Action item 2"]
+}
+overallCompliance must be one of: compliant, partial, non-compliant.
+status must be one of: met, partial, missing.
+risk must be one of: low, medium, high.
+score is 0-100.`;
+
+        try {
+          const raw = await callAI(prompt);
+          const match = raw.match(/\{[\s\S]*\}/);
+          if (!match) throw new Error('No JSON in AI response');
+          const report = JSON.parse(match[0]);
+          report.jurisdiction = jurisdiction.country;
+          report.checkedAt = new Date().toISOString();
+          return sendJSON(res, 200, { report });
+        } catch (err) {
+          return sendJSON(res, 500, { error: 'AI compliance check failed', detail: err.message });
+        }
+      }
+
       // --- POST /api/consent/record ---
       if (path === '/api/consent/record' && method === 'POST') {
         const { userId, consentData } = await parseBody(req);
