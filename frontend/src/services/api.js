@@ -51,6 +51,7 @@ export const apiService = {
   getTrendingTopics: () => api.post('/training/trending-topics', {}),
   getExamQuestion: (data) => api.post('/training/exam/question', data),
   checkCourtFilingCompliance: (jurisdiction, documentText) => api.post('/court-filing/compliance-check', { jurisdiction, documentText }),
+  extractText: (fileBase64, fileName) => api.post('/extract-text', { fileBase64, fileName }),
   analyzeAgreement: (agreementData) => api.post('/intake/agreement/analyze', agreementData),
   createCaseAgreement: (agreementData) => api.post('/case-agreements', agreementData),
   shareAgreementTemplate: (payload) => api.post('/forms/agreement/share', payload),

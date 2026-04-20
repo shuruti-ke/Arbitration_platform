@@ -233,6 +233,8 @@ function ComplianceChecker({ t }) {
   const [selectedJurisdiction, setSelectedJurisdiction] = useState('');
   const [documentText, setDocumentText] = useState('');
   const [fileName, setFileName] = useState('');
+  const [extracting, setExtracting] = useState(false);
+  const [extractError, setExtractError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [report, setReport] = useState(null);
@@ -240,13 +242,49 @@ function ComplianceChecker({ t }) {
 
   const jurisdiction = JURISDICTIONS.find(j => j.country === selectedJurisdiction);
 
-  const handleFile = (e) => {
+  const TEXT_EXTS = ['txt', 'text', 'md', 'csv', 'rtf'];
+  const BINARY_EXTS = ['pdf', 'doc', 'docx', 'xls', 'xlsx'];
+
+  const MAX_SIZE = 3.5 * 1024 * 1024;
+
+  const handleFile = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (file.size > MAX_SIZE) {
+      setExtractError(t(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum allowed is 3.5 MB.`));
+      e.target.value = '';
+      return;
+    }
     setFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = (ev) => setDocumentText(ev.target.result);
-    reader.readAsText(file);
+    setDocumentText('');
+    setExtractError(null);
+    setReport(null);
+    const ext = file.name.split('.').pop().toLowerCase();
+
+    if (TEXT_EXTS.includes(ext)) {
+      // Read directly as text
+      const reader = new FileReader();
+      reader.onload = (ev) => setDocumentText(ev.target.result);
+      reader.readAsText(file);
+    } else if (BINARY_EXTS.includes(ext)) {
+      // Send to backend for extraction
+      setExtracting(true);
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        try {
+          const base64 = ev.target.result.split(',')[1];
+          const res = await apiService.extractText(base64, file.name);
+          setDocumentText(res.data.text);
+        } catch (err) {
+          setExtractError(t('Could not extract text from this file. Please paste the text manually.'));
+        } finally {
+          setExtracting(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setExtractError(t('Unsupported file type. Please upload PDF, Word, Excel, or text files.'));
+    }
   };
 
   const handleCheck = async () => {
@@ -314,19 +352,24 @@ function ComplianceChecker({ t }) {
             <Divider sx={{ mb: 2 }} />
             <Typography variant="subtitle1" fontWeight={700} gutterBottom>{t('2. Provide Document')}</Typography>
 
-            <input ref={fileRef} type="file" accept=".txt,.text" style={{ display: 'none' }} onChange={handleFile} />
+            <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.rtf" style={{ display: 'none' }} onChange={handleFile} />
             <Button
               variant="outlined"
-              startIcon={<UploadIcon />}
-              onClick={() => fileRef.current?.click()}
+              startIcon={extracting ? <CircularProgress size={16} /> : <UploadIcon />}
+              onClick={() => { setExtractError(null); fileRef.current?.click(); }}
               fullWidth
-              sx={{ mb: 1.5 }}
+              sx={{ mb: 0.5 }}
+              disabled={extracting}
             >
-              {fileName || t('Upload .txt file')}
+              {extracting ? t('Extracting text…') : (fileName || t('Upload document'))}
             </Button>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+              PDF · Word (.docx) · Excel (.xlsx) · Text — max 3.5 MB
+            </Typography>
+            {extractError && <Alert severity="warning" sx={{ mb: 1.5 }}>{extractError}</Alert>}
 
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-              {t('Or paste document text below (PDF/Word: copy and paste the text):')}
+              {t('Or paste document text below:')}
             </Typography>
 
             <TextField

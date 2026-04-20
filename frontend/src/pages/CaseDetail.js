@@ -424,9 +424,16 @@ const CaseDetail = () => {
     }
   };
 
+  const MAX_UPLOAD_SIZE = 3.5 * 1024 * 1024;
   const handleSelectFile = (event) => {
     const file = event.target.files?.[0] || null;
+    if (file && file.size > MAX_UPLOAD_SIZE) {
+      setUploadError(t(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum allowed is 3.5 MB.`));
+      event.target.value = '';
+      return;
+    }
     setUploadFile(file);
+    setUploadError(null);
   };
 
   const handleUploadContract = async () => {
@@ -1168,7 +1175,7 @@ const CaseDetail = () => {
                 ref={fileInputRef}
                 style={{ display: 'none' }}
                 onChange={handleSelectFile}
-                accept=".pdf,.doc,.docx,.txt,.md,.rtf,.jpg,.jpeg,.png"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.md,.rtf,.csv,.jpg,.jpeg,.png"
               />
               <UploadIcon sx={{ fontSize: 40, color: 'text.secondary' }} />
               <Typography sx={{ mt: 1 }}>

@@ -173,6 +173,30 @@ const ComplianceController = require('./controllers/compliance-controller');
 const ESignatureController = require('./controllers/e-signature-controller');
 const DocumentController = require('./controllers/document-controller');
 const SystemController = require('./controllers/system-controller');
+const mammoth = require('mammoth');
+const XLSX = require('xlsx');
+const PDFParser = require('pdf2json');
+
+const CLOUDMERSIVE_API_KEY = process.env.CLOUDMERSIVE_API_KEY;
+const MAX_UPLOAD_BYTES = 3.5 * 1024 * 1024; // 3.5 MB
+
+async function scanFileForViruses(buffer, fileName) {
+  if (!CLOUDMERSIVE_API_KEY) return { clean: true, skipped: true };
+  try {
+    const formData = new FormData();
+    formData.append('inputFile', new Blob([buffer]), fileName);
+    const res = await fetch('https://api.cloudmersive.com/virus/scan/file', {
+      method: 'POST',
+      headers: { 'Apikey': CLOUDMERSIVE_API_KEY },
+      body: formData,
+    });
+    const data = await res.json();
+    return { clean: data.CleanResult === true, viruses: data.FoundViruses || [] };
+  } catch (err) {
+    console.error('Virus scan error:', err.message);
+    return { clean: false, error: 'Virus scan service unavailable' };
+  }
+}
 
 // --- Helpers ---
 
@@ -596,6 +620,50 @@ correctIndex must be 0, 1, 2, or 3.`;
           return sendJSON(res, 200, { question: q });
         } catch (err) {
           return sendJSON(res, 500, { error: 'AI question generation failed', detail: err.message });
+        }
+      }
+
+      // --- POST /api/extract-text ---
+      // Accepts base64-encoded file, extracts plain text using mammoth/xlsx/pdf2json
+      if (path === '/api/extract-text' && method === 'POST') {
+        const user = authenticate(req, res);
+        if (!user) return;
+        const { fileBase64, fileName } = await parseBody(req);
+        if (!fileBase64 || !fileName) return sendJSON(res, 400, { error: 'fileBase64 and fileName are required' });
+        const ext = fileName.split('.').pop().toLowerCase();
+        const buffer = Buffer.from(fileBase64, 'base64');
+        if (buffer.length > MAX_UPLOAD_BYTES) {
+          return sendJSON(res, 413, { error: `File exceeds the 3.5 MB limit (${(buffer.length / 1024 / 1024).toFixed(1)} MB)` });
+        }
+        const scanResult = await scanFileForViruses(buffer, fileName);
+        if (!scanResult.clean) {
+          const detail = scanResult.error || `Threats found: ${(scanResult.viruses || []).join(', ')}`;
+          return sendJSON(res, 422, { error: 'File rejected by virus scan', detail });
+        }
+        try {
+          let text = '';
+          if (ext === 'docx' || ext === 'doc') {
+            const result = await mammoth.extractRawText({ buffer });
+            text = result.value;
+          } else if (ext === 'xlsx' || ext === 'xls') {
+            const workbook = XLSX.read(buffer, { type: 'buffer' });
+            workbook.SheetNames.forEach(name => {
+              text += `[Sheet: ${name}]\n`;
+              text += XLSX.utils.sheet_to_csv(workbook.Sheets[name]) + '\n\n';
+            });
+          } else if (ext === 'pdf') {
+            text = await new Promise((resolve, reject) => {
+              const parser = new PDFParser(null, 1);
+              parser.on('pdfParser_dataReady', () => resolve(parser.getRawTextContent()));
+              parser.on('pdfParser_dataError', (err) => reject(err));
+              parser.parseBuffer(buffer);
+            });
+          } else {
+            text = buffer.toString('utf8');
+          }
+          return sendJSON(res, 200, { text: text.trim(), wordCount: text.trim().split(/\s+/).filter(Boolean).length });
+        } catch (err) {
+          return sendJSON(res, 500, { error: 'Text extraction failed', detail: err.message });
         }
       }
 
@@ -1586,6 +1654,17 @@ score is 0-100.`;
           return sendJSON(res, 403, { error: 'Only admin/secretariat can add to the Platform Library' });
         }
         const content = body.content ? Buffer.from(body.content, 'base64') : null;
+        // Size + virus check
+        if (content) {
+          if (content.length > MAX_UPLOAD_BYTES) {
+            return sendJSON(res, 413, { error: `File exceeds the 3.5 MB limit (${(content.length / 1024 / 1024).toFixed(1)} MB)` });
+          }
+          const scan = await scanFileForViruses(content, body.documentName);
+          if (!scan.clean) {
+            const detail = scan.error || `Threats found: ${(scan.viruses || []).join(', ')}`;
+            return sendJSON(res, 422, { error: 'File rejected by virus scan', detail });
+          }
+        }
         const uploadedAt = new Date().toISOString();
         // Insert immediately with no text_content — respond fast, extract in background
         await oracleDb.executeQuery(
