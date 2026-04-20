@@ -20,7 +20,10 @@ import Users from './pages/Users';
 import Login from './pages/Login';
 import IPArbitration from './pages/IPArbitration';
 import Payments from './pages/Payments';
+import Training from './pages/Training';
+import CourtFiling from './pages/CourtFiling';
 import Navigation from './components/Navigation';
+import OfflineBanner from './components/OfflineBanner';
 import './styles/App.css';
 
 const buildTheme = (mode, direction) =>
@@ -68,6 +71,7 @@ const AppRoutes = () => {
   return (
     <>
       {user && <Navigation />}
+      {user && <OfflineBanner />}
       <Routes>
         <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
         <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
@@ -83,6 +87,8 @@ const AppRoutes = () => {
         <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
         <Route path="/ip-arbitration" element={<ProtectedRoute><IPArbitration /></ProtectedRoute>} />
         <Route path="/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
+        <Route path="/training" element={<ProtectedRoute><Training /></ProtectedRoute>} />
+        <Route path="/court-filing" element={<ProtectedRoute><CourtFiling /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>

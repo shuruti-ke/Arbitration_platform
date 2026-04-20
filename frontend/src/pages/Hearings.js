@@ -1,17 +1,22 @@
 // src/pages/Hearings.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Container, Typography, Paper, Box, Button, Grid, Card,
   CardContent, CardActions, Chip, TextField, Dialog,
   DialogTitle, DialogContent, DialogActions, MenuItem,
-  Select, FormControl, InputLabel, Alert, CircularProgress
+  Select, FormControl, InputLabel, Alert, CircularProgress,
+  Collapse, IconButton, Tooltip
 } from '@mui/material';
 import {
   VideoCall as VideoIcon,
   Add as AddIcon,
   Gavel as GavelIcon,
   DeleteForever as DeleteIcon,
-  AccessTime as TimeIcon
+  AccessTime as TimeIcon,
+  Mic as MicIcon,
+  MicOff as MicOffIcon,
+  ContentCopy as CopyIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/api';
@@ -45,6 +50,14 @@ const Hearings = () => {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [joinUrl, setJoinUrl] = useState(null);
+
+  // Transcription state
+  const [transcribingId, setTranscribingId] = useState(null);
+  const [transcript, setTranscript] = useState('');
+  const [transcriptSupported] = useState(
+    !!(window.SpeechRecognition || window.webkitSpeechRecognition)
+  );
+  const recognitionRef = useRef(null);
 
   const [newHearing, setNewHearing] = useState({
     caseId: '', title: '', startTime: '', endTime: '', type: 'virtual', agenda: ''
@@ -125,6 +138,46 @@ const Hearings = () => {
     } catch (err) {
       setError(getApiErrorMessage(err, t('Failed to join hearing.')));
     }
+  };
+
+  const startTranscription = (hearingId) => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    const recognition = new SR();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+    let finalText = '';
+    recognition.onresult = (event) => {
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const text = event.results[i][0].transcript;
+        if (event.results[i].isFinal) { finalText += text + ' '; }
+        else { interim = text; }
+      }
+      setTranscript(finalText + interim);
+    };
+    recognition.onerror = () => stopTranscription();
+    recognition.onend = () => {
+      if (transcribingId === hearingId) recognition.start();
+    };
+    recognitionRef.current = recognition;
+    recognition.start();
+    setTranscribingId(hearingId);
+    setTranscript('');
+  };
+
+  const stopTranscription = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.onend = null;
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    setTranscribingId(null);
+  };
+
+  const copyTranscript = () => {
+    navigator.clipboard.writeText(transcript).catch(() => {});
   };
 
   const handleDelete = async (hearingId, title) => {
@@ -213,22 +266,52 @@ const Hearings = () => {
                 </CardContent>
                 <CardActions>
                   {hasRole('admin', 'secretariat') && (
-                    <Button
-                      size="small"
-                      color="error"
-                      startIcon={<DeleteIcon />}
-                      onClick={() => handleDelete(hId, title)}
-                    >
+                    <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => handleDelete(hId, title)}>
                       {t('Delete')}
                     </Button>
                   )}
                   {type === 'virtual' && status !== 'cancelled' && (
-                    <Button size="small" variant="contained" startIcon={<VideoIcon />}
-                      onClick={() => handleJoin(hId)}>
+                    <Button size="small" variant="contained" startIcon={<VideoIcon />} onClick={() => handleJoin(hId)}>
                       {t('Join')}
                     </Button>
                   )}
+                  {transcriptSupported && status !== 'cancelled' && (
+                    transcribingId === hId ? (
+                      <Button size="small" color="error" startIcon={<MicOffIcon />} onClick={stopTranscription}>
+                        {t('Stop Transcription')}
+                      </Button>
+                    ) : (
+                      <Tooltip title={t('Live transcription via browser microphone')}>
+                        <Button size="small" startIcon={<MicIcon />} onClick={() => startTranscription(hId)}>
+                          {t('Transcribe')}
+                        </Button>
+                      </Tooltip>
+                    )
+                  )}
                 </CardActions>
+                {transcribingId === hId && (
+                  <Collapse in>
+                    <Box sx={{ px: 2, pb: 2 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <MicIcon fontSize="small" color="error" />
+                          <Typography variant="caption" color="error" fontWeight={600}>{t('Live Transcript')}</Typography>
+                        </Box>
+                        <Box>
+                          <Tooltip title={t('Copy transcript')}>
+                            <IconButton size="small" onClick={copyTranscript}><CopyIcon fontSize="small" /></IconButton>
+                          </Tooltip>
+                          <IconButton size="small" onClick={stopTranscription}><CloseIcon fontSize="small" /></IconButton>
+                        </Box>
+                      </Box>
+                      <Paper variant="outlined" sx={{ p: 1.5, maxHeight: 160, overflowY: 'auto', bgcolor: 'action.hover' }}>
+                        <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                          {transcript || t('Listening... speak now.')}
+                        </Typography>
+                      </Paper>
+                    </Box>
+                  </Collapse>
+                )}
               </Card>
             </Grid>
             );

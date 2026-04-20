@@ -14,6 +14,8 @@ import {
   ManageAccounts as UsersIcon,
   VerifiedUser as IPIcon,
   Payment as PaymentIcon,
+  School as TrainingIcon,
+  AccountBalance as CourtFilingIcon,
 } from '@mui/icons-material';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -58,6 +60,8 @@ const NAV_ITEMS = [
   { to: '/ip-arbitration',icon: <IPIcon />,          labelKey: 'IP Arbitration',   roles: ['admin', 'secretariat', 'arbitrator', 'counsel'] },
   { to: '/payments',      icon: <PaymentIcon />,     labelKey: 'Payments',         roles: ['admin', 'arbitrator'] },
   { to: '/users',         icon: <UsersIcon />,       labelKey: 'Users',            roles: ['admin'] },
+  { to: '/court-filing',  icon: <CourtFilingIcon />, labelKey: 'Court Filing',     roles: ['admin', 'secretariat', 'arbitrator', 'counsel'] },
+  { to: '/training',      icon: <TrainingIcon />,    labelKey: 'Training',         roles: ['admin', 'secretariat', 'arbitrator', 'counsel', 'party'] },
   { to: '/settings',      icon: <SettingsIcon />,    labelKey: 'Settings',         roles: ['admin', 'secretariat'] },
 ];
 
