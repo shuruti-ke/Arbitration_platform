@@ -22,6 +22,7 @@ import IPArbitration from './pages/IPArbitration';
 import Payments from './pages/Payments';
 import Training from './pages/Training';
 import CourtFiling from './pages/CourtFiling';
+import AwardVerification from './pages/AwardVerification';
 import Navigation from './components/Navigation';
 import OfflineBanner from './components/OfflineBanner';
 import './styles/App.css';
@@ -74,6 +75,7 @@ const AppRoutes = () => {
       {user && <OfflineBanner />}
       <Routes>
         <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
+        <Route path="/verify" element={<AwardVerification />} />
         <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/cases" element={<ProtectedRoute><Cases /></ProtectedRoute>} />
         <Route path="/cases/agreement" element={<ProtectedRoute><AgreementEditor /></ProtectedRoute>} />

@@ -46,6 +46,7 @@ export const apiService = {
   assessArbitrability: (caseData) => api.post('/compliance/arbitrability-check', { case: caseData }),
   getSigningReadiness: (type = 'legal document') => api.get(`/signing/readiness?type=${encodeURIComponent(type)}`),
   buildAwardPack: (awardData) => api.post('/awards/pack', awardData),
+  verifyAwardHash: (hash) => api.get(`/awards/verify?hash=${encodeURIComponent(hash)}`),
   analyzeAgreement: (agreementData) => api.post('/intake/agreement/analyze', agreementData),
   createCaseAgreement: (agreementData) => api.post('/case-agreements', agreementData),
   shareAgreementTemplate: (payload) => api.post('/forms/agreement/share', payload),

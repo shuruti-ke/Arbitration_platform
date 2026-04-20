@@ -164,6 +164,9 @@ const emailService = new EmailService();
 // Models
 const ConflictGraph = require('./models/conflict-graph');
 
+// In-memory award hash store: hash -> metadata
+const awardHashStore = new Map();
+
 // Controllers
 const AwardController = require('./controllers/award-controller');
 const ComplianceController = require('./controllers/compliance-controller');
@@ -483,7 +486,29 @@ function createServer(services) {
         const user = authenticate(req, res, ['admin', 'secretariat', 'arbitrator']);
         if (!user) return;
         const body = await parseBody(req);
-        return sendJSON(res, 200, AwardController.buildSection32AwardPack(body));
+        const pack = AwardController.buildSection32AwardPack(body);
+        // Generate SHA-256 verification hash
+        const hashInput = JSON.stringify({ caseId: body.caseId, title: pack.title, generatedAt: pack.generatedAt, packType: pack.packType });
+        const verificationHash = crypto.createHash('sha256').update(hashInput).digest('hex');
+        awardHashStore.set(verificationHash, {
+          hash: verificationHash,
+          caseId: body.caseId || null,
+          title: pack.title,
+          status: pack.status,
+          generatedAt: pack.generatedAt,
+          generatedBy: user.userId,
+          seat: body.seat || null,
+        });
+        return sendJSON(res, 200, { ...pack, verificationHash });
+      }
+
+      // --- GET /api/awards/verify ---
+      if (path === '/api/awards/verify' && method === 'GET') {
+        const { hash } = parsedUrl.query;
+        if (!hash) return sendJSON(res, 400, { error: 'hash query parameter required' });
+        const record = awardHashStore.get(hash);
+        if (!record) return sendJSON(res, 404, { verified: false, message: 'Hash not found in registry' });
+        return sendJSON(res, 200, { verified: true, ...record });
       }
 
       // --- POST /api/consent/record ---
@@ -658,9 +683,10 @@ function createServer(services) {
             if (!casesMap[owner]) casesMap[owner] = [];
             // Fetch participants for this case
             const caseId = c.case_id || c.CASE_ID;
-            const [partyResult, counselResult] = await Promise.all([
+            const [partyResult, counselResult, docResult] = await Promise.all([
               oracleDb.executeQuery(`SELECT party_id, full_name, party_type, email FROM parties WHERE case_id = :caseId`, { caseId }),
-              oracleDb.executeQuery(`SELECT counsel_id, full_name, email, law_firm FROM case_counsel WHERE case_id = :caseId`, { caseId })
+              oracleDb.executeQuery(`SELECT counsel_id, full_name, email, law_firm FROM case_counsel WHERE case_id = :caseId`, { caseId }),
+              oracleDb.executeQuery(`SELECT id, document_name, category, uploaded_by, created_at FROM documents WHERE case_id = :caseId ORDER BY created_at DESC`, { caseId })
             ]);
             casesMap[owner].push({
               caseId,
@@ -670,6 +696,12 @@ function createServer(services) {
               platformFee: c.platform_fee || c.PLATFORM_FEE || null,
               currency: c.platform_fee_currency || c.PLATFORM_FEE_CURRENCY || 'KES',
               createdAt: c.created_at || c.CREATED_AT,
+              documents: (docResult.rows || []).map(d => ({
+                id: d.id || d.ID,
+                name: d.document_name || d.DOCUMENT_NAME || '',
+                category: d.category || d.CATEGORY || '',
+                uploadedAt: d.created_at || d.CREATED_AT,
+              })),
               participants: [
                 ...(partyResult.rows || []).map(p => ({
                   type: 'party',

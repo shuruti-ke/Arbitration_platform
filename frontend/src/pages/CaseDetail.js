@@ -17,7 +17,10 @@ import {
   CheckCircle as CheckCircleIcon,
   Cancel as CancelIcon,
   Gavel as GavelIcon,
-  CloudUpload as UploadIcon
+  CloudUpload as UploadIcon,
+  Verified as VerifiedIcon,
+  Fingerprint as HashIcon,
+  ContentCopy as CopyIcon,
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
@@ -69,6 +72,12 @@ const CaseDetail = () => {
   const [uploadCategory, setUploadCategory] = useState('Contract / Agreement');
   const [uploadDescription, setUploadDescription] = useState('');
   const fileInputRef = useRef(null);
+
+  // Award pack state
+  const [awardPack, setAwardPack] = useState(null);
+  const [awardPackLoading, setAwardPackLoading] = useState(false);
+  const [awardPackError, setAwardPackError] = useState(null);
+  const [awardSeat, setAwardSeat] = useState('');
 
   const load = async () => {
     try {
@@ -501,6 +510,9 @@ const CaseDetail = () => {
           <Tab label={`${t('Hearings')} (${hearings.length})`} />
           <Tab label={t('Timeline')} />
           <Tab label={t('Audit Log')} />
+          {['admin', 'secretariat', 'arbitrator'].includes(user?.role) && (
+            <Tab label={t('Award Pack')} icon={<GavelIcon fontSize="small" />} iconPosition="start" />
+          )}
         </Tabs>
       </Paper>
 
@@ -886,6 +898,111 @@ const CaseDetail = () => {
           }
         </Paper>
       )}
+
+      {/* AWARD PACK */}
+      {tab === 7 && ['admin', 'secretariat', 'arbitrator'].includes(user?.role) && (() => {
+        const handleBuildPack = async () => {
+          setAwardPackLoading(true);
+          setAwardPackError(null);
+          setAwardPack(null);
+          try {
+            const cData = data?.case || {};
+            const res = await apiService.buildAwardPack({
+              caseId: cData.CASE_ID || cData.caseId,
+              title: cData.TITLE || cData.title,
+              seat: awardSeat || 'Kenya',
+              date: new Date().toISOString().split('T')[0],
+              reasons: true,
+              delivery: true,
+              signatures: ['Arbitrator'],
+            });
+            setAwardPack(res.data);
+          } catch (err) {
+            setAwardPackError(t('Failed to generate award pack.'));
+          } finally {
+            setAwardPackLoading(false);
+          }
+        };
+
+        return (
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="subtitle1" fontWeight={700} gutterBottom>{t('Award Pack & Verification')}</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              {t('Generate a Section 32 award pack checklist and receive a SHA-256 verification hash that can be used to authenticate this award.')}
+            </Typography>
+
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 3 }}>
+              <TextField
+                label={t('Juridical Seat')}
+                value={awardSeat}
+                onChange={e => setAwardSeat(e.target.value)}
+                placeholder="e.g. Nairobi, Kenya"
+                size="small"
+                sx={{ width: 240 }}
+              />
+              <Button
+                variant="contained"
+                startIcon={awardPackLoading ? <CircularProgress size={16} color="inherit" /> : <GavelIcon />}
+                onClick={handleBuildPack}
+                disabled={awardPackLoading}
+              >
+                {t('Generate Award Pack')}
+              </Button>
+            </Box>
+
+            {awardPackError && <Alert severity="error" sx={{ mb: 2 }}>{awardPackError}</Alert>}
+
+            {awardPack && (
+              <Box>
+                <Divider sx={{ mb: 2 }} />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                  <Chip
+                    label={awardPack.status === 'ready' ? t('Ready') : t('Needs Review')}
+                    color={awardPack.status === 'ready' ? 'success' : 'warning'}
+                  />
+                  <Typography variant="body2" color="text.secondary">{awardPack.complianceNote}</Typography>
+                </Box>
+
+                <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>{t('Required Fields')}</Typography>
+                <List dense disablePadding sx={{ mb: 2 }}>
+                  {awardPack.requiredFields?.map((f, i) => (
+                    <ListItem key={i} sx={{ pl: 0 }}>
+                      <ListItemIcon sx={{ minWidth: 28 }}>
+                        {f.present
+                          ? <CheckCircleIcon fontSize="small" color="success" />
+                          : <CancelIcon fontSize="small" color="error" />}
+                      </ListItemIcon>
+                      <ListItemText primary={<Typography variant="body2">{f.label}</Typography>} />
+                    </ListItem>
+                  ))}
+                </List>
+
+                {awardPack.verificationHash && (
+                  <Box sx={{ bgcolor: 'action.hover', borderRadius: 1, p: 2, mt: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                      <VerifiedIcon fontSize="small" color="primary" />
+                      <Typography variant="subtitle2" fontWeight={600}>{t('Verification Hash (SHA-256)')}</Typography>
+                      <IconButton
+                        size="small"
+                        onClick={() => navigator.clipboard.writeText(awardPack.verificationHash).catch(() => {})}
+                        title={t('Copy hash')}
+                      >
+                        <CopyIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                    <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.78rem', wordBreak: 'break-all', color: 'text.secondary' }}>
+                      {awardPack.verificationHash}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                      {t('Share this hash with parties to allow them to verify the award at')} /verify
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+            )}
+          </Paper>
+        );
+      })()}
 
       {/* Edit Case Dialog */}
       <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="md" fullWidth>
