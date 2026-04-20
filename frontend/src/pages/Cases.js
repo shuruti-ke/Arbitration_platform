@@ -11,8 +11,10 @@ import {
 import {
   Add as AddIcon, Search as SearchIcon, FilterList as FilterIcon,
   AutoAwesome as AiIcon, Edit as EditIcon, OpenInNew as OpenIcon,
-  CheckCircle as CheckIcon, Cancel as CancelIcon
+  CheckCircle as CheckIcon, Cancel as CancelIcon,
+  Gavel as GavelIcon, ExpandMore as ExpandMoreIcon, FolderOpen as FolderIcon,
 } from '@mui/icons-material';
+import { Accordion, AccordionSummary, AccordionDetails, Badge } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
@@ -657,19 +659,74 @@ const Cases = () => {
         </Box>
       </Paper>
 
-      <Paper sx={{ height: 450, width: '100%' }}>
-        {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}><CircularProgress /></Box>
-        ) : (
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}><CircularProgress /></Box>
+      ) : isAdmin ? (
+        // Admin view: cases grouped by arbitrator in accordions
+        (() => {
+          const groups = {};
+          displayCases.forEach((c) => {
+            const key = c.createdBy || '__unassigned__';
+            if (!groups[key]) groups[key] = { name: c.arbitratorName || 'Unassigned', email: c.arbitratorEmail || '', cases: [] };
+            groups[key].cases.push(c);
+          });
+          const sorted = Object.entries(groups).sort(([ka, a], [kb, b]) => {
+            if (ka === '__unassigned__') return 1;
+            if (kb === '__unassigned__') return -1;
+            return (a.name || '').localeCompare(b.name || '');
+          });
+          if (sorted.length === 0) return (
+            <Box sx={{ textAlign: 'center', pt: 6, color: 'text.secondary' }}>
+              <Typography>{t('No cases found.')}</Typography>
+            </Box>
+          );
+          return sorted.map(([arbId, group]) => (
+            <Accordion key={arbId} defaultExpanded={sorted.length === 1} sx={{ mb: 1 }}>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%', pr: 1 }}>
+                  <GavelIcon color={arbId === '__unassigned__' ? 'disabled' : 'warning'} />
+                  <Box sx={{ flexGrow: 1 }}>
+                    <Typography variant="subtitle1" fontWeight={600}>{group.name}</Typography>
+                    {group.email && <Typography variant="caption" color="text.secondary">{group.email}</Typography>}
+                  </Box>
+                  <Badge badgeContent={group.cases.length} color="primary" showZero>
+                    <Chip icon={<FolderIcon />} label={`${group.cases.length} case${group.cases.length !== 1 ? 's' : ''}`} size="small" variant="outlined" />
+                  </Badge>
+                </Box>
+              </AccordionSummary>
+              <AccordionDetails sx={{ p: 0 }}>
+                {group.cases.map((c, i) => (
+                  <Box key={c.caseId} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1.2, borderTop: i === 0 ? 'none' : '1px solid', borderColor: 'divider' }}>
+                    <FolderIcon fontSize="small" color="action" />
+                    <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                      <Typography variant="body2" fontWeight={500} noWrap>{c.title || c.caseId}</Typography>
+                      <Typography variant="caption" color="text.secondary">{c.caseId}</Typography>
+                    </Box>
+                    <Chip label={t(c.status)} size="small" variant="outlined"
+                      color={c.status === 'active' ? 'primary' : c.status === 'completed' ? 'success' : 'warning'} />
+                    <Chip label={t(c.paymentStatus || 'pending')} size="small" variant="outlined"
+                      color={c.paymentStatus === 'paid' ? 'success' : c.paymentStatus === 'invoiced' ? 'info' : 'warning'} />
+                    <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>{c.createdAt}</Typography>
+                    <Button size="small" variant="outlined" onClick={() => openAssignDialog(c)}>
+                      {c.createdBy ? t('Reassign') : t('Assign')}
+                    </Button>
+                  </Box>
+                ))}
+              </AccordionDetails>
+            </Accordion>
+          ));
+        })()
+      ) : (
+        <Paper sx={{ height: 450, width: '100%' }}>
           <DataGrid rows={displayCases} columns={columns}
             getRowId={(row) => row.id || row.caseId}
             initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
             pageSizeOptions={[10, 25]}
-            onRowClick={isAdmin ? undefined : (params) => navigate(`/cases/${params.row.caseId}`)}
-            sx={{ cursor: isAdmin ? 'default' : 'pointer' }}
+            onRowClick={(params) => navigate(`/cases/${params.row.caseId}`)}
+            sx={{ cursor: 'pointer' }}
           />
-        )}
-      </Paper>
+        </Paper>
+      )}
 
       {/* New Case Dialog */}
       <Dialog
