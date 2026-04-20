@@ -24,7 +24,8 @@ import {
   Person as PartyIcon,
   Balance as CounselIcon,
   Lock as PasswordIcon,
-  FiberManualRecord as DotIcon
+  FiberManualRecord as DotIcon,
+  InsertDriveFile as FileIcon,
 } from '@mui/icons-material';
 import { DataGrid } from '@mui/x-data-grid';
 import { useAuth } from '../context/AuthContext';
@@ -237,6 +238,37 @@ const CaseFolder = ({ caseData, onResetPassword }) => {
               </React.Fragment>
             ))}
           </List>
+        )}
+        {caseData.documents && caseData.documents.length > 0 && (
+          <Box sx={{ mt: 1.5, pl: 1 }}>
+            <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ display: 'block', mb: 0.5 }}>
+              Files ({caseData.documents.length})
+            </Typography>
+            <List dense disablePadding>
+              {caseData.documents.map((doc, i) => (
+                <React.Fragment key={doc.id || i}>
+                  {i > 0 && <Divider component="li" />}
+                  <ListItem sx={{ pl: 0 }}>
+                    <Box sx={{ mr: 1, color: 'text.secondary' }}><FileIcon fontSize="small" /></Box>
+                    <ListItemText
+                      primary={<Typography variant="body2">{doc.name}</Typography>}
+                      secondary={
+                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 0.25 }}>
+                          {doc.category && <Chip label={doc.category} size="small" variant="outlined" sx={{ fontSize: '0.65rem', height: 18 }} />}
+                          {doc.uploadedAt && <Typography variant="caption" color="text.disabled">{new Date(doc.uploadedAt).toLocaleDateString()}</Typography>}
+                        </Box>
+                      }
+                    />
+                  </ListItem>
+                </React.Fragment>
+              ))}
+            </List>
+          </Box>
+        )}
+        {caseData.documents && caseData.documents.length === 0 && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1, pl: 1 }}>
+            No files uploaded yet.
+          </Typography>
         )}
         {caseData.platformFee && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1, pl: 1 }}>

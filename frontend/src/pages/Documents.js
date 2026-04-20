@@ -250,12 +250,18 @@ const Documents = () => {
   }, [caseDocs, searchQuery]);
 
   const caseFolders = useMemo(() => {
-    return Object.entries(groupedCaseDocs)
-      .map(([caseId, docs]) => ({
+    // Build folders from all cases the user can access, not just cases that have documents.
+    // This ensures newly assigned cases with zero documents still show a folder.
+    const allCaseIds = new Set([
+      ...Object.keys(groupedCaseDocs),
+      ...Object.keys(caseMeta),
+    ]);
+    return Array.from(allCaseIds)
+      .map((caseId) => ({
         caseId,
         title: caseMeta[caseId]?.title || caseId,
         status: caseMeta[caseId]?.status || '',
-        docs,
+        docs: groupedCaseDocs[caseId] || [],
       }))
       .sort((a, b) => (a.title || '').localeCompare(b.title || '') || a.caseId.localeCompare(b.caseId));
   }, [groupedCaseDocs, caseMeta]);
