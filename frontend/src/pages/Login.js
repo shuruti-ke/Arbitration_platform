@@ -4,6 +4,7 @@ import {
   Container, Paper, Typography, TextField,
   Button, Box, Alert, CircularProgress, Chip
 } from '@mui/material';
+
 import { LockOutlined as LockIcon } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -41,8 +42,11 @@ const Login = () => {
             <Typography variant="h5" fontWeight="bold">{t('Arbitration Platform')}</Typography>
             <Typography variant="body2" color="textSecondary">{t('Sign in to your account')}</Typography>
             <Typography variant="body2" color="textSecondary" sx={{ mt: 1, textAlign: 'center' }}>
-              {t('The platform is designed to manage arbitration workflows in line with the Kenya Arbitration Act, Cap. 49.')}
+              {t('Arbitration Facilitation Platform — Case management and hearing support for arbitration proceedings')}
             </Typography>
+            <Alert severity="info" variant="outlined" sx={{ mt: 1, mb: 0 }}>
+              {t('This platform facilitates arbitration proceedings only. It has no arbitral authority and does not make awards or legal determinations.')}
+            </Alert>
           </Box>
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -79,23 +83,15 @@ const Login = () => {
           </Button>
         </form>
 
-        <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
-          <Typography variant="caption" color="textSecondary" display="block" gutterBottom>
-            {t('Default admin credentials:')}
-          </Typography>
-          <Typography variant="caption" display="block">
-            Email: <strong>admin@arbitration.platform</strong>
-          </Typography>
-          <Typography variant="caption" display="block">
-            Password: <strong>Admin@2026!</strong>
-          </Typography>
-        </Box>
-
         <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           {['admin', 'arbitrator', 'secretariat', 'counsel', 'party'].map(role => (
             <Chip key={role} label={t(role === 'counsel' ? 'Legal Counsel' : role === 'party' ? 'Party (Claimant / Respondent)' : role === 'admin' ? 'Administrator' : role === 'secretariat' ? 'Secretariat' : 'Arbitrator')} size="small" variant="outlined" />
           ))}
         </Box>
+
+        <Typography variant="caption" sx={{ mt: 2, display: 'block', textAlign: 'center' }}>
+          <a href="/charter" style={{ color: 'inherit' }}>Platform Charter & Legal Documents</a>
+        </Typography>
       </Paper>
     </Container>
   );

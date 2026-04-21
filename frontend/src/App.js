@@ -23,8 +23,10 @@ import Payments from './pages/Payments';
 import Training from './pages/Training';
 import CourtFiling from './pages/CourtFiling';
 import AwardVerification from './pages/AwardVerification';
+import PlatformCharter from './pages/PlatformCharter';
 import Navigation from './components/Navigation';
 import OfflineBanner from './components/OfflineBanner';
+import TosAcceptanceModal from './components/TosAcceptanceModal';
 import './styles/App.css';
 
 const buildTheme = (mode, direction) =>
@@ -68,6 +70,13 @@ const ProtectedRoute = ({ children }) => {
 
 const AppRoutes = () => {
   const { user } = useAuth();
+  const [showTos, setShowTos] = React.useState(false);
+
+  React.useEffect(() => {
+    if (user && localStorage.getItem('arb_tos_accepted_v1') === null) {
+      setShowTos(true);
+    }
+  }, [user]);
 
   return (
     <>
@@ -76,6 +85,7 @@ const AppRoutes = () => {
       <Routes>
         <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
         <Route path="/verify" element={<AwardVerification />} />
+        <Route path="/charter" element={<PlatformCharter />} />
         <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/cases" element={<ProtectedRoute><Cases /></ProtectedRoute>} />
         <Route path="/cases/agreement" element={<ProtectedRoute><AgreementEditor /></ProtectedRoute>} />
@@ -93,6 +103,7 @@ const AppRoutes = () => {
         <Route path="/court-filing" element={<ProtectedRoute><CourtFiling /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <TosAcceptanceModal open={showTos} onAccept={() => setShowTos(false)} />
     </>
   );
 };

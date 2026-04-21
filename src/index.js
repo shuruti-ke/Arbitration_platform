@@ -379,6 +379,14 @@ function createServer(services) {
       return serveStatic(res, path);
     }
 
+    // Security headers for all API responses
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+
     try {
       // --- GET /api/health ---
       if (path === '/api/health' && method === 'GET') {
@@ -2727,6 +2735,42 @@ Respond ONLY with valid JSON, no markdown, no extra text.`;
             modelName
           });
           return sendJSON(res, 200, { success: true, cached: false, cacheKey, source: 'ai', modelName, notes: text, summary, guidanceSummary: summary });
+        }
+      }
+
+      // --- GET /api/audit-log ---
+      if (path === '/api/audit-log' && method === 'GET') {
+        const user = authenticate(req, res, ['admin', 'arbitrator', 'secretariat']);
+        if (!user) return;
+
+        const allowedRoles = ['admin', 'arbitrator', 'secretariat'];
+        if (!allowedRoles.includes(user.role)) {
+          return sendJSON(res, 403, { error: 'Insufficient permissions' });
+        }
+
+        const qs = parsedUrl.query;
+        const caseId = qs.caseId || null;
+        const limit = Math.min(parseInt(qs.limit, 10) || 50, 200);
+        const page = parseInt(qs.page, 10) || 0;
+
+        try {
+          let entries = [];
+          let total = 0;
+
+          if (caseId) {
+            entries = await auditTrail.getCaseLogs(caseId);
+          } else {
+            // Return in-memory logs (all entries) with pagination
+            entries = auditTrail.logs || [];
+          }
+
+          total = entries.length;
+          const paginated = entries.slice(page * limit, page * limit + limit);
+
+          return sendJSON(res, 200, { entries: paginated, total, page, limit });
+        } catch (auditErr) {
+          console.error('Audit log query error:', auditErr.message);
+          return sendJSON(res, 200, { entries: [], total: 0, page, limit, message: 'Audit log not yet configured' });
         }
       }
 
