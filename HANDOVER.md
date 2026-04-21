@@ -169,7 +169,10 @@ All documents effective April 2026. **Update company name throughout when incorp
 - `frontend/src/components/TosAcceptanceModal.js` — non-closeable ToS gate triggered on first
   login; stores acceptance in localStorage key `arb_tos_accepted_v1`
 - `frontend/src/components/AIDisclosureBanner.js` — reusable advisory notice component
-  (needs to be wired into: Documents, Compliance, Intelligence, CaseDetail pages — not yet done)
+- `frontend/src/components/AIReviewGate.js` — **human oversight enforcement gate**: renders below
+  every AI output; requires reviewer name + checkbox acknowledgment of professional responsibility;
+  disables close/action until confirmed; resets on every new AI generation. Wired into:
+  Documents (document analysis dialog), Intelligence (companion analysis), Compliance (arbitrability check)
 - `App.js` — `/charter` public route added, ToS modal integrated into auth flow
 - `Login.js` — facilitation-only description, info banner, **admin credentials removed**,
   Platform Charter link added
@@ -224,22 +227,26 @@ All 6 `BASE_MODULES` in `frontend/src/pages/Training.js` rewritten with verified
 
 ## 8. OUTSTANDING TASKS
 
-### Immediate
-- [ ] Wire `AIDisclosureBanner` into Documents, Compliance, Intelligence, CaseDetail pages
-- [ ] Update all `/legal/` docs with company name once incorporated
-- [ ] File ODPC registration in company name
+### Confirmed Owner Assignments (April 2026)
+| Step | Owner | Timeline | Status |
+|---|---|---|---|
+| Incorporate the company | Law firm | 1 week | Confirmed — law firm to action |
+| File ODPC registration | Company (law firm to file) | 1 week post-incorporation | Confirmed — law firm to action |
+| Run one pilot case through the platform | Both founders | 2–4 weeks | Confirmed — joint action |
+| Engage CREST-certified penetration testing firm | **Developer** | Schedule now; test 6–8 weeks | **Developer action required** |
+| Request NCIA evaluation letter | Law firm | 1–2 weeks | Confirmed — law firm to action |
+| Update `/legal/` docs with company name | Developer | When company name confirmed | Pending incorporation |
+| CIArb Kenya Branch — CPD recognition | Law firm | Q3 2026 | Planned |
+| LSK ADR Committee listing | Law firm | Q3 2026 | Planned |
 
-### Institutional Engagement (in order of priority)
-- [ ] **NCIA** — approach as technology platform partner for NCIA-administered proceedings
-- [ ] **CIArb Kenya Branch** — CPD recognition for training modules + co-branding
-- [ ] **Law Society of Kenya ADR Committee** — listing as approved technology platform
-- [ ] Law firm issues formal letter of support on firm letterhead
+### Developer's Sole Remaining Action: Penetration Test
+See Section 12 for full penetration test brief.
 
 ### Security Certification Roadmap
 | Certification | Timeline | Budget |
 |---|---|---|
 | ODPC registration | Q2 2026 | KES 10,000 |
-| Penetration test (CREST-certified) | Q3 2026 | $5,000–$15,000 |
+| Penetration test (CREST-certified) | Q2–Q3 2026 | $5,000–$15,000 |
 | ISO/IEC 27001:2022 | Q4 2026–Q2 2027 | $20,000–$50,000 |
 | SOC 2 Type II | Q1–Q3 2027 | $30,000–$80,000 |
 
@@ -287,6 +294,81 @@ All 6 `BASE_MODULES` in `frontend/src/pages/Training.js` rewritten with verified
 5. Legal Services Agreement (law firm → company, fee arrangement)
 6. Formal letter of support for platform on firm letterhead (for NCIA/CIArb approach)
 7. ODPC registration application (in company name)
+
+---
+
+## 12. PENETRATION TEST BRIEF (Developer's Action)
+
+This section is the complete brief to send to a CREST-certified penetration testing firm.
+
+### What is CREST?
+The Council of Registered Ethical Security Testers (CREST) is the internationally recognised
+accreditation body for penetration testing firms. CREST-certified testers have passed rigorous
+examinations and their firms are independently audited. ISO 27001 certification bodies and
+institutional clients require CREST (or equivalent — CHECK, Cyber Essentials in UK; OSCP
+qualifications are acceptable evidence of individual tester competence).
+
+### Finding a Firm
+Search for CREST-accredited firms with East Africa operations:
+- **CREST member search:** https://www.crest-approved.org/members
+- Firms active in Kenya/East Africa: Serianu (Nairobi), Symbion (regional), or international
+  firms with remote delivery capability (NCC Group, Trustwave, WithSecure)
+- Request quotes from at least 3 firms
+
+### Scope to Specify in the Brief
+
+**Application type:** Web application + REST API
+**Target environments:**
+- Production frontend: https://arbitration-platform.vercel.app
+- Production API: via Vercel proxy /api/* (do NOT test Oracle VM IP directly — test through Vercel)
+- Provide a dedicated test user account for each role: admin, arbitrator, secretariat, counsel, party
+
+**Testing methodology:** OWASP Web Security Testing Guide (WSTG) v4.2 + OWASP API Security Top 10
+
+**Specific areas to test:**
+
+| Area | What to test |
+|---|---|
+| Authentication | JWT implementation, token expiry, refresh token rotation, brute force protection |
+| Authorisation | Role-based access control — can a party role access another party's case? Can counsel access admin endpoints? |
+| Session management | Token storage (localStorage — known risk), session fixation, logout effectiveness |
+| Input validation | XSS in all text fields, SQL injection via API parameters, command injection |
+| File upload | Malicious file bypass (the Cloudmersive scanner), file type validation, path traversal |
+| API security | Broken object-level authorisation (BOLA/IDOR) — can user A access user B's documents by changing the ID? |
+| Sensitive data exposure | Are API responses leaking data beyond what the role should see? |
+| Security headers | Verify all 6 headers are present on all responses |
+| Business logic | Can a party submit a case without payment? Can a non-arbitrator assign an arbitrator? |
+| AI endpoints | Can AI endpoints be abused with prompt injection via document content? |
+
+**Out of scope:**
+- Oracle VM operating system / network layer (infrastructure test — separate engagement later)
+- Neon database direct access
+- Vercel platform infrastructure
+- Denial of service testing
+
+**Deliverables to require:**
+1. Executive summary (suitable for board / institutional presentation)
+2. Technical findings report — every vulnerability with: severity (Critical/High/Medium/Low/Info),
+   CVSS score, evidence (screenshot/request-response), remediation recommendation
+3. Remediation verification retest — after developer fixes findings, firm retests Critical and High
+   findings at no extra cost (negotiate this upfront)
+4. Certificate of test completion — for submission to NCIA and ISO 27001 auditors
+
+**Timeline:** Allow 2 weeks for the test, 2 weeks for remediation, 1 week for retest = 5 weeks total
+
+**Budget:** Budget $5,000–$10,000 for a focused web app + API test of this scope. Get 3 quotes.
+
+### What to Fix Before the Test (Reduces Finding Count)
+- Remove any debug endpoints or test routes from `src/index.js`
+- Ensure all API error responses do not leak stack traces (check `catch` blocks return generic messages)
+- Confirm the Cloudmersive virus scanner is active (check `CLOUDMERSIVE_API_KEY` is set in `.env.oracle`)
+- Remove or disable any development/test accounts that are not needed
+
+### After the Test
+- Fix all Critical and High findings immediately before any institutional meeting
+- Medium findings: fix within 30 days
+- Low/Info: document accepted risk or fix in next sprint
+- Keep the final report and certificate — submit as Annex A to the review submission document
 
 ---
 
