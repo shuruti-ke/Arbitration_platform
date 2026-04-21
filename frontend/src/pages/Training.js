@@ -34,66 +34,236 @@ const BASE_MODULES = [
     id: 'intro', title: 'Introduction to Arbitration', level: 'Beginner', duration: '20 min',
     description: 'Core concepts: what arbitration is, how it differs from litigation, and when to use it.',
     topics: ['What is arbitration?', 'Arbitration vs. litigation vs. mediation', 'Types of disputes suitable for arbitration', 'Key principles: confidentiality, finality, neutrality', 'When to choose arbitration'],
-    content: `Arbitration is a private, binding dispute resolution process in which parties agree to submit their dispute to one or more neutral decision-makers (arbitrators) rather than litigating before national courts.
+    content: `## What is Arbitration?
 
-Key characteristics that distinguish arbitration from litigation include: party autonomy in selecting arbitrators, procedural flexibility, confidentiality, finality of the award (limited grounds for appeal), and international enforceability under the 1958 New York Convention.
+Arbitration is a private, binding method of dispute resolution in which parties agree — by contract (an arbitration clause) or a separate submission agreement — to refer their dispute to one or more neutral arbitrators whose decision (the award) is final and legally binding. It is governed by national arbitration legislation and, for international matters, by treaty.
 
-Unlike mediation—where a neutral facilitator helps parties reach a negotiated settlement—arbitration produces a binding decision. Parties often choose arbitration for commercial disputes, investor-state claims, construction, maritime, and IP matters where they value neutrality and confidentiality.
+**Legal Foundation**
 
-Core principles:
-• Confidentiality: proceedings and awards are not public record
-• Party autonomy: parties choose seat, rules, language, and arbitrators
-• Finality: awards are final and binding, with narrow grounds to challenge
-• Neutrality: disputes heard by agreed neutral arbitrators rather than home courts
-• Enforceability: over 170 countries enforce foreign arbitral awards under the New York Convention`,
+The primary international legislative instrument is the **UNCITRAL Model Law on International Commercial Arbitration (1985, as amended 2006)**, adopted in whole or in part by over 80 states including Kenya (Arbitration Act, Cap. 49, 1995), Singapore (International Arbitration Act, Cap. 143A), and India (Arbitration and Conciliation Act, 1996). This Model Law standardises key rules on arbitral agreements, composition of tribunals, conduct of proceedings, and grounds for challenge or non-enforcement of awards.
+
+## How Arbitration Differs from Litigation and Mediation
+
+**Arbitration vs. Litigation:** Parties choose their decision-maker, seat, language, and procedural rules — none of which apply in court. Arbitral awards are final with narrow appeal grounds; court judgments are subject to multi-tier appeals. Confidentiality is the norm in arbitration; court proceedings are generally public. Crucially, foreign arbitral awards are enforceable in over 170 countries under the 1958 New York Convention; foreign court judgments lack an equivalent multilateral treaty.
+
+**Arbitration vs. Mediation:** Mediation (conciliation) produces a negotiated settlement only if both parties agree; the mediator has no power to impose a decision. Arbitration produces a binding award whether or not the losing party cooperates. Mediation is governed by the **UNCITRAL Model Law on International Commercial Mediation and International Settlement Agreements Resulting from Mediation (2018)** and, where adopted, the Singapore Convention on Mediation (2019).
+
+## Types of Disputes Suitable for Arbitration
+
+Arbitration is appropriate for: international commercial contracts, investor-state investment disputes (under bilateral investment treaties or the ICSID Convention, Washington 1965), construction and engineering, maritime and admiralty, intellectual property licensing, and employment (where permitted by statute). Disputes involving criminal liability, family status, or matters reserved by public policy are generally non-arbitrable.
+
+## Core Principles
+
+**Party Autonomy:** Parties are free to agree on the seat (legal place) of arbitration, the procedural rules, the number and method of appointment of arbitrators, the language, and the substantive law governing the dispute (UNCITRAL Model Law, Art. 19; New York Convention, Art. II).
+
+**Confidentiality:** Unlike court hearings, arbitration proceedings, pleadings, evidence, and awards are private. Many institutional rules codify this obligation (e.g., LCIA Rules 2020, Art. 30; SIAC Rules 2016, Rule 39). Some seats impose confidentiality by statute (e.g., England — Arbitration Act 1996, s.1 general duty; specific confidentiality recognised in case law).
+
+**Finality:** Awards are final and binding on the parties. Grounds for challenge at the seat are narrow and do not permit re-examination of the merits (UNCITRAL Model Law, Art. 34; Arbitration Act 1996 [UK], ss. 67–69).
+
+**Neutrality:** Arbitrators must be and remain independent and impartial throughout the proceedings. The **IBA Guidelines on Conflicts of Interest in International Arbitration (2014, updated 2024)** are the internationally recognised standard for disclosure and disqualification.
+
+**International Enforceability:** The **Convention on the Recognition and Enforcement of Foreign Arbitral Awards (New York, 1958)** — the "New York Convention" — obliges its 172 contracting states to recognise and enforce foreign arbitral awards. Refusal is permitted only on the narrow grounds listed in Article V.
+
+## When to Choose Arbitration
+
+Arbitration is the preferred mechanism when: the parties are from different countries; confidentiality is essential; the parties wish to choose a neutral decision-maker with subject-matter expertise; and where cross-border enforcement of any award is anticipated. Where speed or a friendly business relationship is the priority, mediation or negotiation may be more appropriate first steps.`,
   },
   {
     id: 'rules', title: 'Arbitration Rules & Procedures', level: 'Intermediate', duration: '35 min',
     description: 'Overview of major institutional rules: ICC, LCIA, UNCITRAL, NCIA, SIAC.',
     topics: ['ICC Rules overview', 'LCIA Rules overview', 'UNCITRAL Arbitration Rules', 'NCIA Rules (Kenya)', 'SIAC Rules overview', 'Choosing the right rules for your dispute'],
-    content: `Institutional arbitration rules set out the procedural framework governing the arbitration. Choosing the right rules depends on the nature of the dispute, the parties' locations, and the desired level of institutional support.
+    content: `## What Are Institutional Arbitration Rules?
 
-ICC Rules (International Chamber of Commerce): Known for the scrutiny of awards by the ICC Court before publication, Terms of Reference, and rigorous case management. Popular for high-value international commercial disputes.
+Institutional arbitration rules are procedural codes published by arbitral institutions that govern the conduct of arbitration proceedings administered by that institution. They address: how the arbitration is commenced, how arbitrators are appointed (and challenged), how the proceedings are managed, and how the institution's administrative fees are calculated. Parties incorporate a set of rules by including the institution's model arbitration clause in their contract.
 
-LCIA Rules (London Court of International Arbitration): Favoured for speed and flexibility. LCIA appoints arbitrators directly and is known for efficient handling. Widely used in European and English law-governed contracts.
+## ICC Rules (International Chamber of Commerce)
 
-UNCITRAL Arbitration Rules: Designed for ad hoc arbitration without an administering institution, though UNCITRAL rules can be used with an appointing authority. Basis for many investment treaty arbitrations.
+**Current version:** ICC Rules of Arbitration 2021 (in force 1 January 2021).
 
-NCIA Rules (Nairobi Centre for International Arbitration): Kenya's primary institution, aligned with UNCITRAL Model Law. Growing preference for East African disputes and investment arbitration on the continent.
+The ICC International Court of Arbitration, Paris, does not itself decide disputes — it administers proceedings. Key features of ICC arbitration include:
 
-SIAC Rules (Singapore International Arbitration Centre): Leading institution in Asia. Known for emergency arbitrator provisions, expedited procedure for lower-value claims, and a cost-efficient approach.
+- **Terms of Reference (Art. 23):** Within 30 days of transmission of the file, the tribunal and parties sign a document defining the issues, relief sought, and procedural schedule. This is unique to ICC.
+- **Scrutiny of draft awards (Art. 34):** Before signature, every draft award is reviewed by the ICC Court for form and, in principle, legal soundness. This reduces enforcement challenges.
+- **Case management conference (Art. 24):** Mandatory early procedural conference to set the timetable.
+- **Emergency arbitrator (Art. 29 & Appendix V):** Available for urgent interim relief before the tribunal is constituted.
 
-Selection factors: value of dispute, legal system familiarity, cost of administration, preferred seat, time constraints, and whether investment treaty or commercial context.`,
+ICC is the most widely used institution globally for high-value international commercial disputes.
+
+## LCIA Rules (London Court of International Arbitration)
+
+**Current version:** LCIA Arbitration Rules 2020 (in force 1 October 2020).
+
+The LCIA (London) is known for:
+- **Institutional appointment of arbitrators (Art. 5):** The LCIA Court selects arbitrators based on objective criteria; parties may propose but the LCIA decides — this reduces tactical delays in appointment.
+- **Arbitrator's ability to control the process (Art. 14):** Wide powers to manage the hearing efficiently.
+- **Confidentiality (Art. 30):** Strong default confidentiality obligation on all participants.
+- **Emergency arbitrator (Art. 9B):** Available from the date of commencement.
+
+Preferred for English law-governed contracts and disputes with European parties.
+
+## UNCITRAL Arbitration Rules
+
+**Current version:** UNCITRAL Arbitration Rules 2013 (revised from 1976 original); used with the UNCITRAL Transparency Rules (2013) for treaty arbitrations.
+
+UNCITRAL Rules are designed for **ad hoc arbitration** — no administering institution. Parties (or an appointing authority such as the Permanent Court of Arbitration, The Hague) handle appointments. UNCITRAL Rules are the most commonly referenced rules in **bilateral investment treaty (BIT)** arbitration and investor-state claims. The **ICSID Convention and ICSID Arbitration Rules (2022 revision)** apply to investment disputes where the host state is an ICSID member.
+
+## NCIA Rules (Nairobi Centre for International Arbitration)
+
+**Current version:** NCIA Arbitration Rules 2015, established under the Nairobi Centre for International Arbitration Act, No. 26 of 2013 (Kenya).
+
+Kenya's domestic and regional institutional arbitration framework is anchored in:
+- **Arbitration Act, Cap. 49 of the Laws of Kenya (1995, amended 2009)** — adopts the UNCITRAL Model Law.
+- **NCIA Act 2013** — establishes the Nairobi Centre as a statutory body to administer arbitration and other ADR proceedings.
+
+NCIA Rules mirror UNCITRAL Model Law principles and provide for a three-member or sole arbitrator tribunal, fast-track procedure, and an emergency arbitrator. The NCIA is the preferred institution for East African regional and continental investment disputes.
+
+## SIAC Rules (Singapore International Arbitration Centre)
+
+**Current version:** SIAC Rules 2025 (6th edition, in force 1 January 2025).
+
+Singapore is one of the world's leading arbitral seats (International Arbitration Act 1994, Cap. 143A, as amended). SIAC features:
+- **Expedited procedure (Rule 5 / Schedule 1):** For disputes under SGD 6 million or urgent cases — full award within 6 months.
+- **Emergency arbitrator (Schedule 1):** Order or award within 14 days of appointment.
+- **Early dismissal (Rule 29):** Tribunal can summarily dismiss manifestly unmeritorious claims or defences.
+
+## How to Choose the Right Rules
+
+| Factor | ICC | LCIA | UNCITRAL | NCIA | SIAC |
+|---|---|---|---|---|---|
+| Best for | High-value global | English law | Ad hoc / BIT | East Africa | Asia-Pacific |
+| Award scrutiny | Yes | No | No | No | No |
+| Emergency arbitrator | Yes | Yes | No (PCA can) | Yes | Yes |
+| Typical cost | High | High | Lower | Moderate | Moderate |
+
+Additional selection factors: the seat's national arbitration law, availability of qualified arbitrators, currency and language of proceedings, and whether an institutional backing for enforcement is desired.`,
   },
   {
     id: 'evidence', title: 'Evidence & Document Management', level: 'Intermediate', duration: '30 min',
     description: 'Best practices for organizing evidence, submissions, and case documents.',
     topics: ['Types of evidence in arbitration', 'Document exchange protocols', 'Witness statements and expert reports', 'Document confidentiality obligations', 'Using AI for document analysis'],
-    content: `Evidence in arbitration is handled more flexibly than in national courts. Arbitrators have broad discretion over admissibility, weight, and document production.
+    content: `## Evidence in Arbitration: The Governing Framework
 
-Types of evidence: contemporaneous documents (contracts, correspondence, meeting minutes), witness of fact statements, expert witness reports, and electronic evidence.
+Evidence in international arbitration is governed by the arbitration agreement, the institutional rules chosen by the parties, the law of the seat, and—most importantly—by the tribunal's procedural directions. Unlike litigation in common law courts, there is no automatic right to wide-ranging discovery. The tribunal has broad discretion over admissibility, relevance, materiality, and the weight to be given to any evidence (UNCITRAL Model Law, Art. 19(2); ICC Rules 2021, Art. 25(6)).
 
-Document exchange protocols: arbitral tribunals routinely adopt the IBA Rules on the Taking of Evidence in International Arbitration as a soft-law guide. Redfern Schedules are commonly used for document production requests, allowing each party to request specific categories, state reasons, and allow the other side to object.
+## The IBA Rules on the Taking of Evidence (2020)
 
-Witness statements: submitted in writing in advance of the hearing; witnesses are available for cross-examination. Expert reports must comply with the tribunal's directions on scope and timing, and joint expert meetings are often ordered to narrow issues.
+The **IBA Rules on the Taking of Evidence in International Arbitration (2020 revision, International Bar Association)** are the internationally recognised soft-law instrument governing evidence. They are not automatically applicable but are routinely adopted by consent or by tribunal order. Key provisions include:
 
-Confidentiality: parties and their counsel owe confidentiality obligations over documents produced in the proceeding. Specific rules vary by institution and seat law.
+- **Art. 3 — Document Production:** A party may request the tribunal to order another party to produce specific documents or categories of documents. Requests must identify the documents with reasonable specificity, explain their relevance and materiality, and confirm the requesting party does not possess them.
+- **Art. 4 — Witness Statements:** Fact witnesses submit signed written statements in advance of the hearing. Witnesses are then tendered for cross-examination. Affirmations of truth are standard.
+- **Art. 5 — Party-Appointed Expert Reports:** Each party may submit an expert report. The tribunal may also appoint its own expert (Art. 6). Joint expert meetings and a memorandum of agreed/disagreed issues are common.
+- **Art. 9 — Admissibility and Exclusion:** The tribunal may exclude evidence that is not relevant, not material, legally privileged, of unreasonable burden to produce, or that would compromise confidentiality. "Fishing expeditions" (broad speculative requests) are excluded.
 
-AI-assisted document review: machine learning tools accelerate privilege review, categorisation, and identification of key documents, particularly in large commercial disputes with voluminous discovery.`,
+## Redfern Schedules
+
+A **Redfern Schedule** (named after arbitration practitioner Alan Redfern) is the standard table format used to manage document production requests. It has four columns:
+
+1. Documents requested (by the requesting party)
+2. Reasons for the request (requesting party)
+3. Objections (responding party)
+4. Tribunal's decision
+
+This structured format prevents scope creep, keeps production disputes manageable, and creates a clear procedural record.
+
+## Types of Evidence
+
+**Documentary evidence:** Contemporaneous documents — contracts, correspondence, invoices, board minutes, technical drawings — carry the greatest weight because they were not created for the purpose of litigation. Tribunals look for consistency between contemporaneous documents and witness accounts.
+
+**Witness of fact statements:** Submitted in writing (IBA Rules, Art. 4). Must be signed by the witness. At the hearing, the witness is available for cross-examination and re-direct. Witness statements that contradict contemporaneous documents are treated with caution.
+
+**Expert evidence:** Technical, financial, or legal expert reports. Under IBA Rules Art. 5, the report must state the expert's qualifications, instructions received, the facts relied upon, and the expert's opinions with reasons. Opposing expert reports followed by a joint memorandum identifying agreed and disputed issues is the standard practice.
+
+**Electronic evidence:** Electronically stored information (ESI) including emails, databases, and metadata is increasingly significant. Parties must disclose relevant ESI; metadata (timestamps, author) is treated as part of the document. Forensic recovery of deleted data may be ordered.
+
+## Confidentiality of Documents
+
+Documents produced in the arbitration are subject to confidentiality obligations. The **LCIA Rules 2020, Art. 30** and **SIAC Rules 2025, Rule 39** impose explicit obligations on parties and their representatives. Even where rules are silent, confidentiality is implied in many seat laws. Documents produced under compulsion may not be used outside the arbitration without leave of the tribunal.
+
+## AI-Assisted Document Review
+
+Machine learning-based tools (e-discovery platforms such as Relativity, Everlaw, or Luminance) are routinely used in large-document arbitrations for:
+- Predictive coding / technology-assisted review (TAR) for relevance and privilege screening
+- Deduplication and threading of email chains
+- Identification of key custodians and hot documents
+
+Tribunals have accepted TAR as a valid production methodology (see *Rio Tinto plc v. Vale S.A.*, S.D.N.Y. 2012, which validated predictive coding in litigation — widely adopted by analogy in arbitration). Counsel must disclose the use of AI tools for document review where required by tribunal directions.`,
   },
   {
     id: 'awards', title: 'Drafting & Enforcing Awards', level: 'Advanced', duration: '40 min',
     description: 'How arbitral awards are structured, drafted, and enforced globally.',
     topics: ['Elements of a valid arbitral award', 'Award drafting best practices', 'The New York Convention (1958)', 'Cross-border enforcement procedures', 'Grounds for challenging an award'],
-    content: `A valid arbitral award must be in writing, signed by the arbitrator(s), state the date and juridical seat, give reasons (unless waived), and be delivered to each party.
+    content: `## Formal Requirements of a Valid Arbitral Award
 
-Drafting best practices: the award should be self-contained, logically structured (procedural history → issues → applicable law → analysis → dispositif), free from arithmetic errors, and use precise language in the operative part (dispositif).
+Under both the **UNCITRAL Model Law on International Commercial Arbitration (Art. 31)** and most institutional rules, a valid arbitral award must:
 
-The 1958 New York Convention (Convention on the Recognition and Enforcement of Foreign Arbitral Awards): ratified by over 170 states. Requires contracting states to recognise and enforce foreign arbitral awards subject to narrow grounds for refusal (Article V), including: incapacity of parties, invalid agreement, improper notice, award outside submission, irregular tribunal composition, non-binding award, non-arbitrable subject matter, and public policy.
+1. **Be in writing** and signed by the arbitrator(s). Where there is more than one arbitrator and a member refuses to sign, the signatures of the majority are sufficient, provided the reason for any omission is stated.
+2. **State the date** on which the award is made.
+3. **State the juridical seat** (place) of arbitration — this determines the law applicable to the award and the courts with supervisory jurisdiction.
+4. **Give reasons** for the decision, unless the parties have agreed otherwise or the award is on agreed terms (consent award).
+5. **Be notified to each party** — delivery triggers time limits for challenge.
 
-Enforcement procedure: the winning party applies to the competent court of the jurisdiction where the losing party has assets. Requirements vary by jurisdiction—typically a certified copy of the award, the arbitration agreement, and translations.
+Additional requirements under specific institutional rules: ICC awards must pass scrutiny by the ICC Court before signature (ICC Rules 2021, Art. 34); LCIA awards must be delivered to parties through the Registrar (LCIA Rules 2020, Art. 26).
 
-Grounds to challenge: at the seat, parties may seek to set aside the award under the UNCITRAL Model Law (Article 34) or applicable national law—grounds mirror Article V of the New York Convention. Courts rarely set aside awards and will not re-examine the merits.`,
+## Structure and Drafting of an Arbitral Award
+
+A well-drafted award is self-contained and follows a logical structure:
+
+**1. Cover page:** Case reference, institution, seat, parties, counsel, arbitrators, date.
+
+**2. Procedural history:** Chronological summary of all procedural steps from commencement to the hearing, including significant applications and rulings. This establishes that due process was followed.
+
+**3. Parties' positions (summary):** A neutral summary of each party's case and relief sought, drawn from the pleadings.
+
+**4. Issues to be determined:** A numbered list of the discrete legal and factual issues the tribunal must resolve. Structuring the award around these issues ensures completeness.
+
+**5. Applicable law:** The substantive law governing the contract/dispute (as chosen by the parties under the arbitration agreement or applicable conflict-of-laws rules). Also the law governing the arbitral procedure (lex arbitri — the law of the seat).
+
+**6. Findings of fact:** The tribunal's determination of disputed facts, with specific references to the evidence relied upon (documentary exhibits, witness statements, expert reports).
+
+**7. Legal analysis:** Application of the applicable law to the facts. Each issue addressed in turn. Cite statutory provisions and, where relevant, leading decisions of the seat or applicable law's courts. Do not invent cases — cite only verified authorities.
+
+**8. Dispositif (operative part):** The binding decision. Must be precise: which party succeeds on which claim, the exact amount awarded, interest (rate, start date, compounding), costs allocation, and the deadline for payment.
+
+**9. Costs:** Allocation of the costs of the arbitration (institution, arbitrators) and the parties' legal costs. The general principle in international arbitration is "costs follow the event" (the losing party pays), but tribunals have broad discretion.
+
+## The New York Convention (1958): International Enforcement
+
+The **Convention on the Recognition and Enforcement of Foreign Arbitral Awards, New York, 10 June 1958** ("New York Convention") is the cornerstone of international arbitration enforcement. As of 2024, it has **172 contracting states**.
+
+**Article III:** Each contracting state must recognise arbitral awards as binding and enforce them in accordance with its procedural rules.
+
+**Article IV:** The party seeking enforcement must supply: (a) the duly authenticated original award or a certified copy; (b) the original arbitration agreement or a certified copy; and (c) translations if the award/agreement are not in the official language of the enforcement country.
+
+**Article V — Grounds for Refusal (exhaustive):**
+
+A court may refuse enforcement only on the following grounds (burden of proof on the resisting party for V(1); court may raise V(2) of its own motion):
+
+| Ground | Article |
+|---|---|
+| A party to the agreement was under some incapacity, or the agreement is invalid under the applicable law | V(1)(a) |
+| The party against whom enforcement is sought was not given proper notice of the proceedings or was otherwise unable to present its case | V(1)(b) |
+| The award deals with a difference not contemplated by or falling within the terms of the submission to arbitration, or beyond the scope of submission | V(1)(c) |
+| The composition of the tribunal or arbitral procedure was not in accordance with the agreement of the parties | V(1)(d) |
+| The award has not yet become binding, or has been set aside or suspended by a court of the country where it was made | V(1)(e) |
+| The subject matter is not arbitrable under the law of the country where enforcement is sought | V(2)(a) |
+| Recognition or enforcement would be contrary to the public policy of that country | V(2)(b) |
+
+Courts in New York Convention states apply Article V narrowly and do not review the merits of the dispute.
+
+## Setting Aside an Award at the Seat
+
+A party may challenge an award in the courts of the seat under **UNCITRAL Model Law, Art. 34** (adopted by most Model Law states). The grounds for setting aside mirror Article V of the New York Convention and must be invoked **within 3 months** of receipt of the award (Art. 34(3)).
+
+Courts apply this ground very narrowly: they do not act as appellate courts on the merits. The English Arbitration Act 1996, ss. 67–69 provides for challenge on jurisdiction (s.67), serious irregularity (s.68 — high threshold), and, with leave, a point of law (s.69 — opt-out available).
+
+## Practical Enforcement Steps
+
+1. Obtain a certified copy of the award from the institution (or authenticate the original).
+2. Identify the jurisdictions where the losing party holds assets.
+3. File an application to the competent court in each enforcement jurisdiction under the New York Convention and local procedural rules (e.g., in Kenya: High Court under the Arbitration Act, Cap. 49, s. 36; in England: CPR Part 62).
+4. Serve the application on the award debtor.
+5. Obtain a court order recognising and enforcing the award.
+6. Enforce via domestic execution mechanisms (attachment of bank accounts, property, receivables).`,
   },
   {
     id: 'platform', title: 'Using the Platform', level: 'Beginner', duration: '25 min',
@@ -115,17 +285,61 @@ Case status and milestones: the Timeline tab in each case tracks key procedural 
     id: 'ai', title: 'AI in Arbitration', level: 'Intermediate', duration: '20 min',
     description: 'How AI tools on this platform support analysis, scheduling, and decision support.',
     topics: ['AI document analysis and evidence review', 'Predictive analytics and case timelines', 'AI conflict of interest detection', 'Ethical considerations for AI in dispute resolution', 'Limitations of AI in arbitration'],
-    content: `AI is increasingly deployed across the arbitration lifecycle—from case intake and document review to conflict-of-interest screening and predictive analytics.
+    content: `## AI in the Arbitration Lifecycle
 
-Document analysis: large language models can summarise voluminous submissions, identify key issues, flag inconsistencies between witness statements and contemporaneous documents, and assist with privilege review.
+Artificial intelligence tools are being deployed across all phases of international arbitration proceedings. This module surveys current applications, the emerging regulatory and ethical framework, and the firm limitations that require human oversight.
 
-Predictive analytics: AI models trained on historical arbitration data can provide indicative case timelines, estimate award ranges by dispute type and quantum, and predict procedural delays.
+## Document Analysis and Review
 
-Conflict of interest detection: the platform's AI cross-references arbitrator profiles against party lists, counsel, and disclosed relationships to surface potential conflicts early, supporting IBA Guidelines compliance.
+Large language models (LLMs) and machine learning classification tools are used for:
 
-Ethical considerations: AI must be a tool to assist human decision-makers, not replace them. Tribunals must be transparent about any AI use in drafting or analysis. Parties have a right to know if AI has contributed to procedural decisions. The principle of due process requires that AI tools do not introduce bias.
+- **Relevance and privilege review:** Technology-Assisted Review (TAR), also known as predictive coding, uses a human reviewer to train an AI model that then classifies large document sets. Courts and arbitral tribunals have accepted TAR as a valid methodology (see *Da Silva Moore v. Publicis Groupe*, S.D.N.Y. 2012; *Rio Tinto plc v. Vale S.A.*, S.D.N.Y. 2012).
+- **Issue spotting:** LLMs can identify key contractual provisions, flag inconsistencies between witness accounts and contemporaneous documents, and surface documents responsive to Redfern Schedule requests.
+- **Translation:** AI translation tools (with human verification) facilitate multilingual proceedings.
 
-Limitations: AI cannot replace legal judgement, understand cultural nuance in oral hearings, or bear professional responsibility. Outputs must be verified by qualified counsel. AI hallucination remains a risk in legal contexts—always cite primary sources.`,
+AI document review does not replace legal review — counsel remains responsible for all production decisions and bears professional responsibility for completeness and privilege calls.
+
+## Conflict of Interest Screening
+
+Arbitrators have a duty of disclosure under the **IBA Guidelines on Conflicts of Interest in International Arbitration (2014, updated 2024)**. The Guidelines use a traffic-light system: Red List (non-waivable and waivable conflicts), Orange List (disclosable relationships), and Green List (no disclosure required).
+
+AI tools can assist by cross-referencing arbitrator profiles, law firm relationships, corporate ownership structures, and prior appointments against the parties, their counsel, and related entities. This accelerates the disclosure process. However, the final duty of disclosure rests with the arbitrator personally — AI screening is a starting point, not a substitute.
+
+## Predictive Analytics
+
+AI systems trained on historical arbitration data can generate indicative outputs on:
+- Expected case duration by case type, institution, and number of arbitrators
+- Estimated award quantum ranges by dispute category and jurisdiction
+- Procedural delay risk factors
+
+**Important caveat:** Predictive tools reflect patterns in historical datasets, which may embed systemic biases (e.g., over-representation of certain seats or dispute types). Predictions are statistical probabilities, not legal advice, and must not be used as the basis for legal decisions without qualified legal analysis.
+
+## The Prague Rules: An Alternative Evidence Approach
+
+The **Rules on the Efficient Conduct of Proceedings in International Arbitration ("Prague Rules", 2018)** offer a civil-law-oriented alternative to the IBA Rules on Taking of Evidence. The Prague Rules favour:
+- Tribunal-led fact-finding (Art. 4) rather than party-driven document production
+- Limitation of witness and expert evidence
+- Preference for documentary evidence over witness testimony
+
+Some parties (particularly those from civil law jurisdictions) incorporate the Prague Rules as an alternative to the more common IBA Evidence Rules.
+
+## Ethical and Regulatory Framework for AI in Arbitration
+
+There is no single binding international instrument regulating AI in dispute resolution as of 2024. However, the following instruments and guidance are relevant:
+
+- **ICCA-IBA Roadmap to Data Protection in International Arbitration (2020):** Addresses personal data handling, GDPR compliance, and data localisation in arbitration.
+- **EU AI Act (Regulation (EU) 2024/1689, in force August 2024):** Classifies AI systems used in the administration of justice as "high-risk" (Annex III). Providers of such systems must comply with transparency, accuracy, and human oversight requirements. While primarily applying to EU member states, this standard is being adopted by reference globally.
+- **IBA Technology Committee Guidance (ongoing):** The IBA issues periodic guidance on e-disclosure, cybersecurity in arbitration, and AI tool transparency.
+
+Tribunals increasingly require parties to disclose if AI tools were used in drafting submissions or in the production process, consistent with the general duty of good faith and the right of the other party to understand and challenge the evidence.
+
+## Firm Limitations of AI in Arbitration
+
+- **AI cannot make legal judgements.** Determining the weight of evidence, assessing credibility, and applying legal standards to facts require human legal reasoning and accountability.
+- **AI hallucination is a real and documented risk.** LLMs can generate plausible-sounding but false legal citations, non-existent cases, and incorrect statutory provisions. All AI-generated legal content must be verified against primary sources before use in proceedings.
+- **AI cannot bear professional responsibility.** Counsel and arbitrators are personally responsible for the accuracy of their work product. Reliance on AI does not diminish this responsibility.
+- **Cultural and contextual nuance.** Oral hearings involve credibility assessment, cultural context, and real-time legal argument that AI tools cannot reliably interpret.
+- **Data security.** Submitting confidential case materials to external AI platforms raises confidentiality and data protection concerns. Parties should use platforms that offer data processing agreements and on-premises or private-cloud processing options where possible.`,
   },
 ];
 
