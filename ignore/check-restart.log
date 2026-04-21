@@ -1,0 +1,3 @@
+2026-04-20 13:24:20 === Instance check started ===
+2026-04-20 13:24:20 Looking up instance by IP 152.70.201.154 ...
+2026-04-20 13:24:25 ERROR: Could not parse instance list. OCI CLI output: Usage: oci compute instance list [OPTIONS] System.Management.Automation.RemoteException Error: Missing option(s) --compartment-id.

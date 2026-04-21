@@ -5,67 +5,122 @@ require('dotenv').config({ path: '.env.oracle' });
 const http = require('http');
 const url = require('url');
 const crypto = require('crypto');
+const fs = require('fs');
+const nodePath = require('path');
 
-// AI client — uses NVIDIA Nemotron first, with Groq/Gemini as fallbacks
+// Static file serving for the React frontend build
+const STATIC_DIR = nodePath.join(__dirname, '..', 'public');
+const MIME = {
+  '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
+  '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
+  '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf',
+  '.map': 'application/json', '.txt': 'text/plain',
+};
+
+function serveStatic(res, reqPath) {
+  // Sanitize path to prevent directory traversal
+  const safePath = nodePath.normalize(reqPath).replace(/^(\.\.[/\\])+/, '');
+  const filePath = nodePath.join(STATIC_DIR, safePath);
+
+  // Must stay within STATIC_DIR
+  if (!filePath.startsWith(STATIC_DIR)) {
+    res.writeHead(403); res.end(); return;
+  }
+
+  // Try exact file, then index.html (SPA fallback)
+  const candidates = [filePath, nodePath.join(STATIC_DIR, 'index.html')];
+  for (const candidate of candidates) {
+    try {
+      const stat = fs.statSync(candidate);
+      if (!stat.isFile()) continue;
+      const ext = nodePath.extname(candidate).toLowerCase();
+      const mime = MIME[ext] || 'application/octet-stream';
+      res.writeHead(200, { 'Content-Type': mime });
+      fs.createReadStream(candidate).pipe(res);
+      return;
+    } catch { /* try next */ }
+  }
+  res.writeHead(404); res.end('Not found');
+}
+
+// AI client — OpenAI primary, Qwen + NVIDIA as fallbacks
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const QWEN_API_KEY = process.env.QWEN_API_KEY;
+const QWEN_MODEL = process.env.QWEN_MODEL || 'qwen-plus';
 const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || process.env.NGC_API_KEY;
 const NVIDIA_BASE_URL = process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1';
 const NVIDIA_MODEL = process.env.NVIDIA_MODEL || 'nvidia/nemotron-3-super-120b-a12b';
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 async function callAI(prompt) {
-  // Try NVIDIA Nemotron first
-  if (NVIDIA_API_KEY) {
-    const res = await fetch(`${NVIDIA_BASE_URL.replace(/\/$/, '')}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${NVIDIA_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: NVIDIA_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 2048,
-        temperature: 0.3
-      })
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
-    if (!res.ok) throw new Error(data.message || data.error?.message || `NVIDIA request failed with ${res.status}`);
-    return data.choices?.[0]?.message?.content || null;
+  const errors = [];
+
+  // Try OpenAI first
+  if (OPENAI_API_KEY) {
+    try {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` },
+        body: JSON.stringify({
+          model: OPENAI_MODEL,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 2048,
+          temperature: 0.3
+        })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+      const text = data.choices?.[0]?.message?.content;
+      if (text) return text;
+      throw new Error('Empty response from OpenAI');
+    } catch (e) { errors.push(`OpenAI: ${e.message}`); }
   }
 
-  // Try Groq as a fallback
-  if (GROQ_API_KEY) {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GROQ_API_KEY}` },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 2048,
-        temperature: 0.3
-      })
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-    return data.choices[0].message.content;
-  }
-  // Fallback to Gemini
-  if (GEMINI_API_KEY) {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-      {
+  // Try Qwen (DashScope, OpenAI-compatible)
+  if (QWEN_API_KEY) {
+    try {
+      const res = await fetch('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-      }
-    );
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-    return data.candidates[0].content.parts[0].text;
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${QWEN_API_KEY}` },
+        body: JSON.stringify({
+          model: QWEN_MODEL,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 2048,
+          temperature: 0.3
+        })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+      const text = data.choices?.[0]?.message?.content;
+      if (text) return text;
+      throw new Error('Empty response from Qwen');
+    } catch (e) { errors.push(`Qwen: ${e.message}`); }
   }
+
+  // Try NVIDIA Nemotron
+  if (NVIDIA_API_KEY) {
+    try {
+      const res = await fetch(`${NVIDIA_BASE_URL.replace(/\/$/, '')}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${NVIDIA_API_KEY}` },
+        body: JSON.stringify({
+          model: NVIDIA_MODEL,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 2048,
+          temperature: 0.3
+        })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+      if (!res.ok) throw new Error(`NVIDIA ${res.status}`);
+      const text = data.choices?.[0]?.message?.content;
+      if (text) return text;
+      throw new Error('Empty response from NVIDIA');
+    } catch (e) { errors.push(`NVIDIA: ${e.message}`); }
+  }
+
+  if (errors.length) throw new Error(`All AI providers failed: ${errors.join('; ')}`);
   return null;
 }
 
@@ -299,6 +354,11 @@ function createServer(services) {
       res.writeHead(204);
       res.end();
       return;
+    }
+
+    // Serve static frontend for all non-API GET routes
+    if (method === 'GET' && !path.startsWith('/api')) {
+      return serveStatic(res, path);
     }
 
     try {
@@ -543,20 +603,43 @@ function createServer(services) {
       if (path === '/api/training/generate-module' && method === 'POST') {
         const user = authenticate(req, res, ['admin']);
         if (!user) return;
-        const { topic } = await parseBody(req);
+        const { topic, level: reqLevel } = await parseBody(req);
         if (!topic) return sendJSON(res, 400, { error: 'topic is required' });
-        const prompt = `You are an expert international arbitration trainer. Generate a comprehensive training module on: "${topic}".
-Audience: legal professionals working in international arbitration.
-Respond with ONLY a valid JSON object (no markdown fences, no explanation outside the JSON):
+        const moduleLevel = ['Beginner','Intermediate','Advanced'].includes(reqLevel) ? reqLevel : 'Beginner';
+        const depthGuide = {
+          Beginner: 'foundational concepts, plain language, real-world analogies, no assumed prior knowledge',
+          Intermediate: 'procedural depth, case examples, comparative analysis across institutions, assumes basic arbitration knowledge',
+          Advanced: 'nuanced legal analysis, cutting-edge developments, strategic considerations, assumes practitioner-level expertise',
+        }[moduleLevel];
+        const prompt = `You are a senior international arbitration trainer writing a detailed ${moduleLevel}-level training module for legal professionals.
+
+Topic: "${topic}"
+Level: ${moduleLevel} — ${depthGuide}
+
+Write a COMPREHENSIVE module of at least 2,500 words. Structure the content with clear sections using markdown headings (## for main sections, ### for subsections). Use bullet points (- item) for lists. Bold key terms with **term**.
+
+The content MUST include ALL of the following sections:
+## Introduction
+## Background and Legal Framework
+## Key Concepts and Definitions
+## Core Principles in Practice
+## Procedural Considerations
+## Case Studies and Examples
+## Common Challenges and How to Address Them
+## Best Practices for Practitioners
+## Conclusion and Key Takeaways
+
+Each section must be substantive — minimum 200 words per main section. Use real institution names (ICC, LCIA, UNCITRAL, SIAC, NCIA), treaty names, and case references where appropriate.
+
+Respond with ONLY a valid JSON object (no markdown fences, no text outside the JSON):
 {
-  "title": "Concise module title (max 8 words)",
+  "title": "Module title (max 8 words)",
   "description": "One sentence describing what participants will learn",
-  "level": "Beginner",
-  "duration": "25 min",
-  "topics": ["Subtopic 1","Subtopic 2","Subtopic 3","Subtopic 4","Subtopic 5"],
-  "content": "Detailed module text (400-600 words) covering key concepts, practical applications, and important considerations."
-}
-level must be one of: Beginner, Intermediate, Advanced. duration between 15-60 min.`;
+  "level": "${moduleLevel}",
+  "duration": "60 min",
+  "topics": ["Section 1 name","Section 2 name","Section 3 name","Section 4 name","Section 5 name","Section 6 name"],
+  "content": "FULL module text here using ## headings, ### subheadings, - bullet points, and **bold** for key terms. Minimum 2500 words."
+}`;
         try {
           const raw = await callAI(prompt);
           const match = raw.match(/\{[\s\S]*\}/);
@@ -2160,7 +2243,7 @@ ${extractedText.slice(0, 25000)}
           {
             agreementId,
             sourceDocumentName,
-            modelName: body.modelName || process.env.NVIDIA_MODEL || process.env.GROQ_MODEL || 'unknown',
+            modelName: body.modelName || process.env.OPENAI_MODEL || process.env.NVIDIA_MODEL || 'unknown',
             extractedJson: extractionJson,
             extractedSummary: extracted.summary || body.summary || null,
             confidence: body.confidence || 'medium'
@@ -2279,7 +2362,7 @@ ${extractedText.slice(0, 25000)}
           : `Note: Binary document — analysis based on metadata and library context only.`;
         const aiPrompt = `You are a careful arbitration document analyst.\n\nWrite in plain English at about a 9th-grade reading level.\nReturn plain text only.\nDo not use JSON, markdown tables, code fences, or long legal jargon.\nBe direct, clear, and practical.\nTreat this as decision support only. Do not make final legal conclusions. If a point needs legal judgment, say that human review is required.\nWhen you mention Kenyan arbitration law, use the current consolidated citation: Arbitration Act, Cap. 49.\n\nUse this exact structure:\n1. Plain-English summary: 2 to 3 short sentences.\n2. Main issues: 3 bullet points maximum.\n3. Risks: 3 bullet points maximum.\n4. Missing information or next steps: 3 bullet points maximum.\n\nKeep the full answer under 300 words.\nIf you mention a law, rule, or legal concept, explain it in simple words.\n\nDocument being analyzed: "${docName}"\nCategory: ${docCategory}\n${docDesc ? `Description: ${docDesc}\n` : ''}${docSection}${libraryContext}${caseContext}\n\nUser request: ${body.prompt}\n\nFocus on the practical legal meaning, the strongest points, the weak points, and what the user should do next.`;
         const analysis = cleanModelText(await callAI(aiPrompt));
-        if (!analysis) return sendJSON(res, 503, { error: 'AI not configured. Add NVIDIA_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY to .env.oracle' });
+        if (!analysis) return sendJSON(res, 503, { error: 'AI not configured. Add OPENAI_API_KEY, QWEN_API_KEY, or NVIDIA_API_KEY to .env.oracle' });
         const stored = await documentAnalysisService.storeAnalysis({
           documentId: id,
           caseId: docCaseId,
@@ -2294,7 +2377,7 @@ ${extractedText.slice(0, 25000)}
               .filter((token) => token && token.length > 3)
               .slice(0, 20)
           )),
-          modelName: NVIDIA_API_KEY ? NVIDIA_MODEL : (GROQ_API_KEY ? GROQ_MODEL : 'gemini-2.0-flash'),
+          modelName: OPENAI_API_KEY ? OPENAI_MODEL : (NVIDIA_API_KEY ? NVIDIA_MODEL : 'unknown'),
           language: 'en',
           accessLevel: docAccessLevel,
           createdBy: user.userId
@@ -2441,8 +2524,8 @@ ${extractedText.slice(0, 25000)}
         if (!body.caseId || !body.question) {
           return sendJSON(res, 400, { error: 'caseId and question are required' });
         }
-        if (!NVIDIA_API_KEY && !GROQ_API_KEY && !GEMINI_API_KEY) {
-          return sendJSON(res, 503, { error: 'AI not configured. Add NVIDIA_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY to .env.oracle' });
+        if (!OPENAI_API_KEY && !QWEN_API_KEY && !NVIDIA_API_KEY) {
+          return sendJSON(res, 503, { error: 'AI not configured. Add OPENAI_API_KEY, QWEN_API_KEY, or NVIDIA_API_KEY to .env.oracle' });
         }
         try {
           const analysis = await intelligenceService.generateCompanionAnalysis({
@@ -2452,7 +2535,7 @@ ${extractedText.slice(0, 25000)}
             user
           });
           if (!analysis) {
-            return sendJSON(res, 503, { error: 'AI not configured. Add NVIDIA_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY to .env.oracle' });
+            return sendJSON(res, 503, { error: 'AI not configured. Add OPENAI_API_KEY, QWEN_API_KEY, or NVIDIA_API_KEY to .env.oracle' });
           }
           return sendJSON(res, 200, { success: true, analysis });
         } catch (error) {
@@ -2469,8 +2552,8 @@ ${extractedText.slice(0, 25000)}
         if (!user) return;
         const body = await parseBody(req);
         const periodDays = Math.max(7, parseInt(body.periodDays || 30, 10) || 30);
-        if (!NVIDIA_API_KEY && !GROQ_API_KEY && !GEMINI_API_KEY) {
-          return sendJSON(res, 503, { error: 'AI not configured. Add NVIDIA_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY to .env.oracle' });
+        if (!OPENAI_API_KEY && !QWEN_API_KEY && !NVIDIA_API_KEY) {
+          return sendJSON(res, 503, { error: 'AI not configured. Add OPENAI_API_KEY, QWEN_API_KEY, or NVIDIA_API_KEY to .env.oracle' });
         }
         const report = await intelligenceService.generateAdminReport({
           user,
@@ -2479,7 +2562,7 @@ ${extractedText.slice(0, 25000)}
           scope: body.scope || 'platform'
         });
         if (!report) {
-          return sendJSON(res, 503, { error: 'AI not configured. Add NVIDIA_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY to .env.oracle' });
+          return sendJSON(res, 503, { error: 'AI not configured. Add OPENAI_API_KEY, QWEN_API_KEY, or NVIDIA_API_KEY to .env.oracle' });
         }
         return sendJSON(res, 200, { success: true, report });
       }
@@ -2489,8 +2572,8 @@ ${extractedText.slice(0, 25000)}
         const user = authenticate(req, res);
         if (!user) return;
         const { seatOfArbitration, caseType, jurisdiction, arbitrationRules } = await parseBody(req);
-        if (!NVIDIA_API_KEY && !GROQ_API_KEY && !GEMINI_API_KEY) {
-          return sendJSON(res, 200, { success: false, message: 'AI not configured. Add NVIDIA_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY to .env.oracle' });
+        if (!OPENAI_API_KEY && !QWEN_API_KEY && !NVIDIA_API_KEY) {
+          return sendJSON(res, 200, { success: false, message: 'AI not configured. Add OPENAI_API_KEY, QWEN_API_KEY, or NVIDIA_API_KEY to .env.oracle' });
         }
         const seat = jurisdiction || seatOfArbitration || 'Kenya';
         const cacheKey = normalizeRuleGuidanceKey({
@@ -2545,7 +2628,7 @@ Respond ONLY with valid JSON, no markdown, no extra text.`;
         try {
           const jsonMatch = text.match(/\{[\s\S]*\}/);
           const data = jsonMatch ? JSON.parse(jsonMatch[0]) : { notes: text };
-          const modelName = NVIDIA_API_KEY ? NVIDIA_MODEL : (GROQ_API_KEY ? GROQ_MODEL : 'gemini-2.0-flash');
+          const modelName = OPENAI_API_KEY ? OPENAI_MODEL : (NVIDIA_API_KEY ? NVIDIA_MODEL : 'unknown');
           const summary = cleanModelText(buildRuleGuidanceSummary(data));
           await oracleDb.saveRuleGuidanceCache({
             cacheKey,
@@ -2568,7 +2651,7 @@ Respond ONLY with valid JSON, no markdown, no extra text.`;
             guidanceSummary: summary
           });
         } catch {
-          const modelName = NVIDIA_API_KEY ? NVIDIA_MODEL : (GROQ_API_KEY ? GROQ_MODEL : 'gemini-2.0-flash');
+          const modelName = OPENAI_API_KEY ? OPENAI_MODEL : (NVIDIA_API_KEY ? NVIDIA_MODEL : 'unknown');
           const summary = cleanModelText(text);
           await oracleDb.saveRuleGuidanceCache({
             cacheKey,

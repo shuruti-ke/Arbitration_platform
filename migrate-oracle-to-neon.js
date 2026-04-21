@@ -9,6 +9,7 @@ const oracledb = require('oracledb');
 const { Pool } = require('pg');
 
 oracledb.fetchAsString = [oracledb.CLOB];
+oracledb.fetchAsBuffer = [oracledb.BLOB];
 
 const ORACLE = {
   user: process.env.DB_USER,
@@ -47,8 +48,8 @@ const TABLES = [
 
 async function getOracleColumns(conn, table) {
   const result = await conn.execute(
-    `SELECT column_name, data_type FROM user_tab_columns WHERE table_name = UPPER(:table) ORDER BY column_id`,
-    { table }
+    `SELECT column_name, data_type FROM user_tab_columns WHERE table_name = UPPER(:tname) ORDER BY column_id`,
+    { tname: table }
   );
   return result.rows.map(r => ({ name: r[0].toLowerCase(), type: r[1] }));
 }
@@ -108,8 +109,13 @@ async function migrateTable(conn, table) {
     const values = idxMap.map(idx => {
       const val = row[idx];
       if (val === null || val === undefined) return null;
-      // Convert Oracle BLOB Buffer to Buffer for pg BYTEA
       if (Buffer.isBuffer(val)) return val;
+      // Convert Oracle Lob objects (CLOBs not fetched as string) to null
+      if (typeof val === 'object' && !Array.isArray(val) && !(val instanceof Date)) {
+        // Try to get string value from Lob
+        if (typeof val.getData === 'function') return null; // skip unresolved Lobs
+        return null;
+      }
       return val;
     });
 
@@ -119,6 +125,10 @@ async function migrateTable(conn, table) {
     } catch (e) {
       failed++;
       if (failed <= 3) console.log(`  Row error: ${e.message}`);
+      // Reconnect on connection drop
+      if (e.message && e.message.includes('Connection terminated')) {
+        await new Promise(r => setTimeout(r, 2000));
+      }
     }
   }
 

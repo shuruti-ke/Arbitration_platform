@@ -47,7 +47,7 @@ export const apiService = {
   getSigningReadiness: (type = 'legal document') => api.get(`/signing/readiness?type=${encodeURIComponent(type)}`),
   buildAwardPack: (awardData) => api.post('/awards/pack', awardData),
   verifyAwardHash: (hash) => api.get(`/awards/verify?hash=${encodeURIComponent(hash)}`),
-  generateTrainingModule: (topic) => api.post('/training/generate-module', { topic }),
+  generateTrainingModule: (topic, level) => api.post('/training/generate-module', { topic, level }),
   getTrendingTopics: () => api.post('/training/trending-topics', {}),
   getExamQuestion: (data) => api.post('/training/exam/question', data),
   checkCourtFilingCompliance: (jurisdiction, documentText) => api.post('/court-filing/compliance-check', { jurisdiction, documentText }),

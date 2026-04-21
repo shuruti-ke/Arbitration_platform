@@ -153,6 +153,82 @@ function DifficultyStars({ level }) {
   );
 }
 
+// ─── Module content renderer (parses markdown-style headings, bullets, bold) ──
+function renderInline(text) {
+  // Replace **bold** with <strong>
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) =>
+    part.startsWith('**') && part.endsWith('**')
+      ? <strong key={i}>{part.slice(2, -2)}</strong>
+      : part
+  );
+}
+
+function ModuleContent({ content }) {
+  const lines = content.split('\n');
+  const elements = [];
+  let bulletBuffer = [];
+
+  const flushBullets = (key) => {
+    if (bulletBuffer.length === 0) return;
+    elements.push(
+      <List key={`bullets-${key}`} dense disablePadding sx={{ mb: 1.5 }}>
+        {bulletBuffer.map((b, i) => (
+          <ListItem key={i} sx={{ pl: 0, py: 0.25, alignItems: 'flex-start' }}>
+            <ListItemIcon sx={{ minWidth: 24, mt: 0.5 }}>
+              <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'primary.main', mt: 0.5 }} />
+            </ListItemIcon>
+            <ListItemText primary={<Typography variant="body1" sx={{ lineHeight: 1.75 }}>{renderInline(b)}</Typography>} />
+          </ListItem>
+        ))}
+      </List>
+    );
+    bulletBuffer = [];
+  };
+
+  lines.forEach((line, idx) => {
+    const trimmed = line.trim();
+    if (!trimmed) { flushBullets(idx); return; }
+
+    if (trimmed.startsWith('### ')) {
+      flushBullets(idx);
+      elements.push(
+        <Typography key={idx} variant="subtitle1" fontWeight={700} sx={{ mt: 2.5, mb: 0.75, color: 'primary.main' }}>
+          {trimmed.slice(4)}
+        </Typography>
+      );
+    } else if (trimmed.startsWith('## ')) {
+      flushBullets(idx);
+      elements.push(
+        <Typography key={idx} variant="h6" fontWeight={700} sx={{ mt: 3.5, mb: 1, borderBottom: '2px solid', borderColor: 'primary.light', pb: 0.5 }}>
+          {trimmed.slice(3)}
+        </Typography>
+      );
+    } else if (trimmed.startsWith('# ')) {
+      flushBullets(idx);
+      elements.push(
+        <Typography key={idx} variant="h5" fontWeight={800} sx={{ mt: 2, mb: 1.5 }}>
+          {trimmed.slice(2)}
+        </Typography>
+      );
+    } else if (trimmed.startsWith('- ') || trimmed.startsWith('• ') || trimmed.startsWith('* ')) {
+      bulletBuffer.push(trimmed.slice(2));
+    } else if (/^\d+\.\s/.test(trimmed)) {
+      bulletBuffer.push(trimmed.replace(/^\d+\.\s/, ''));
+    } else {
+      flushBullets(idx);
+      elements.push(
+        <Typography key={idx} variant="body1" sx={{ mb: 1.5, lineHeight: 1.85 }}>
+          {renderInline(trimmed)}
+        </Typography>
+      );
+    }
+  });
+  flushBullets('end');
+
+  return <Box>{elements}</Box>;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 const Training = () => {
   const { user } = useAuth();
@@ -189,6 +265,7 @@ const Training = () => {
   // Admin - module generation
   const [genOpen, setGenOpen] = useState(false);
   const [genTopic, setGenTopic] = useState('');
+  const [genLevel, setGenLevel] = useState('Beginner');
   const [genLoading, setGenLoading] = useState(false);
   const [genError, setGenError] = useState(null);
   const [trendingLoading, setTrendingLoading] = useState(false);
@@ -209,7 +286,7 @@ const Training = () => {
     setGenLoading(true);
     setGenError(null);
     try {
-      const res = await apiService.generateTrainingModule(topic || genTopic);
+      const res = await apiService.generateTrainingModule(topic || genTopic, genLevel);
       const mod = res.data.module;
       setAiModules(prev => [mod, ...prev]);
       setGenOpen(false);
@@ -440,6 +517,21 @@ const Training = () => {
             fullWidth
             onKeyDown={e => e.key === 'Enter' && !genLoading && genTopic.trim() && handleGenerateModule()}
           />
+          <Box>
+            <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>{t('Difficulty Level')}</Typography>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              {['Beginner', 'Intermediate', 'Advanced'].map(lvl => (
+                <Chip
+                  key={lvl}
+                  label={lvl}
+                  clickable
+                  onClick={() => setGenLevel(lvl)}
+                  color={genLevel === lvl ? levelColor[lvl] : 'default'}
+                  variant={genLevel === lvl ? 'filled' : 'outlined'}
+                />
+              ))}
+            </Box>
+          </Box>
           <Button
             variant="outlined"
             startIcon={trendingLoading ? <CircularProgress size={16} /> : <TrendingIcon />}
@@ -514,9 +606,7 @@ const Training = () => {
         <Divider sx={{ mb: 3 }} />
 
         {activeModule.content ? (
-          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.8 }}>
-            {activeModule.content}
-          </Typography>
+          <ModuleContent content={activeModule.content} />
         ) : (
           <>
             <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>{t('Topics covered:')}</Typography>
