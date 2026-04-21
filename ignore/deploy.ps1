@@ -16,7 +16,7 @@ if (-not $BackendOnly -and -not $SkipGit) {
         $msg = "Deploy $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
         git commit -m $msg 2>&1 | Where-Object { $_ -match "master|main|file|create|change" }
     }
-    git push origin main 2>&1 | Where-Object { $_ -notmatch "^$" }
+    git push origin main 2>&1 | Where-Object { $_ -match "main -> main|error|Error" }
     Write-Host "  OK Pushed. Vercel will auto-deploy in ~30s." -ForegroundColor Green
     Write-Host "     https://arbitration-platform.vercel.app" -ForegroundColor DarkGray
 }
