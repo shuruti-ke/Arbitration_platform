@@ -20,6 +20,7 @@ import {
 import { Gavel as GavelIcon, Security as SecurityIcon, Rule as RuleIcon } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
+import AIReviewGate from '../components/AIReviewGate';
 
 const StatusChip = ({ status }) => {
   const color = status === 'covered' ? 'success' : status === 'partial' ? 'warning' : 'error';
@@ -37,6 +38,7 @@ const Compliance = () => {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [assessmentAcknowledged, setAssessmentAcknowledged] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -92,6 +94,7 @@ const Compliance = () => {
     }
 
     setBusy(true);
+    setAssessmentAcknowledged(false);
     setError(null);
     try {
       const response = await apiService.assessArbitrability(caseDraft);
@@ -230,7 +233,7 @@ const Compliance = () => {
               {assessment && (
                 <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>
                   <Typography variant="subtitle2" fontWeight="bold">
-                    {t('Assessment')}
+                    {t('Assessment')} — {t('Advisory only')}
                   </Typography>
                   <Typography variant="body2" sx={{ mt: 1 }}>
                     {assessment.assessment}
@@ -248,6 +251,11 @@ const Compliance = () => {
                       <strong>{t('Red flags')}:</strong> {assessment.redFlags.join(' ')}
                     </Typography>
                   )}
+                  <AIReviewGate
+                    context="arbitrability assessment"
+                    acknowledged={assessmentAcknowledged}
+                    onAcknowledged={() => setAssessmentAcknowledged(true)}
+                  />
                 </Paper>
               )}
             </Paper>

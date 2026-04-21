@@ -31,6 +31,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import SearchableField from '../components/SearchableField';
+import AIReviewGate from '../components/AIReviewGate';
 
 const DOC_CATEGORIES = [
   'Constitution / Legislation',
@@ -105,6 +106,7 @@ const Documents = () => {
   const [analyzeResult, setAnalyzeResult] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState(null);
+  const [analyzeAcknowledged, setAnalyzeAcknowledged] = useState(false);
 
   const mapDoc = (d) => ({
     id: d.ID || d.id,
@@ -211,6 +213,7 @@ const Documents = () => {
     setAnalyzePrompt('');
     setAnalyzeResult('');
     setAnalyzeError(null);
+    setAnalyzeAcknowledged(false);
     setAnalyzeOpen(true);
   };
 
@@ -622,22 +625,39 @@ const Documents = () => {
               )}
 
               {analyzeResult && (
-                <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50', maxHeight: 400, overflow: 'auto' }}>
+                <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50', maxHeight: 500, overflow: 'auto' }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
                     <AIIcon fontSize="small" color="secondary" />
                     <Typography variant="caption" color="text.secondary" fontWeight="medium">
-                      {t('AI Analysis')}
+                      {t('AI Analysis')} — {t('Advisory only')}
                     </Typography>
                   </Box>
                   <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{analyzeResult}</Typography>
+                  <AIReviewGate
+                    context="document analysis"
+                    acknowledged={analyzeAcknowledged}
+                    onAcknowledged={(name) => setAnalyzeAcknowledged(true)}
+                  />
                 </Paper>
               )}
             </Box>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAnalyzeOpen(false)}>{t('Close')}</Button>
-              <Button variant="contained" onClick={handleAnalyze} disabled={analyzing || !analyzePrompt.trim()}
+          {!analyzeResult && (
+            <Button onClick={() => setAnalyzeOpen(false)}>{t('Close')}</Button>
+          )}
+          {analyzeResult && (
+            <Button
+              onClick={() => setAnalyzeOpen(false)}
+              disabled={!analyzeAcknowledged}
+              variant={analyzeAcknowledged ? 'outlined' : 'text'}
+              color={analyzeAcknowledged ? 'success' : 'inherit'}
+            >
+              {analyzeAcknowledged ? t('Close') : t('Acknowledge advisory status above to close')}
+            </Button>
+          )}
+          <Button variant="contained" onClick={handleAnalyze} disabled={analyzing || !analyzePrompt.trim()}
             startIcon={<AIIcon />}>
             {analyzing ? t('Analyzing...') : t('Analyze')}
           </Button>

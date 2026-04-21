@@ -34,6 +34,7 @@ import {
 import { apiService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import AIReviewGate from '../components/AIReviewGate';
 
 const MetricCard = ({ label, value, icon, color = 'primary.main' }) => (
   <Paper sx={{ p: 2, height: '100%' }}>
@@ -78,6 +79,7 @@ const Intelligence = () => {
   const [loadingCompanion, setLoadingCompanion] = useState(false);
   const [loadingReport, setLoadingReport] = useState(false);
   const [error, setError] = useState(null);
+  const [companionAcknowledged, setCompanionAcknowledged] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -127,6 +129,7 @@ const Intelligence = () => {
     }
 
     setLoadingCompanion(true);
+    setCompanionAcknowledged(false);
     setError(null);
     try {
       const response = await apiService.generateCompanionAnalysis({
@@ -331,6 +334,14 @@ const Intelligence = () => {
                     </List>
                   </Paper>
                 )}
+
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  <AIReviewGate
+                    context="companion analysis"
+                    acknowledged={companionAcknowledged}
+                    onAcknowledged={() => setCompanionAcknowledged(true)}
+                  />
+                </Paper>
               </Stack>
             ) : (
               <Alert severity="info">{t('Generate a case analysis to populate the companion view.')}</Alert>
