@@ -53,8 +53,25 @@ const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || process.env.NGC_API_KEY;
 const NVIDIA_BASE_URL = process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1';
 const NVIDIA_MODEL = process.env.NVIDIA_MODEL || 'nvidia/nemotron-3-super-120b-a12b';
 
+// Universal legal accuracy guardrail — prepended as system message to every AI call
+const LEGAL_GUARDRAIL = `You are a legal AI assistant specialising in international arbitration. You operate under strict accuracy requirements that MUST NEVER be violated.
+
+ABSOLUTE RULES:
+1. ONLY cite laws, statutes, treaties, conventions, directives, and regulations that genuinely exist and are publicly verifiable. Never invent or approximate legal citations.
+2. ONLY reference real arbitration institutions (ICC, LCIA, UNCITRAL, SIAC, NCIA, DIAC, AAA/ICDR, HKIAC, CIETAC, ICSID, etc.) and quote only their actual published rules.
+3. ONLY cite real case names, tribunal decisions, and court judgments. If you are not certain a case exists with those exact parties, tribunal, and outcome, omit it entirely.
+4. ONLY use legal doctrines and principles that are established in jurisprudence. Never invent doctrines, principles, or legal tests.
+5. Every legal recommendation must be anchored in the specific law of an identified jurisdiction. Always state: which country's law applies, which statute or treaty, and which article or section.
+6. If you are uncertain about a specific citation, statute number, article, or case outcome, OMIT IT and instead write: "Consult jurisdiction-specific legal counsel for verification."
+7. NEVER hallucinate. In a legal context, fabricated citations and invented precedents cause direct harm to real parties. Accuracy is paramount and non-negotiable.
+8. If a question falls outside established law or requires speculation, say so explicitly rather than fabricating an answer.`;
+
 async function callAI(prompt, maxTokens = 2048) {
   const errors = [];
+  const messages = [
+    { role: 'system', content: LEGAL_GUARDRAIL },
+    { role: 'user', content: prompt },
+  ];
 
   // Try OpenAI first
   if (OPENAI_API_KEY) {
@@ -64,9 +81,9 @@ async function callAI(prompt, maxTokens = 2048) {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` },
         body: JSON.stringify({
           model: OPENAI_MODEL,
-          messages: [{ role: 'user', content: prompt }],
+          messages,
           max_tokens: maxTokens,
-          temperature: 0.3
+          temperature: 0.2
         })
       });
       const data = await res.json();
@@ -85,9 +102,9 @@ async function callAI(prompt, maxTokens = 2048) {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${QWEN_API_KEY}` },
         body: JSON.stringify({
           model: QWEN_MODEL,
-          messages: [{ role: 'user', content: prompt }],
+          messages,
           max_tokens: maxTokens,
-          temperature: 0.3
+          temperature: 0.2
         })
       });
       const data = await res.json();
@@ -106,9 +123,9 @@ async function callAI(prompt, maxTokens = 2048) {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${NVIDIA_API_KEY}` },
         body: JSON.stringify({
           model: NVIDIA_MODEL,
-          messages: [{ role: 'user', content: prompt }],
+          messages,
           max_tokens: maxTokens,
-          temperature: 0.3
+          temperature: 0.2
         })
       });
       const data = await res.json();
@@ -636,7 +653,15 @@ The content MUST include ALL of the following sections:
 ## Best Practices for Practitioners
 ## Conclusion and Key Takeaways
 
-Each section must be substantive — minimum 200 words per main section. Use real institution names (ICC, LCIA, UNCITRAL, SIAC, NCIA), treaty names, and case references where appropriate.
+Each section must be substantive — minimum 200 words per main section.
+
+STRICT LEGAL ACCURACY REQUIREMENTS:
+- Every statute, treaty, convention, or regulation cited must be real and include the correct title, year, and jurisdiction (e.g., "UNCITRAL Model Law on International Commercial Arbitration 1985, as amended 2006, Article 34").
+- Every institution cited (ICC, LCIA, UNCITRAL, SIAC, NCIA, HKIAC, DIAC, AAA/ICDR, ICSID, etc.) must exist and rules cited must reflect their actual published versions.
+- Every case cited must be a real reported decision. Include tribunal/court, year, and citation where known. If uncertain, write "see also leading cases in this area" without naming a specific case.
+- Every legal principle must be established doctrine — not your interpretation or invention.
+- If a point is jurisdiction-specific, name the jurisdiction and the applicable law.
+- Where law is unsettled or evolving, say so explicitly rather than stating a firm position.
 
 Respond with ONLY a valid JSON object (no markdown fences, no text outside the JSON):
 {
@@ -645,7 +670,7 @@ Respond with ONLY a valid JSON object (no markdown fences, no text outside the J
   "level": "${moduleLevel}",
   "duration": "60 min",
   "topics": ["Section 1 name","Section 2 name","Section 3 name","Section 4 name","Section 5 name","Section 6 name"],
-  "content": "FULL module text here using ## headings, ### subheadings, - bullet points, and **bold** for key terms. Minimum 2500 words."
+  "content": "FULL module text here using ## headings, ### subheadings, - bullet points, and **bold** for key terms. Minimum 2500 words. All legal citations must be real and verifiable."
 }`;
             const raw = await callAI(prompt, 6000);
             const match = raw.match(/\{[\s\S]*\}/);
@@ -680,7 +705,7 @@ Respond with ONLY a valid JSON object (no markdown fences, no text outside the J
       if (path === '/api/training/trending-topics' && method === 'POST') {
         const user = authenticate(req, res, ['admin']);
         if (!user) return;
-        const prompt = `You are an expert in international arbitration. List 6 trending or emerging topics in international arbitration that would make excellent training modules for legal professionals in 2025.
+        const prompt = `List 6 real, currently active trending or emerging topics in international arbitration that are grounded in actual legal developments, treaty changes, institutional rule amendments, or landmark decisions from 2022-2025. Only include topics anchored in verifiable legal or regulatory developments.
 Respond with ONLY a valid JSON array of short topic strings (no markdown, no explanation):
 ["Topic 1","Topic 2","Topic 3","Topic 4","Topic 5","Topic 6"]`;
         try {
@@ -702,16 +727,23 @@ Respond with ONLY a valid JSON array of short topic strings (no markdown, no exp
         const diffLabel = { 1: 'basic recall', 2: 'foundational conceptual', 3: 'intermediate application', 4: 'advanced analytical', 5: 'expert scenario-based' }[difficulty] || 'intermediate';
         const topicsStr = moduleTopics.join(', ') || moduleTitle;
         const avoidStr = coveredTopics.length > 0 ? `Avoid repeating these already-covered subtopics: ${coveredTopics.join(', ')}.` : '';
-        const prompt = `You are an arbitration examiner. Generate a ${diffLabel} multiple-choice question about "${moduleTitle}".
+        const prompt = `Generate a ${diffLabel} multiple-choice exam question about "${moduleTitle}" for qualified legal professionals.
 Topics to draw from: ${topicsStr}.
 ${avoidStr}
-The question must test practical knowledge for legal professionals. Make the wrong options plausible but clearly distinguishable.
+
+STRICT REQUIREMENTS:
+- Every factual statement in the question and explanation must be grounded in actual law, treaty, or institutional rules.
+- If citing a case, institution, article number, or rule — it must be real and verifiable. Do not invent citations.
+- The correct answer must reflect established legal doctrine, not opinion.
+- The explanation must cite the specific legal source (e.g., "Article V(1)(b) of the New York Convention 1958" or "ICC Rules 2021, Article 23").
+- Wrong options must be plausible but clearly incorrect under the relevant law.
+
 Respond with ONLY a valid JSON object (no markdown fences):
 {
   "text": "Full question text?",
   "options": ["A. option","B. option","C. option","D. option"],
   "correctIndex": 0,
-  "explanation": "Brief explanation of the correct answer and why the others are wrong.",
+  "explanation": "Explanation citing the specific legal source that confirms the correct answer.",
   "topic": "Specific subtopic this question covers"
 }
 correctIndex must be 0, 1, 2, or 3.`;
@@ -783,38 +815,44 @@ correctIndex must be 0, 1, 2, or 3.`;
         const gndList  = (jurisdiction.grounds || []).map((g, i) => `${i+1}. ${g}`).join('\n');
         const docSnip  = documentText.slice(0, 6000); // cap to avoid token limits
 
-        const prompt = `You are an expert arbitration lawyer specialising in award enforcement under the New York Convention.
+        const prompt = `You are an expert arbitration lawyer specialising in award enforcement under the New York Convention on the Recognition and Enforcement of Foreign Arbitral Awards (New York, 1958).
 
-Analyse the following document for compliance with the filing requirements for enforcing an arbitral award in ${jurisdiction.country}.
+Analyse the following document for compliance with the actual, verified filing requirements for enforcing an arbitral award in ${jurisdiction.country}.
 
 JURISDICTION:
 Court: ${jurisdiction.court}
 Time limit: ${jurisdiction.timeLimit}
 Notes: ${jurisdiction.notes || ''}
 
-FILING REQUIREMENTS:
+FILING REQUIREMENTS (from verified jurisdiction rules):
 ${reqList}
 
-GROUNDS TO REFUSE ENFORCEMENT:
+GROUNDS TO REFUSE ENFORCEMENT (Article V, New York Convention):
 ${gndList}
 
-DOCUMENT:
+DOCUMENT TO ANALYSE:
 """
 ${docSnip}
 """
 
-Provide a detailed compliance assessment. Respond with ONLY a valid JSON object (no markdown fences):
+STRICT REQUIREMENTS FOR YOUR ANALYSIS:
+- Base every finding on what is actually present or absent in the document above.
+- Cite the specific legal provision, article, or rule that applies to each requirement (e.g., "Article V(1)(e) NYC 1958", "Section 36 of the Arbitration Act [country]").
+- Do not invent findings. If the document is insufficient to determine compliance, say "Cannot determine — document is incomplete or not provided."
+- Recommendations must reference specific corrective actions under the applicable law.
+
+Respond with ONLY a valid JSON object (no markdown fences):
 {
   "overallCompliance": "compliant",
   "score": 85,
-  "summary": "One paragraph summary of the assessment.",
+  "summary": "One paragraph summary citing the legal basis for the assessment.",
   "checks": [
-    { "requirement": "requirement text", "status": "met", "finding": "specific finding from the document" }
+    { "requirement": "requirement text", "status": "met", "finding": "specific finding from the document with legal basis" }
   ],
   "potentialGrounds": [
-    { "ground": "ground text", "risk": "low", "finding": "assessment" }
+    { "ground": "ground text", "risk": "low", "finding": "assessment with reference to Article V NYC or local statute" }
   ],
-  "recommendations": ["Action item 1", "Action item 2"]
+  "recommendations": ["Specific corrective action referencing applicable law"]
 }
 overallCompliance must be one of: compliant, partial, non-compliant.
 status must be one of: met, partial, missing.
@@ -2070,11 +2108,11 @@ Return valid JSON only, with this exact structure:
 }
 
 Rules:
-- Use only details supported by the agreement.
-- If the document is a template with blanks, infer the intended case setup and list blanks under missingInfo.
-- Do not invent facts.
-- Keep the language simple and practical.
-- When referring to Kenyan arbitration law, use Arbitration Act, Cap. 49.
+- Extract ONLY information explicitly stated in or directly inferable from the agreement text. Do not invent or assume facts.
+- If a field is not present in the document, set it to null — never guess.
+- If the document is a template with blanks, list those blanks under missingInfo.
+- When citing law, use the actual statute name and jurisdiction (e.g., "Arbitration Act Cap. 49, Laws of Kenya"; "UNCITRAL Model Law 1985 (amended 2006)"; "English Arbitration Act 1996").
+- Do not fabricate governing law, seat, or institutional rules that are not stated in the document.
 
 Agreement text:
 ---
@@ -2382,7 +2420,7 @@ ${extractedText.slice(0, 25000)}
         const docSection = textContent
           ? `Document content:\n---\n${textContent.slice(0, 20000)}\n---`
           : `Note: Binary document — analysis based on metadata and library context only.`;
-        const aiPrompt = `You are a careful arbitration document analyst.\n\nWrite in plain English at about a 9th-grade reading level.\nReturn plain text only.\nDo not use JSON, markdown tables, code fences, or long legal jargon.\nBe direct, clear, and practical.\nTreat this as decision support only. Do not make final legal conclusions. If a point needs legal judgment, say that human review is required.\nWhen you mention Kenyan arbitration law, use the current consolidated citation: Arbitration Act, Cap. 49.\n\nUse this exact structure:\n1. Plain-English summary: 2 to 3 short sentences.\n2. Main issues: 3 bullet points maximum.\n3. Risks: 3 bullet points maximum.\n4. Missing information or next steps: 3 bullet points maximum.\n\nKeep the full answer under 300 words.\nIf you mention a law, rule, or legal concept, explain it in simple words.\n\nDocument being analyzed: "${docName}"\nCategory: ${docCategory}\n${docDesc ? `Description: ${docDesc}\n` : ''}${docSection}${libraryContext}${caseContext}\n\nUser request: ${body.prompt}\n\nFocus on the practical legal meaning, the strongest points, the weak points, and what the user should do next.`;
+        const aiPrompt = `You are a careful arbitration document analyst. Your analysis must be grounded exclusively in what is actually written in the document provided and in verifiable, established law.\n\nCRITICAL ACCURACY RULES:\n- Only make findings based on text that is actually present in the document. Quote the relevant passage if you cite it.\n- If you refer to a law, statute, treaty, or institutional rule — cite the real name, jurisdiction, and article (e.g., "Arbitration Act Cap. 49, Kenya, Section 10" or "ICC Rules 2021, Article 23").\n- Do not invent case law, legal principles, or statutory provisions.\n- If the document is insufficient to determine a point, say "Cannot determine from this document — human legal review required."\n- This is decision support only. Do not make final legal conclusions. Flag where human legal judgment is required.\n\nWrite in plain English. Return plain text only. No JSON, no markdown tables, no code fences.\n\nUse this exact structure:\n1. Plain-English summary: 2 to 3 short sentences based on the document.\n2. Main issues identified (from the document): up to 3 bullet points.\n3. Legal risks (grounded in applicable law — name the law): up to 3 bullet points.\n4. Missing information or recommended next steps: up to 3 bullet points.\n\nKeep the full answer under 350 words.\n\nDocument being analyzed: "${docName}"\nCategory: ${docCategory}\n${docDesc ? `Description: ${docDesc}\n` : ''}${docSection}${libraryContext}${caseContext}\n\nUser request: ${body.prompt}\n\nFocus on the practical legal meaning, the strongest points, the weak points, and what the user should do next. Ground every observation in the document text or named applicable law.`;
         const analysis = cleanModelText(await callAI(aiPrompt));
         if (!analysis) return sendJSON(res, 503, { error: 'AI not configured. Add OPENAI_API_KEY, QWEN_API_KEY, or NVIDIA_API_KEY to .env.oracle' });
         const stored = await documentAnalysisService.storeAnalysis({
@@ -2635,14 +2673,17 @@ ${extractedText.slice(0, 25000)}
           });
         }
 
-        const prompt = `For a ${caseType || 'commercial'} arbitration with seat in ${seat}${arbitrationRules ? ` and selected rules ${arbitrationRules}` : ''}, provide a JSON object with:
-- governingLaw: standard substantive law (e.g., "Laws of Kenya")
-- arbitrationLaw: primary arbitration statute and current consolidated citation (e.g., "Arbitration Act, Cap. 49")
-- arbitrationRules: top recommended institutional rules for this jurisdiction
-- institutions: array of top 3 arbitration institutions
-- notes: one sentence on the legal framework
-- proceduralGuidance: short plain-English summary of how the selected rules should shape the case setup
-- tribunalGuidance: short plain-English summary of tribunal structure for the selected rules
+        const prompt = `For a ${caseType || 'commercial'} arbitration with seat in ${seat}${arbitrationRules ? ` and selected rules ${arbitrationRules}` : ''}, provide a JSON object with the following fields. All information must be legally accurate and verifiable:
+
+- governingLaw: the actual substantive law applicable in ${seat} (cite the correct jurisdiction and statute, e.g., "Laws of Kenya — governed by the Law of Contract Act Cap. 23 and common law")
+- arbitrationLaw: the real primary arbitration statute in ${seat} with its correct consolidated citation and year (e.g., "Arbitration Act, Cap. 49, Laws of Kenya (as amended)")
+- arbitrationRules: the actual recommended institutional rules for this seat, citing the real institution and current rules version (e.g., "Nairobi Centre for International Arbitration (NCIA) Rules 2015")
+- institutions: array of the top 3 real arbitration institutions available for this seat/region with brief accurate descriptions
+- notes: one sentence on the actual legal framework, citing the real statute or treaty
+- proceduralGuidance: accurate plain-English summary of how the named rules govern case setup, citing specific articles where relevant
+- tribunalGuidance: accurate description of tribunal structure under the named rules, citing specific articles
+
+CRITICAL: Only cite real statutes, institutions, and rules that exist. If you are not certain of a statute number or institution name, use the general description rather than inventing a citation.
 
 Respond ONLY with valid JSON, no markdown, no extra text.`;
         const text = await callAI(prompt);
