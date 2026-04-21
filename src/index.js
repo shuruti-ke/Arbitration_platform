@@ -319,6 +319,46 @@ function buildRuleGuidanceSummary(data = {}) {
   return cleanModelText(summaryParts.join(' '));
 }
 
+// --- F-002 remediation: Login rate limiter (per-email + per-IP) ---
+// Max 5 failed attempts per 15 minutes, then 15-minute lockout
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_ATTEMPTS = 5;
+const loginAttempts = new Map(); // key: "email|ip" -> { count, windowStart }
+
+function isLoginRateLimited(email, ip) {
+  const key = `${(email || '').toLowerCase()}|${ip || ''}`;
+  const now = Date.now();
+  const entry = loginAttempts.get(key);
+  if (!entry || now - entry.windowStart > LOGIN_WINDOW_MS) {
+    loginAttempts.set(key, { count: 0, windowStart: now });
+    return false;
+  }
+  return entry.count >= LOGIN_MAX_ATTEMPTS;
+}
+
+function recordLoginFailure(email, ip) {
+  const key = `${(email || '').toLowerCase()}|${ip || ''}`;
+  const now = Date.now();
+  const entry = loginAttempts.get(key);
+  if (!entry || now - entry.windowStart > LOGIN_WINDOW_MS) {
+    loginAttempts.set(key, { count: 1, windowStart: now });
+  } else {
+    entry.count += 1;
+  }
+}
+
+function resetLoginAttempts(email, ip) {
+  loginAttempts.delete(`${(email || '').toLowerCase()}|${ip || ''}`);
+}
+
+// Periodically clean up expired rate limit entries (every 30 minutes)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of loginAttempts.entries()) {
+    if (now - entry.windowStart > LOGIN_WINDOW_MS) loginAttempts.delete(key);
+  }
+}, 30 * 60 * 1000);
+
 // --- Server factory ---
 
 function createServer(services) {
@@ -356,7 +396,12 @@ function createServer(services) {
     }
   }
 
-  const corsOrigin = process.env.CORS_ORIGIN || '*';
+  // F-003 remediation: no wildcard fallback — must be explicitly configured
+  const corsOrigin = process.env.CORS_ORIGIN;
+  if (!corsOrigin) {
+    console.error('FATAL: CORS_ORIGIN environment variable is not set. Set it to your frontend URL (e.g. https://arbitration-platform.vercel.app).');
+    process.exit(1);
+  }
 
   return http.createServer(async (req, res) => {
     const parsedUrl = url.parse(req.url, true);
@@ -386,25 +431,40 @@ function createServer(services) {
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    // F-010: Content-Security-Policy
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.openai.com https://dashscope.aliyuncs.com; frame-ancestors 'none';");
 
     try {
       // --- GET /api/health ---
       if (path === '/api/health' && method === 'GET') {
-        return sendJSON(res, 200, {
-          status: 'OK',
-          timestamp: new Date().toISOString(),
-          database: oracleDb.isConnected() ? 'connected' : 'disconnected',
-          services: ['AI Orchestrator', 'Rule Engine', 'CA Service', 'AI Conflict Scanner']
-        });
+        // F-015: return minimal info to unauthenticated callers
+        const auth = req.headers['authorization'];
+        let isAdmin = false;
+        if (auth && auth.startsWith('Bearer ')) {
+          try { const d = authService.verifyToken(auth.slice(7)); isAdmin = d.role === 'admin'; } catch { /* ignore */ }
+        }
+        if (isAdmin) {
+          return sendJSON(res, 200, {
+            status: 'OK',
+            timestamp: new Date().toISOString(),
+            database: oracleDb.isConnected() ? 'connected' : 'disconnected',
+            services: ['AI Orchestrator', 'Rule Engine', 'CA Service', 'AI Conflict Scanner']
+          });
+        }
+        return sendJSON(res, 200, { status: 'OK' });
       }
 
       // --- GET /api/models ---
       if (path === '/api/models' && method === 'GET') {
+        const user = authenticate(req, res, ['admin']); // F-005/F-015
+        if (!user) return;
         return sendJSON(res, 200, { models: ['conflict-scanner', 'award-generator'] });
       }
 
       // --- GET /api/rules ---
       if (path === '/api/rules' && method === 'GET') {
+        const user = authenticate(req, res, ['admin']); // F-005/F-015
+        if (!user) return;
         return sendJSON(res, 200, {
           message: 'Rule engine initialized',
             institutions: ['LCIA', 'SIAC', 'Arbitration Act (Cap. 49)']
@@ -413,6 +473,8 @@ function createServer(services) {
 
       // --- POST /api/award/certify ---
       if (path === '/api/award/certify' && method === 'POST') {
+        const user = authenticate(req, res, ['admin', 'secretariat', 'arbitrator']); // F-005
+        if (!user) return;
         const awardData = await parseBody(req);
         const certification = AwardController.generateCertification(awardData);
         await auditTrail.logEvent({
@@ -425,11 +487,15 @@ function createServer(services) {
 
       // --- GET /api/ca/providers ---
       if (path === '/api/ca/providers' && method === 'GET') {
+        const user = authenticate(req, res); // F-005
+        if (!user) return;
         return sendJSON(res, 200, { providers: caService.getProviders() });
       }
 
       // --- POST /api/sign/document ---
       if (path === '/api/sign/document' && method === 'POST') {
+        const user = authenticate(req, res, ['admin', 'secretariat', 'arbitrator']); // F-005
+        if (!user) return;
         const requestData = await parseBody(req);
         if (!requestData.documentId && !requestData.content) {
           return sendJSON(res, 400, { error: 'documentId or content is required' });
@@ -449,6 +515,8 @@ function createServer(services) {
 
       // --- POST /api/conflicts/scan ---
       if (path === '/api/conflicts/scan' && method === 'POST') {
+        const user = authenticate(req, res); // F-005
+        if (!user) return;
         const requestData = await parseBody(req);
         if (!requestData.caseId) {
           return sendJSON(res, 400, { error: 'caseId is required' });
@@ -468,6 +536,8 @@ function createServer(services) {
 
       // --- POST /api/certificate/validate ---
       if (path === '/api/certificate/validate' && method === 'POST') {
+        const user = authenticate(req, res); // F-005
+        if (!user) return;
         const requestData = await parseBody(req);
         const result = await certificateValidator.validateCertificate(requestData.certificate || requestData);
         return sendJSON(res, 200, result);
@@ -475,6 +545,8 @@ function createServer(services) {
 
       // --- GET /api/metrics ---
       if (path === '/api/metrics' && method === 'GET') {
+        const user = authenticate(req, res, ['admin']); // F-005
+        if (!user) return;
         return sendJSON(res, 200, {
           message: 'Metrics dashboard endpoint',
           status: 'operational',
@@ -600,7 +672,7 @@ function createServer(services) {
         // Generate SHA-256 verification hash
         const hashInput = JSON.stringify({ caseId: body.caseId, title: pack.title, generatedAt: pack.generatedAt, packType: pack.packType });
         const verificationHash = crypto.createHash('sha256').update(hashInput).digest('hex');
-        awardHashStore.set(verificationHash, {
+        const awardRecord = {
           hash: verificationHash,
           caseId: body.caseId || null,
           title: pack.title,
@@ -608,7 +680,17 @@ function createServer(services) {
           generatedAt: pack.generatedAt,
           generatedBy: user.userId,
           seat: body.seat || null,
-        });
+        };
+        // F-011: persist to DB (in-memory fallback for backwards compat)
+        awardHashStore.set(verificationHash, awardRecord);
+        oracleDb.executeQuery(
+          `INSERT INTO award_hashes (hash, case_id, title, status, generated_at, generated_by, seat)
+           VALUES (:hash, :caseId, :title, :status, :generatedAt, :generatedBy, :seat)
+           ON CONFLICT (hash) DO NOTHING`,
+          { hash: verificationHash, caseId: awardRecord.caseId, title: awardRecord.title,
+            status: awardRecord.status, generatedAt: awardRecord.generatedAt ? new Date(awardRecord.generatedAt) : null,
+            generatedBy: awardRecord.generatedBy, seat: awardRecord.seat }
+        ).catch(err => console.error('Award hash persist error:', err.message));
         return sendJSON(res, 200, { ...pack, verificationHash });
       }
 
@@ -616,7 +698,18 @@ function createServer(services) {
       if (path === '/api/awards/verify' && method === 'GET') {
         const { hash } = parsedUrl.query;
         if (!hash) return sendJSON(res, 400, { error: 'hash query parameter required' });
-        const record = awardHashStore.get(hash);
+        // F-011: check DB first, fall back to in-memory (for uptime continuity)
+        let record = awardHashStore.get(hash);
+        if (!record) {
+          const dbResult = await oracleDb.executeQuery(
+            `SELECT hash, case_id AS "caseId", title, status, generated_at AS "generatedAt", generated_by AS "generatedBy", seat FROM award_hashes WHERE hash = :hash LIMIT 1`,
+            { hash }
+          ).catch(() => null);
+          if (dbResult && dbResult.rows && dbResult.rows.length > 0) {
+            record = dbResult.rows[0];
+            awardHashStore.set(hash, record); // Cache locally
+          }
+        }
         if (!record) return sendJSON(res, 404, { verified: false, message: 'Hash not found in registry' });
         return sendJSON(res, 200, { verified: true, ...record });
       }
@@ -723,7 +816,7 @@ Respond with ONLY a valid JSON array of short topic strings (no markdown, no exp
           const topics = JSON.parse(match[0]);
           return sendJSON(res, 200, { topics });
         } catch (err) {
-          return sendJSON(res, 500, { error: 'AI topic generation failed', detail: err.message });
+          console.error('AI topic generation failed:', err.message); return sendJSON(res, 500, { error: 'AI topic generation failed' });
         }
       }
 
@@ -764,7 +857,7 @@ correctIndex must be 0, 1, 2, or 3.`;
           q.difficulty = difficulty;
           return sendJSON(res, 200, { question: q });
         } catch (err) {
-          return sendJSON(res, 500, { error: 'AI question generation failed', detail: err.message });
+          console.error('AI question generation failed:', err.message); return sendJSON(res, 500, { error: 'AI question generation failed' });
         }
       }
 
@@ -808,7 +901,7 @@ correctIndex must be 0, 1, 2, or 3.`;
           }
           return sendJSON(res, 200, { text: text.trim(), wordCount: text.trim().split(/\s+/).filter(Boolean).length });
         } catch (err) {
-          return sendJSON(res, 500, { error: 'Text extraction failed', detail: err.message });
+          console.error('Text extraction failed:', err.message); return sendJSON(res, 500, { error: 'Text extraction failed' });
         }
       }
 
@@ -876,12 +969,14 @@ score is 0-100.`;
           report.checkedAt = new Date().toISOString();
           return sendJSON(res, 200, { report });
         } catch (err) {
-          return sendJSON(res, 500, { error: 'AI compliance check failed', detail: err.message });
+          console.error('AI compliance check failed:', err.message); return sendJSON(res, 500, { error: 'AI compliance check failed' });
         }
       }
 
       // --- POST /api/consent/record ---
       if (path === '/api/consent/record' && method === 'POST') {
+        const user = authenticate(req, res); // F-005
+        if (!user) return;
         const { userId, consentData } = await parseBody(req);
         if (!userId || !consentData) {
           return sendJSON(res, 400, { error: 'userId and consentData are required' });
@@ -892,6 +987,8 @@ score is 0-100.`;
 
       // --- GET /api/consent/check?userId=...&purpose=... ---
       if (path === '/api/consent/check' && method === 'GET') {
+        const user = authenticate(req, res); // F-005
+        if (!user) return;
         const { userId, purpose } = parsedUrl.query;
         if (!userId || !purpose) {
           return sendJSON(res, 400, { error: 'userId and purpose query params are required' });
@@ -912,6 +1009,9 @@ score is 0-100.`;
         if (!body.email || !body.password || !body.role) {
           return sendJSON(res, 400, { error: 'email, password, and role are required' });
         }
+        if (body.password.length < 12) { // F-008: NIST minimum 12 characters
+          return sendJSON(res, 400, { error: 'password must be at least 12 characters' });
+        }
         const newUser = await userService.createUser(body);
         await auditTrail.logEvent({ type: 'user_register', userId: user.userId, action: 'register', details: { email: body.email, role: body.role } });
         // Send welcome email with credentials
@@ -930,11 +1030,18 @@ score is 0-100.`;
         if (!email || !password) {
           return sendJSON(res, 400, { error: 'email and password are required' });
         }
+        const clientIp = req.socket.remoteAddress;
+        // F-002 remediation: enforce rate limit before attempting authentication
+        if (isLoginRateLimited(email, clientIp)) {
+          return sendJSON(res, 429, { error: 'Too many failed login attempts. Please try again in 15 minutes.' });
+        }
         try {
-          const result = await authService.login(email, password, req.socket.remoteAddress);
+          const result = await authService.login(email, password, clientIp);
+          resetLoginAttempts(email, clientIp); // Clear on success
           return sendJSON(res, 200, result);
         } catch (error) {
           if (error.message === 'Invalid credentials') {
+            recordLoginFailure(email, clientIp);
             return sendJSON(res, 401, { error: 'Invalid credentials' });
           }
           if (error.message === 'Account is deactivated') {
@@ -952,7 +1059,10 @@ score is 0-100.`;
         const user = authenticate(req, res);
         if (!user) return;
         const token = req.headers['authorization'].slice(7);
-        await authService.logout(token, user.userId);
+        // F-004 remediation: also blacklist the refresh token if provided
+        const body = await parseBody(req);
+        const refreshToken = body.refreshToken || null;
+        await authService.logout(token, user.userId, refreshToken);
         return sendJSON(res, 200, { success: true, message: 'Logged out successfully' });
       }
 
@@ -1010,8 +1120,8 @@ score is 0-100.`;
         if (!user) return;
         const targetId = path.split('/')[3];
         const body = await parseBody(req);
-        if (!body.newPassword || body.newPassword.length < 6) {
-          return sendJSON(res, 400, { error: 'newPassword must be at least 6 characters' });
+        if (!body.newPassword || body.newPassword.length < 12) { // F-008: NIST minimum 12
+          return sendJSON(res, 400, { error: 'newPassword must be at least 12 characters' });
         }
         await userService.resetPassword(targetId, body.newPassword);
         await auditTrail.logEvent({ type: 'password_reset', userId: user.userId, action: 'reset_password', details: { targetId } });
@@ -1520,7 +1630,21 @@ score is 0-100.`;
         const user = authenticate(req, res, ['admin', 'secretariat', 'arbitrator']);
         if (!user) return;
         const parts = path.split('/');
+        const caseIdForMilestone = parts[3];
         const milestoneId = parts[5];
+
+        // F-009 remediation: arbitrator must be assigned to THIS case
+        if (user.role === 'arbitrator') {
+          const assignCheck = await oracleDb.executeQuery(
+            `SELECT 1 FROM cases WHERE case_id = :caseId AND created_by = :userId
+             UNION SELECT 1 FROM arbitrator_assignments WHERE case_id = :caseId AND arbitrator_id = :userId LIMIT 1`,
+            { caseId: caseIdForMilestone, userId: user.userId }
+          ).catch(() => null);
+          if (!assignCheck || !assignCheck.rows || assignCheck.rows.length === 0) {
+            return sendJSON(res, 403, { error: 'Access denied: you are not assigned to this case' });
+          }
+        }
+
         const body = await parseBody(req);
         await oracleDb.executeQuery(
           `UPDATE case_milestones SET status = :status, completed_date = :completedDate, due_date = :dueDate, notes = :notes
@@ -1783,6 +1907,25 @@ score is 0-100.`;
         const qs = parsedUrl.query || {};
         const level = qs.level || 'all';
         const caseIdFilter = qs.caseId || null;
+
+        // F-006 remediation: party/counsel must be a participant in the requested case
+        if (caseIdFilter && ['party', 'counsel'].includes(user.role)) {
+          const partyCheck = await oracleDb.executeQuery(
+            `SELECT 1 FROM cases WHERE case_id = :caseId AND (parties LIKE :emailPattern OR created_by = :userId) LIMIT 1`,
+            { caseId: caseIdFilter, emailPattern: `%${user.email}%`, userId: user.userId }
+          ).catch(() => null);
+          const counselCheck = await oracleDb.executeQuery(
+            `SELECT 1 FROM case_counsel WHERE case_id = :caseId AND email = :email LIMIT 1`,
+            { caseId: caseIdFilter, email: user.email }
+          ).catch(() => null);
+          const isParticipant =
+            (partyCheck && partyCheck.rows && partyCheck.rows.length > 0) ||
+            (counselCheck && counselCheck.rows && counselCheck.rows.length > 0);
+          if (!isParticipant) {
+            return sendJSON(res, 403, { error: 'Access denied: you are not a participant in this case' });
+          }
+        }
+
         let sql = 'SELECT id, case_id, document_name, category, description, access_level, uploaded_by, created_at FROM documents WHERE 1=1';
         const params = {};
         if (level === 'global') { sql += ' AND access_level = \'global\''; }
@@ -2805,7 +2948,7 @@ async function startServer() {
   const auditTrail = new AuditTrail(oracleDb);
   const consentService = new ConsentService(oracleDb);
   const userService = new UserService(oracleDb);
-  const authService = new AuthService(userService, auditTrail);
+  const authService = new AuthService(userService, auditTrail, oracleDb);
   const hearingService = new HearingService(oracleDb);
 
   // 3. Initialize remaining services

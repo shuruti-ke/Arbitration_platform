@@ -4,15 +4,24 @@
 
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'arbitration-platform-jwt-secret-2026-change-in-production';
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '8h';
+// F-001 remediation: refuse to start if JWT_SECRET is missing or is the insecure default
+const INSECURE_DEFAULT = 'arbitration-platform-jwt-secret-2026-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || JWT_SECRET === INSECURE_DEFAULT) {
+  console.error('FATAL: JWT_SECRET environment variable is not set or is the insecure default value.');
+  console.error('Generate a secure secret with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+  process.exit(1);
+}
+
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 const REFRESH_EXPIRES_IN = '7d';
 
 class AuthService {
-  constructor(userService, auditTrail) {
+  constructor(userService, auditTrail, db) {
     this.userService = userService;
     this.auditTrail = auditTrail;
-    this.blacklistedTokens = new Set(); // in-memory token blacklist
+    this.db = db; // F-004 remediation: DB reference for persistent blacklist
+    this.blacklistedTokens = new Set(); // in-memory cache (backed by DB)
   }
 
   async login(email, password, ipAddress = 'unknown') {
@@ -59,8 +68,30 @@ class AuthService {
     };
   }
 
-  async logout(token, userId) {
+  async logout(token, userId, refreshToken = null) {
+    // F-004 remediation: blacklist both access token and refresh token
     this.blacklistedTokens.add(token);
+    if (refreshToken) this.blacklistedTokens.add(refreshToken);
+
+    // Persist to DB so blacklist survives server restarts
+    if (this.db) {
+      try {
+        const expiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7d max (refresh token lifetime)
+        await this.db.executeQuery(
+          `INSERT INTO token_blacklist (token_hash, expires_at) VALUES (:tokenHash, :expiresAt)
+           ON CONFLICT (token_hash) DO NOTHING`,
+          { tokenHash: require('crypto').createHash('sha256').update(token).digest('hex'), expiresAt: expiry }
+        ).catch(() => {}); // Swallow if table not yet migrated
+        if (refreshToken) {
+          await this.db.executeQuery(
+            `INSERT INTO token_blacklist (token_hash, expires_at) VALUES (:tokenHash, :expiresAt)
+             ON CONFLICT (token_hash) DO NOTHING`,
+            { tokenHash: require('crypto').createHash('sha256').update(refreshToken).digest('hex'), expiresAt: expiry }
+          ).catch(() => {});
+        }
+      } catch { /* DB unavailable — in-memory blacklist still active */ }
+    }
+
     await this.auditTrail.logEvent({
       type: 'auth_logout',
       userId,
@@ -93,6 +124,25 @@ class AuthService {
 
     const accessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
     return { accessToken, expiresIn: JWT_EXPIRES_IN };
+  }
+
+  async isTokenRevoked(token) {
+    if (this.blacklistedTokens.has(token)) return true;
+    // Check DB blacklist (handles tokens revoked before restart)
+    if (this.db) {
+      try {
+        const hash = require('crypto').createHash('sha256').update(token).digest('hex');
+        const result = await this.db.executeQuery(
+          `SELECT 1 FROM token_blacklist WHERE token_hash = :hash AND expires_at > NOW() LIMIT 1`,
+          { hash }
+        ).catch(() => null);
+        if (result && result.rows && result.rows.length > 0) {
+          this.blacklistedTokens.add(token); // Cache locally
+          return true;
+        }
+      } catch { /* DB unavailable — proceed with in-memory check only */ }
+    }
+    return false;
   }
 
   verifyToken(token) {

@@ -69,7 +69,9 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      await axios.post(`${API_BASE_URL}/auth/logout`);
+      // F-004: send refresh token so the server can blacklist it too
+      const refreshToken = localStorage.getItem('refreshToken');
+      await axios.post(`${API_BASE_URL}/auth/logout`, { refreshToken });
     } catch {}
     clearSession();
   };
