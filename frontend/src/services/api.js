@@ -48,6 +48,7 @@ export const apiService = {
   buildAwardPack: (awardData) => api.post('/awards/pack', awardData),
   verifyAwardHash: (hash) => api.get(`/awards/verify?hash=${encodeURIComponent(hash)}`),
   generateTrainingModule: (topic, level) => api.post('/training/generate-module', { topic, level }),
+  getModuleJobStatus: (jobId) => api.get(`/training/generate-module/status?jobId=${encodeURIComponent(jobId)}`),
   getTrendingTopics: () => api.post('/training/trending-topics', {}),
   getExamQuestion: (data) => api.post('/training/exam/question', data),
   checkCourtFilingCompliance: (jurisdiction, documentText) => api.post('/court-filing/compliance-check', { jurisdiction, documentText }),

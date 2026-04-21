@@ -53,7 +53,7 @@ const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || process.env.NGC_API_KEY;
 const NVIDIA_BASE_URL = process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1';
 const NVIDIA_MODEL = process.env.NVIDIA_MODEL || 'nvidia/nemotron-3-super-120b-a12b';
 
-async function callAI(prompt) {
+async function callAI(prompt, maxTokens = 2048) {
   const errors = [];
 
   // Try OpenAI first
@@ -65,7 +65,7 @@ async function callAI(prompt) {
         body: JSON.stringify({
           model: OPENAI_MODEL,
           messages: [{ role: 'user', content: prompt }],
-          max_tokens: 2048,
+          max_tokens: maxTokens,
           temperature: 0.3
         })
       });
@@ -86,7 +86,7 @@ async function callAI(prompt) {
         body: JSON.stringify({
           model: QWEN_MODEL,
           messages: [{ role: 'user', content: prompt }],
-          max_tokens: 2048,
+          max_tokens: maxTokens,
           temperature: 0.3
         })
       });
@@ -107,7 +107,7 @@ async function callAI(prompt) {
         body: JSON.stringify({
           model: NVIDIA_MODEL,
           messages: [{ role: 'user', content: prompt }],
-          max_tokens: 2048,
+          max_tokens: maxTokens,
           temperature: 0.3
         })
       });
@@ -221,6 +221,7 @@ const ConflictGraph = require('./models/conflict-graph');
 
 // In-memory award hash store: hash -> metadata
 const awardHashStore = new Map();
+const moduleJobStore = new Map(); // jobId -> { status, module, error }
 
 // Controllers
 const AwardController = require('./controllers/award-controller');
@@ -606,12 +607,18 @@ function createServer(services) {
         const { topic, level: reqLevel } = await parseBody(req);
         if (!topic) return sendJSON(res, 400, { error: 'topic is required' });
         const moduleLevel = ['Beginner','Intermediate','Advanced'].includes(reqLevel) ? reqLevel : 'Beginner';
-        const depthGuide = {
-          Beginner: 'foundational concepts, plain language, real-world analogies, no assumed prior knowledge',
-          Intermediate: 'procedural depth, case examples, comparative analysis across institutions, assumes basic arbitration knowledge',
-          Advanced: 'nuanced legal analysis, cutting-edge developments, strategic considerations, assumes practitioner-level expertise',
-        }[moduleLevel];
-        const prompt = `You are a senior international arbitration trainer writing a detailed ${moduleLevel}-level training module for legal professionals.
+        const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        moduleJobStore.set(jobId, { status: 'pending' });
+
+        // Run generation in background — respond immediately with jobId
+        (async () => {
+          try {
+            const depthGuide = {
+              Beginner: 'foundational concepts, plain language, real-world analogies, no assumed prior knowledge',
+              Intermediate: 'procedural depth, case examples, comparative analysis across institutions, assumes basic arbitration knowledge',
+              Advanced: 'nuanced legal analysis, cutting-edge developments, strategic considerations, assumes practitioner-level expertise',
+            }[moduleLevel];
+            const prompt = `You are a senior international arbitration trainer writing a detailed ${moduleLevel}-level training module for legal professionals.
 
 Topic: "${topic}"
 Level: ${moduleLevel} — ${depthGuide}
@@ -640,18 +647,33 @@ Respond with ONLY a valid JSON object (no markdown fences, no text outside the J
   "topics": ["Section 1 name","Section 2 name","Section 3 name","Section 4 name","Section 5 name","Section 6 name"],
   "content": "FULL module text here using ## headings, ### subheadings, - bullet points, and **bold** for key terms. Minimum 2500 words."
 }`;
-        try {
-          const raw = await callAI(prompt);
-          const match = raw.match(/\{[\s\S]*\}/);
-          if (!match) throw new Error('No JSON in AI response');
-          const mod = JSON.parse(match[0]);
-          mod.id = `ai_${Date.now()}`;
-          mod.aiGenerated = true;
-          mod.generatedAt = new Date().toISOString();
-          return sendJSON(res, 200, { module: mod });
-        } catch (err) {
-          return sendJSON(res, 500, { error: 'AI module generation failed', detail: err.message });
-        }
+            const raw = await callAI(prompt, 6000);
+            const match = raw.match(/\{[\s\S]*\}/);
+            if (!match) throw new Error('No JSON in AI response');
+            const mod = JSON.parse(match[0]);
+            mod.id = `ai_${Date.now()}`;
+            mod.aiGenerated = true;
+            mod.generatedAt = new Date().toISOString();
+            moduleJobStore.set(jobId, { status: 'done', module: mod });
+          } catch (err) {
+            moduleJobStore.set(jobId, { status: 'error', error: err.message });
+          }
+          // Clean up job after 10 minutes
+          setTimeout(() => moduleJobStore.delete(jobId), 10 * 60 * 1000);
+        })();
+
+        return sendJSON(res, 202, { jobId });
+      }
+
+      // --- GET /api/training/generate-module/status ---
+      if (path === '/api/training/generate-module/status' && method === 'GET') {
+        const user = authenticate(req, res, ['admin']);
+        if (!user) return;
+        const { jobId } = parsedUrl.query;
+        if (!jobId) return sendJSON(res, 400, { error: 'jobId required' });
+        const job = moduleJobStore.get(jobId);
+        if (!job) return sendJSON(res, 404, { error: 'Job not found or expired' });
+        return sendJSON(res, 200, job);
       }
 
       // --- POST /api/training/trending-topics ---

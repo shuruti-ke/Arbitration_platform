@@ -282,18 +282,63 @@ const Training = () => {
   const allPassed    = passedCount === totalCount && totalCount > 0;
 
   // ─── Admin: Generate module ─────────────────────────────────────────────────
+  const [genProgress, setGenProgress] = useState(0);
+  const [genStage, setGenStage] = useState('');
+
   const handleGenerateModule = async (topic) => {
     setGenLoading(true);
     setGenError(null);
+    setGenProgress(0);
+    setGenStage('Submitting request…');
     try {
       const res = await apiService.generateTrainingModule(topic || genTopic, genLevel);
-      const mod = res.data.module;
+      const { jobId } = res.data;
+
+      // Animated progress while polling
+      const stages = [
+        [10, 'Drafting introduction and legal framework…'],
+        [25, 'Defining key concepts…'],
+        [40, 'Writing core principles…'],
+        [55, 'Building case studies…'],
+        [68, 'Analysing challenges…'],
+        [80, 'Compiling best practices…'],
+        [90, 'Finalising and formatting…'],
+      ];
+      let stageIdx = 0;
+      const progressTimer = setInterval(() => {
+        if (stageIdx < stages.length) {
+          setGenProgress(stages[stageIdx][0]);
+          setGenStage(stages[stageIdx][1]);
+          stageIdx++;
+        }
+      }, 6000);
+
+      // Poll for result
+      let mod = null;
+      for (let i = 0; i < 60; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const statusRes = await apiService.getModuleJobStatus(jobId);
+        const job = statusRes.data;
+        if (job.status === 'done') { mod = job.module; break; }
+        if (job.status === 'error') throw new Error(job.error || 'Generation failed');
+      }
+      clearInterval(progressTimer);
+      if (!mod) throw new Error('Generation timed out. Please try again.');
+
+      setGenProgress(100);
+      setGenStage('Module ready!');
+      await new Promise(r => setTimeout(r, 600));
+
       setAiModules(prev => [mod, ...prev]);
       setGenOpen(false);
       setGenTopic('');
+      setGenProgress(0);
+      setGenStage('');
       setTrendingSuggestions([]);
     } catch (err) {
-      setGenError(err.response?.data?.error || t('Failed to generate module. Try again.'));
+      setGenError(err.response?.data?.error || err.message || t('Failed to generate module. Try again.'));
+      setGenProgress(0);
+      setGenStage('');
     } finally {
       setGenLoading(false);
     }
@@ -509,6 +554,15 @@ const Training = () => {
         </DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
           {genError && <Alert severity="error">{genError}</Alert>}
+          {genLoading && (
+            <Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                <Typography variant="caption" color="text.secondary">{genStage}</Typography>
+                <Typography variant="caption" color="text.secondary">{genProgress}%</Typography>
+              </Box>
+              <LinearProgress variant="determinate" value={genProgress} sx={{ height: 8, borderRadius: 4 }} />
+            </Box>
+          )}
           <TextField
             label={t('Module Topic')}
             value={genTopic}
