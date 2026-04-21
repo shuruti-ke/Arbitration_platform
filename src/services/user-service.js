@@ -127,22 +127,26 @@ class UserService {
     return bcrypt.compare(password, hash);
   }
 
-  async listUsers(filters = {}) {
+  async listUsers(filters = {}, pagination = {}) {
+    const limit = Math.min(parseInt(pagination.limit, 10) || 100, 500);
+    const offset = Math.max(parseInt(pagination.offset, 10) || 0, 0);
     if (this.dbService && this.dbService.isConnected()) {
       try {
         let sql = 'SELECT user_id, email, first_name, last_name, role, is_active, created_at FROM users WHERE 1=1';
         const params = {};
         if (filters.role) { sql += ' AND role = :role'; params.role = filters.role; }
-        sql += ' ORDER BY created_at DESC';
+        sql += ' ORDER BY created_at DESC LIMIT :limit OFFSET :offset';
+        params.limit = limit; params.offset = offset;
         const result = await this.dbService.executeQuery(sql, params);
         return result.rows || [];
       } catch (err) {
         console.error('User list DB read failed:', err.message);
       }
     }
-    return Array.from(this.users.values())
+    const all = Array.from(this.users.values())
       .filter(u => !filters.role || u.role === filters.role)
       .map(u => this._safeUser(u));
+    return all.slice(offset, offset + limit);
   }
 
   async deactivateUser(userId) {

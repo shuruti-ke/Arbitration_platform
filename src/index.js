@@ -141,6 +141,34 @@ async function callAI(prompt, maxTokens = 2048) {
   return null;
 }
 
+// F-016: magic-byte MIME type detection using file-type
+const fileType = require('file-type');
+
+// Map claimed extension to expected MIME prefixes/values
+const EXT_MIME_MAP = {
+  pdf:  ['application/pdf'],
+  docx: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/zip'],
+  doc:  ['application/msword', 'application/x-cfb'],
+  xlsx: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/zip'],
+  xls:  ['application/vnd.ms-excel', 'application/x-cfb'],
+  txt:  [], // plain text has no magic bytes — skip check
+  csv:  [],
+  tsv:  [],
+  md:   [],
+};
+
+async function assertFileTypeSafe(buffer, fileName) {
+  const ext = (fileName || '').split('.').pop().toLowerCase();
+  const allowed = EXT_MIME_MAP[ext];
+  if (allowed === undefined) return; // unknown extension — let virus scan handle it
+  if (allowed.length === 0) return;  // text-only format — no magic bytes to check
+  const detected = await fileType.fromBuffer(buffer);
+  if (!detected) return; // no magic bytes found — may be text, allow
+  if (!allowed.some(m => detected.mime === m || detected.mime.startsWith(m.split('/')[0] + '/vnd'))) {
+    throw Object.assign(new Error(`File content does not match claimed extension .${ext} (detected: ${detected.mime})`), { statusCode: 422 });
+  }
+}
+
 // Document text extraction (PDF, DOCX, XLSX, CSV, TXT)
 async function extractTextFromFile(base64Content, fileName, mimeType) {
   if (!base64Content) return null;
@@ -375,15 +403,44 @@ function createServer(services) {
     eSignatureController
   } = services;
 
-  // Auth middleware helper
+  // F-013: cookie helpers
+  function parseCookies(req) {
+    const header = req.headers['cookie'] || '';
+    return Object.fromEntries(
+      header.split(';').map(s => s.trim().split('=')).filter(p => p.length === 2).map(([k, v]) => [k.trim(), decodeURIComponent(v.trim())])
+    );
+  }
+
+  const IS_PROD = process.env.NODE_ENV !== 'development';
+  const COOKIE_FLAGS = `HttpOnly; Path=/; SameSite=Strict${IS_PROD ? '; Secure' : ''}`;
+
+  function setAuthCookies(res, accessToken, refreshToken) {
+    res.setHeader('Set-Cookie', [
+      `access_token=${encodeURIComponent(accessToken)}; Max-Age=3600; ${COOKIE_FLAGS}`,
+      `refresh_token=${encodeURIComponent(refreshToken)}; Max-Age=604800; ${COOKIE_FLAGS}`,
+    ]);
+  }
+
+  function clearAuthCookies(res) {
+    res.setHeader('Set-Cookie', [
+      `access_token=; Max-Age=0; ${COOKIE_FLAGS}`,
+      `refresh_token=; Max-Age=0; ${COOKIE_FLAGS}`,
+    ]);
+  }
+
+  // Auth middleware helper — reads from HttpOnly cookie, falls back to Bearer header
   function authenticate(req, res, roles = []) {
+    const cookies = parseCookies(req);
+    const cookieToken = cookies['access_token'];
     const auth = req.headers['authorization'];
-    if (!auth || !auth.startsWith('Bearer ')) {
+    const bearerToken = auth && auth.startsWith('Bearer ') ? auth.slice(7) : null;
+    const token = cookieToken || bearerToken;
+
+    if (!token) {
       sendJSON(res, 401, { error: 'Authentication required' });
       return null;
     }
     try {
-      const token = auth.slice(7);
       const decoded = authService.verifyToken(token);
       if (roles.length > 0 && !roles.includes(decoded.role) && decoded.role !== 'admin') {
         sendJSON(res, 403, { error: 'Insufficient permissions' });
@@ -408,10 +465,11 @@ function createServer(services) {
     const path = parsedUrl.pathname;
     const method = req.method;
 
-    // CORS headers
+    // CORS headers — credentials required for HttpOnly cookie transport (F-013)
     res.setHeader('Access-Control-Allow-Origin', corsOrigin);
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
 
     if (method === 'OPTIONS') {
       res.writeHead(204);
@@ -873,6 +931,9 @@ correctIndex must be 0, 1, 2, or 3.`;
         if (buffer.length > MAX_UPLOAD_BYTES) {
           return sendJSON(res, 413, { error: `File exceeds the 3.5 MB limit (${(buffer.length / 1024 / 1024).toFixed(1)} MB)` });
         }
+        // F-016: validate actual file type matches claimed extension
+        try { await assertFileTypeSafe(buffer, fileName); }
+        catch (e) { return sendJSON(res, 422, { error: e.message }); }
         const scanResult = await scanFileForViruses(buffer, fileName);
         if (!scanResult.clean) {
           const detail = scanResult.error || `Threats found: ${(scanResult.viruses || []).join(', ')}`;
@@ -1038,7 +1099,9 @@ score is 0-100.`;
         try {
           const result = await authService.login(email, password, clientIp);
           resetLoginAttempts(email, clientIp); // Clear on success
-          return sendJSON(res, 200, result);
+          // F-013: set HttpOnly cookies instead of returning tokens in body
+          setAuthCookies(res, result.accessToken, result.refreshToken);
+          return sendJSON(res, 200, { user: result.user, expiresIn: result.expiresIn });
         } catch (error) {
           if (error.message === 'Invalid credentials') {
             recordLoginFailure(email, clientIp);
@@ -1058,20 +1121,29 @@ score is 0-100.`;
       if (path === '/api/auth/logout' && method === 'POST') {
         const user = authenticate(req, res);
         if (!user) return;
-        const token = req.headers['authorization'].slice(7);
-        // F-004 remediation: also blacklist the refresh token if provided
-        const body = await parseBody(req);
-        const refreshToken = body.refreshToken || null;
+        // F-013: extract token from cookie first, then Bearer header
+        const cookies = parseCookies(req);
+        const token = cookies['access_token'] || (req.headers['authorization'] || '').slice(7);
+        const refreshToken = cookies['refresh_token'] || null;
         await authService.logout(token, user.userId, refreshToken);
+        // F-013: clear HttpOnly cookies on logout
+        clearAuthCookies(res);
         return sendJSON(res, 200, { success: true, message: 'Logged out successfully' });
       }
 
       // --- POST /api/auth/refresh ---
       if (path === '/api/auth/refresh' && method === 'POST') {
-        const { refreshToken } = await parseBody(req);
+        // F-013: read refresh token from HttpOnly cookie first, body fallback for compatibility
+        const cookies = parseCookies(req);
+        const body = await parseBody(req);
+        const refreshToken = cookies['refresh_token'] || body.refreshToken;
         if (!refreshToken) return sendJSON(res, 400, { error: 'refreshToken is required' });
         const result = await authService.refreshToken(refreshToken);
-        return sendJSON(res, 200, result);
+        // Set new access token cookie; keep same refresh token cookie
+        res.setHeader('Set-Cookie', [
+          `access_token=${encodeURIComponent(result.accessToken)}; Max-Age=3600; ${COOKIE_FLAGS}`,
+        ]);
+        return sendJSON(res, 200, { expiresIn: result.expiresIn });
       }
 
       // --- GET /api/auth/me ---
@@ -1090,9 +1162,12 @@ score is 0-100.`;
       if (path === '/api/users' && method === 'GET') {
         const user = authenticate(req, res, ['admin', 'secretariat']);
         if (!user) return;
-        const { role } = parsedUrl.query;
-        const users = await userService.listUsers(role ? { role } : {});
-        return sendJSON(res, 200, { users });
+        const qs = parsedUrl.query;
+        const { role } = qs;
+        const limit = Math.min(parseInt(qs.limit, 10) || 100, 500);
+        const offset = Math.max(parseInt(qs.offset, 10) || 0, 0);
+        const users = await userService.listUsers(role ? { role } : {}, { limit, offset });
+        return sendJSON(res, 200, { users, limit, offset });
       }
 
       // --- PUT /api/users/:userId ---
@@ -1132,10 +1207,12 @@ score is 0-100.`;
       if (path === '/api/admin/arbitrators' && method === 'GET') {
         const user = authenticate(req, res, ['admin']);
         if (!user) return;
-        // Fetch all arbitrators
+        // Fetch all arbitrators (paginated)
+        const arbLimit = Math.min(parseInt(parsedUrl.query.limit, 10) || 100, 500);
+        const arbOffset = Math.max(parseInt(parsedUrl.query.offset, 10) || 0, 0);
         const arbResult = await oracleDb.executeQuery(
-          `SELECT user_id, first_name, last_name, email, is_active, created_at FROM users WHERE role = 'arbitrator' ORDER BY last_name, first_name`,
-          {}
+          `SELECT user_id, first_name, last_name, email, is_active, created_at FROM users WHERE role = 'arbitrator' ORDER BY last_name, first_name LIMIT :limit OFFSET :offset`,
+          { limit: arbLimit, offset: arbOffset }
         );
         const arbitrators = (arbResult.rows || []);
         // For each arbitrator fetch their cases (no content — just metadata)
@@ -1143,14 +1220,14 @@ score is 0-100.`;
         const casesMap = {};
         if (arbIds.length > 0) {
           const caseResult = await oracleDb.executeQuery(
-            `SELECT case_id, title, status, payment_status, platform_fee, platform_fee_currency, created_by, created_at FROM cases WHERE created_by = ANY(:arbIds::text[]) ORDER BY created_at DESC`,
+            `SELECT case_id, title, status, payment_status, platform_fee, platform_fee_currency, created_by, created_at FROM cases WHERE created_by = ANY(:arbIds::text[]) ORDER BY created_at DESC LIMIT 500`,
             { arbIds }
           ).catch(async () => {
             // Fallback for databases that don't support ANY(:array)
             const rows = [];
             for (const arbId of arbIds) {
               const r = await oracleDb.executeQuery(
-                `SELECT case_id, title, status, payment_status, platform_fee, platform_fee_currency, created_by, created_at FROM cases WHERE created_by = :arbId ORDER BY created_at DESC`,
+                `SELECT case_id, title, status, payment_status, platform_fee, platform_fee_currency, created_by, created_at FROM cases WHERE created_by = :arbId ORDER BY created_at DESC LIMIT 50`,
                 { arbId }
               );
               rows.push(...(r.rows || []));
@@ -1450,44 +1527,47 @@ score is 0-100.`;
       if (path === '/api/cases' && method === 'GET') {
         const user = authenticate(req, res);
         if (!user) return;
-        const { status } = parsedUrl.query;
+        const qs = parsedUrl.query;
+        const { status } = qs;
+        const limit = Math.min(parseInt(qs.limit, 10) || 100, 500);
+        const offset = Math.max(parseInt(qs.offset, 10) || 0, 0);
         const params = {};
         let sql;
 
         if (user.role === 'admin') {
-          // Admin sees limited invoice/payment info only — no case content
-          // JOIN users to get arbitrator name
           sql = `SELECT c.case_id, c.title, c.status, c.payment_status, c.platform_fee, c.platform_fee_currency,
                    c.created_by, c.created_at,
                    COALESCE(u.first_name || ' ' || u.last_name, '') AS arbitrator_name,
                    u.email AS arbitrator_email
                  FROM cases c
                  LEFT JOIN users u ON u.user_id = c.created_by AND u.role = 'arbitrator'
-                 ORDER BY c.created_at DESC`;
+                 ORDER BY c.created_at DESC LIMIT :limit OFFSET :offset`;
+          params.limit = limit; params.offset = offset;
         } else if (user.role === 'secretariat') {
-          // Secretariat manages procedural side — can see all cases
-          sql = 'SELECT * FROM cases ORDER BY created_at DESC';
-          if (status) { sql = 'SELECT * FROM cases WHERE status = :status ORDER BY created_at DESC'; params.status = status; }
+          if (status) {
+            sql = 'SELECT * FROM cases WHERE status = :status ORDER BY created_at DESC LIMIT :limit OFFSET :offset';
+            params.status = status;
+          } else {
+            sql = 'SELECT * FROM cases ORDER BY created_at DESC LIMIT :limit OFFSET :offset';
+          }
+          params.limit = limit; params.offset = offset;
         } else if (user.role === 'arbitrator') {
-          // Arbitrators see their own cases only
-          sql = 'SELECT * FROM cases WHERE created_by = :userId ORDER BY created_at DESC';
-          params.userId = user.userId;
+          sql = 'SELECT * FROM cases WHERE created_by = :userId ORDER BY created_at DESC LIMIT :limit OFFSET :offset';
+          params.userId = user.userId; params.limit = limit; params.offset = offset;
         } else {
-          // Party / counsel — cases where they appear as a participant
-          // Match by user email against parties and case_counsel tables
           const profile = await userService.findById(user.userId);
           const email = profile?.email || profile?.EMAIL || user.email || '';
           sql = `SELECT DISTINCT c.* FROM cases c
             LEFT JOIN parties p ON p.case_id = c.case_id AND LOWER(p.email) = LOWER(:email)
             LEFT JOIN case_counsel cc ON cc.case_id = c.case_id AND LOWER(cc.email) = LOWER(:email2)
             WHERE p.party_id IS NOT NULL OR cc.counsel_id IS NOT NULL
-            ORDER BY c.created_at DESC`;
-          params.email = email;
-          params.email2 = email;
+            ORDER BY c.created_at DESC LIMIT :limit OFFSET :offset`;
+          params.email = email; params.email2 = email;
+          params.limit = limit; params.offset = offset;
         }
 
         const result = await oracleDb.executeQuery(sql, params);
-        return sendJSON(res, 200, { cases: result.rows || [] });
+        return sendJSON(res, 200, { cases: result.rows || [], limit, offset });
       }
 
       // --- GET /api/cases/:caseId ---
@@ -1926,14 +2006,17 @@ score is 0-100.`;
           }
         }
 
+        const limit = Math.min(parseInt(qs.limit, 10) || 100, 500);
+        const offset = Math.max(parseInt(qs.offset, 10) || 0, 0);
         let sql = 'SELECT id, case_id, document_name, category, description, access_level, uploaded_by, created_at FROM documents WHERE 1=1';
         const params = {};
         if (level === 'global') { sql += ' AND access_level = \'global\''; }
         else if (level === 'case') { sql += ' AND access_level = \'case\''; }
         if (caseIdFilter) { sql += ' AND case_id = :caseId'; params.caseId = caseIdFilter; }
-        sql += ' ORDER BY created_at DESC';
+        sql += ' ORDER BY created_at DESC LIMIT :limit OFFSET :offset';
+        params.limit = limit; params.offset = offset;
         const result = await oracleDb.executeQuery(sql, params);
-        return sendJSON(res, 200, { documents: result.rows || [] });
+        return sendJSON(res, 200, { documents: result.rows || [], limit, offset });
       }
 
       // --- POST /api/documents ---
@@ -1948,11 +2031,14 @@ score is 0-100.`;
           return sendJSON(res, 403, { error: 'Only admin/secretariat can add to the Platform Library' });
         }
         const content = body.content ? Buffer.from(body.content, 'base64') : null;
-        // Size + virus check
+        // Size + type + virus check
         if (content) {
           if (content.length > MAX_UPLOAD_BYTES) {
             return sendJSON(res, 413, { error: `File exceeds the 3.5 MB limit (${(content.length / 1024 / 1024).toFixed(1)} MB)` });
           }
+          // F-016: validate actual file type against claimed extension
+          try { await assertFileTypeSafe(content, body.documentName); }
+          catch (e) { return sendJSON(res, 422, { error: e.message }); }
           const scan = await scanFileForViruses(content, body.documentName);
           if (!scan.clean) {
             const detail = scan.error || `Threats found: ${(scan.viruses || []).join(', ')}`;

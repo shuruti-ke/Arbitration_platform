@@ -6,17 +6,10 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 60000,
+  withCredentials: true, // F-013: send HttpOnly cookies on every request
   headers: {
     'Content-Type': 'application/json',
   },
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken');
-  if (token) {
-    config.headers['Authorization'] = `Bearer ${token}`;
-  }
-  return config;
 });
 
 export const apiService = {
