@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Card,
@@ -10,9 +11,7 @@ import {
   Container,
   Divider,
   Grid,
-  MenuItem,
   Paper,
-  Select,
   Stack,
   TextField,
   Typography
@@ -206,18 +205,17 @@ const Compliance = () => {
               <Typography variant="h6" gutterBottom>
                 {t('Arbitrability Check')}
               </Typography>
-              <Select
-                fullWidth
-                value={selectedCaseId}
-                onChange={(event) => setSelectedCaseId(event.target.value)}
+              <Autocomplete
+                options={cases}
+                getOptionLabel={(option) => option.title || option.caseId || ''}
+                isOptionEqualToValue={(option, value) => option.caseId === value.caseId}
+                value={cases.find((c) => c.caseId === selectedCaseId) || null}
+                onChange={(_, newValue) => setSelectedCaseId(newValue?.caseId || '')}
+                renderInput={(params) => (
+                  <TextField {...params} label={t('Search case by title…')} placeholder={t('Type to filter cases')} />
+                )}
                 sx={{ mb: 2 }}
-              >
-                {cases.map((entry) => (
-                  <MenuItem key={entry.caseId} value={entry.caseId}>
-                    {entry.title || entry.caseId}
-                  </MenuItem>
-                ))}
-              </Select>
+              />
 
               <Stack spacing={2}>
                 <TextField label={t('Case Title')} value={caseDraft.title || ''} onChange={(e) => setCaseDraft((current) => ({ ...current, title: e.target.value }))} fullWidth />

@@ -693,7 +693,7 @@ function createServer(services) {
 
       // --- GET /api/legal-sources ---
       if (path === '/api/legal-sources' && method === 'GET') {
-        const user = authenticate(req, res, ['admin', 'secretariat']);
+        const user = authenticate(req, res);
         if (!user) return;
         return sendJSON(res, 200, {
           sources: legalSourceRegistry.getCurrentSources(),
@@ -703,14 +703,14 @@ function createServer(services) {
 
       // --- GET /api/compliance/gap-map ---
       if (path === '/api/compliance/gap-map' && method === 'GET') {
-        const user = authenticate(req, res, ['admin', 'secretariat']);
+        const user = authenticate(req, res);
         if (!user) return;
         return sendJSON(res, 200, complianceGapMapService.getGapMap());
       }
 
       // --- POST /api/compliance/arbitrability-check ---
       if (path === '/api/compliance/arbitrability-check' && method === 'POST') {
-        const user = authenticate(req, res, ['admin', 'secretariat', 'arbitrator']);
+        const user = authenticate(req, res);
         if (!user) return;
         const body = await parseBody(req);
         return sendJSON(res, 200, complianceGapMapService.assessArbitrability(body.case || body));
