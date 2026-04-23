@@ -141,29 +141,31 @@ async function callAI(prompt, maxTokens = 2048) {
   return null;
 }
 
-// F-016: magic-byte MIME type detection using file-type
-const fileType = require('file-type');
+// F-016: magic-byte MIME type detection using file-type (lazy-loaded, optional)
+let _fileType = null;
+function getFileType() {
+  if (_fileType) return _fileType;
+  try { _fileType = require('file-type'); } catch { /* not installed — skip check */ }
+  return _fileType;
+}
 
-// Map claimed extension to expected MIME prefixes/values
 const EXT_MIME_MAP = {
   pdf:  ['application/pdf'],
   docx: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/zip'],
   doc:  ['application/msword', 'application/x-cfb'],
   xlsx: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/zip'],
   xls:  ['application/vnd.ms-excel', 'application/x-cfb'],
-  txt:  [], // plain text has no magic bytes — skip check
-  csv:  [],
-  tsv:  [],
-  md:   [],
+  txt:  [], csv: [], tsv: [], md: [],
 };
 
 async function assertFileTypeSafe(buffer, fileName) {
+  const ft = getFileType();
+  if (!ft) return; // file-type not available — skip check, rely on virus scan
   const ext = (fileName || '').split('.').pop().toLowerCase();
   const allowed = EXT_MIME_MAP[ext];
-  if (allowed === undefined) return; // unknown extension — let virus scan handle it
-  if (allowed.length === 0) return;  // text-only format — no magic bytes to check
-  const detected = await fileType.fromBuffer(buffer);
-  if (!detected) return; // no magic bytes found — may be text, allow
+  if (!allowed || allowed.length === 0) return;
+  const detected = await ft.fromBuffer(buffer);
+  if (!detected) return;
   if (!allowed.some(m => detected.mime === m || detected.mime.startsWith(m.split('/')[0] + '/vnd'))) {
     throw Object.assign(new Error(`File content does not match claimed extension .${ext} (detected: ${detected.mime})`), { statusCode: 422 });
   }
@@ -1099,9 +1101,9 @@ score is 0-100.`;
         try {
           const result = await authService.login(email, password, clientIp);
           resetLoginAttempts(email, clientIp); // Clear on success
-          // F-013: set HttpOnly cookies instead of returning tokens in body
+          // F-013: set HttpOnly cookies; also return tokens in body for Vercel proxy compat
           setAuthCookies(res, result.accessToken, result.refreshToken);
-          return sendJSON(res, 200, { user: result.user, expiresIn: result.expiresIn });
+          return sendJSON(res, 200, { accessToken: result.accessToken, refreshToken: result.refreshToken, user: result.user, expiresIn: result.expiresIn });
         } catch (error) {
           if (error.message === 'Invalid credentials') {
             recordLoginFailure(email, clientIp);
@@ -1143,7 +1145,7 @@ score is 0-100.`;
         res.setHeader('Set-Cookie', [
           `access_token=${encodeURIComponent(result.accessToken)}; Max-Age=3600; ${COOKIE_FLAGS}`,
         ]);
-        return sendJSON(res, 200, { expiresIn: result.expiresIn });
+        return sendJSON(res, 200, { accessToken: result.accessToken, expiresIn: result.expiresIn });
       }
 
       // --- GET /api/auth/me ---

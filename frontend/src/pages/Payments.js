@@ -78,7 +78,7 @@ const Payments = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiService.request('GET', '/api/payments');
+      const res = await apiService.request('GET', '/payments');
       setPayments(res.data?.payments || []);
       setPendingCases(res.data?.pendingCases || []);
     } catch (e) {
@@ -94,7 +94,7 @@ const Payments = () => {
     if (!invoiceAmount || !invoiceCase) return;
     setInvoiceLoading(true);
     try {
-      await apiService.request('POST', '/api/payments/invoice', {
+      await apiService.request('POST', '/payments/invoice', {
         caseId: invoiceCase.CASE_ID || invoiceCase.case_id,
         amount: parseFloat(invoiceAmount),
         currency: invoiceCurrency,
@@ -117,7 +117,7 @@ const Payments = () => {
       reader.onload = async () => {
         const base64 = reader.result.split(',')[1];
         const paymentId = proofPayment.PAYMENT_ID || proofPayment.payment_id;
-        await apiService.request('POST', `/api/payments/${paymentId}/proof`, {
+        await apiService.request('POST', `/payments/${paymentId}/proof`, {
           proofDocument: base64,
           fileName: proofFile.name,
           paymentMethod: proofMethod,
@@ -139,7 +139,7 @@ const Payments = () => {
     setApproveLoading(true);
     try {
       const paymentId = approvePayment.PAYMENT_ID || approvePayment.payment_id;
-      await apiService.request('POST', `/api/payments/${paymentId}/approve`, { notes: approveNotes });
+      await apiService.request('POST', `/payments/${paymentId}/approve`, { notes: approveNotes });
       setApproveDialog(false);
       setSuccessMsg('Payment approved. Case is now active. Receipt issued to arbitrator.');
       load();
