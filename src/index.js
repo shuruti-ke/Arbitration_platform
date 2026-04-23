@@ -713,7 +713,51 @@ function createServer(services) {
         const user = authenticate(req, res);
         if (!user) return;
         const body = await parseBody(req);
-        return sendJSON(res, 200, complianceGapMapService.assessArbitrability(body.case || body));
+        const caseData = body.case || body;
+
+        // Rule-based pre-checks for missing fields
+        const ruleCheck = complianceGapMapService.assessArbitrability(caseData);
+
+        // Build AI prompt with all available case data
+        const caseContext = [
+          caseData.title        ? `Case title: ${caseData.title}` : null,
+          caseData.caseType     ? `Case type: ${caseData.caseType}` : null,
+          caseData.description  ? `Dispute description: ${caseData.description}` : null,
+          caseData.claimantName ? `Claimant: ${caseData.claimantName}` : null,
+          caseData.respondentName ? `Respondent: ${caseData.respondentName}` : null,
+          caseData.governingLaw ? `Governing law: ${caseData.governingLaw}` : null,
+          caseData.seatOfArbitration ? `Seat of arbitration: ${caseData.seatOfArbitration}` : null,
+          caseData.arbitrationRules  ? `Arbitration rules: ${caseData.arbitrationRules}` : null,
+          caseData.reliefSought ? `Relief sought: ${caseData.reliefSought}` : null,
+          caseData.arbitratorNominee ? `Arbitrator nominee: ${caseData.arbitratorNominee}` : null,
+        ].filter(Boolean).join('\n');
+
+        const aiPrompt = `You are a senior arbitration counsel assessing whether the following dispute is arbitrable under the Kenya Arbitration Act, Cap. 49 and applicable international arbitration law.
+
+CASE DETAILS:
+${caseContext || 'No case details provided.'}
+
+Provide a structured arbitrability assessment covering:
+1. SUBJECT-MATTER ARBITRABILITY: Is this dispute capable of settlement by arbitration under Kenyan law? Cite the relevant provisions of the Kenya Arbitration Act, Cap. 49 or any other applicable statute.
+2. JURISDICTION & SEAT: Are the seat and governing law consistent? Any conflicts or gaps?
+3. ARBITRATION AGREEMENT: Based on the rules specified, are there any procedural concerns?
+4. RED FLAGS: Any features of this dispute that may make it non-arbitrable or that require special handling?
+5. RECOMMENDATION: Is this case ready to proceed to arbitration, or does it need further information or legal review first?
+
+Be specific and cite actual legal provisions. If information is missing, state what additional details are needed and why they matter legally.`;
+
+        let aiAssessment = null;
+        try {
+          aiAssessment = await callAI(aiPrompt, 1200);
+        } catch (aiErr) {
+          // Fall back to rule-based only
+        }
+
+        return sendJSON(res, 200, {
+          ...ruleCheck,
+          assessment: aiAssessment || ruleCheck.assessment,
+          aiPowered: !!aiAssessment,
+        });
       }
 
       // --- GET /api/signing/readiness ---
