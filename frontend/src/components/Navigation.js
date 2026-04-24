@@ -58,7 +58,7 @@ const NAV_ITEMS = [
   { to: '/compliance',    icon: <ComplianceIcon />,  labelKey: 'Compliance',       roles: ['admin', 'secretariat', 'arbitrator'] },
   { to: '/intelligence',  icon: <IntelligenceIcon />,labelKey: 'AI Intelligence',  roles: ['admin', 'secretariat', 'arbitrator'] },
   { to: '/ip-arbitration',icon: <IPIcon />,          labelKey: 'IP Arbitration',   roles: ['admin', 'secretariat', 'arbitrator', 'counsel'] },
-  { to: '/payments',      icon: <PaymentIcon />,     labelKey: 'Payments',         roles: ['admin', 'arbitrator'] },
+  { to: '/payments',      icon: <PaymentIcon />,     labelKey: 'Account Management', roles: ['admin', 'arbitrator'] },
   { to: '/users',         icon: <UsersIcon />,       labelKey: 'Users',            roles: ['admin'] },
   { to: '/court-filing',  icon: <CourtFilingIcon />, labelKey: 'Court Filing',     roles: ['admin', 'secretariat', 'arbitrator', 'counsel'] },
   { to: '/training',      icon: <TrainingIcon />,    labelKey: 'Training',         roles: ['admin', 'secretariat', 'arbitrator', 'counsel', 'party'] },

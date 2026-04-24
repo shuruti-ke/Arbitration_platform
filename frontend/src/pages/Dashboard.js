@@ -74,7 +74,7 @@ const ROLE_CONTENT = {
       'Manage the document library (laws, rules, AI knowledge base)',
     ],
     actions: [
-      { label: 'Payment Management', to: '/payments', icon: <PaymentIcon /> },
+      { label: 'Account Management', to: '/payments', icon: <PaymentIcon /> },
       { label: 'Manage Users', to: '/users', icon: <UsersIcon /> },
       { label: 'Analytics', to: '/analytics', icon: <AnalyticsIcon /> },
     ]
@@ -115,7 +115,7 @@ const ROLE_CONTENT = {
     ],
     actions: [
       { label: 'My Cases', to: '/cases', icon: <AssignmentIcon /> },
-      { label: 'Payments', to: '/payments', icon: <PaymentIcon /> },
+      { label: 'My Account', to: '/payments', icon: <PaymentIcon /> },
       { label: 'Hearings', to: '/hearings', icon: <HearingIcon /> },
     ]
   },
@@ -373,7 +373,7 @@ const AdminDashboard = ({ analytics, t }) => {
               <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>Quick Actions</Typography>
               <Stack spacing={1}>
                 <Button fullWidth variant="contained" startIcon={<PaymentIcon />} component={Link} to="/payments" color="primary">
-                  Payment Management
+                  Account Management
                 </Button>
                 <Button fullWidth variant="outlined" startIcon={<UsersIcon />} component={Link} to="/users">
                   Register New Arbitrator
