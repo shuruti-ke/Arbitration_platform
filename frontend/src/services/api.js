@@ -78,6 +78,9 @@ export const apiService = {
   getSettings: () => api.get('/settings'),
   updateSettings: (settings) => api.put('/settings', settings),
 
+  // Tax rules
+  getTaxRules: (countryCode) => api.get(`/tax/rules${countryCode ? `?country=${countryCode}` : ''}`),
+
   // Parties & Counsel
   addParty: (caseId, partyData) => api.post(`/cases/${caseId}/parties`, partyData),
   addCounsel: (caseId, counselData) => api.post(`/cases/${caseId}/counsel`, counselData),

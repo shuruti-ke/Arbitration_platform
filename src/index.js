@@ -261,6 +261,7 @@ const { UserService, ROLES } = require('./services/user-service');
 const AuthService = require('./services/auth-service');
 const HearingService = require('./services/hearing-service');
 const EmailService = require('./services/email-service');
+const taxService = require('./services/tax-service');
 const emailService = new EmailService();
 
 // Models
@@ -2188,6 +2189,16 @@ score is 0-100.`;
         if (!user) return;
         const body = await parseBody(req);
         if (!body.caseId || !body.amount) return sendJSON(res, 400, { error: 'caseId and amount are required' });
+
+        // Load org home country for tax calculation
+        let homeCountry = 'KE';
+        try {
+          const settingsRes = await oracleDb.executeQuery(`SELECT value FROM platform_settings WHERE key = 'homeCountry'`, {});
+          homeCountry = (settingsRes.rows || [])[0]?.value || (settingsRes.rows || [])[0]?.VALUE || 'KE';
+        } catch {}
+        const subtotal = parseFloat(body.amount);
+        const tax = taxService.calculateTax(subtotal, homeCountry);
+
         const caseRes = await oracleDb.executeQuery('SELECT * FROM cases WHERE case_id = :caseId', { caseId: body.caseId });
         if (!caseRes.rows?.length) return sendJSON(res, 404, { error: 'Case not found' });
         const c = caseRes.rows[0];
@@ -2195,22 +2206,31 @@ score is 0-100.`;
         const paymentId = 'pay-' + Date.now();
         const invoiceNumber = `INV-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
         await oracleDb.executeQuery(
-          `INSERT INTO case_payments (payment_id, case_id, arbitrator_id, platform_fee, currency, invoice_number, invoice_issued_at, invoice_issued_by, status)
-           VALUES (:paymentId, :caseId, :arbitratorId, :fee, :currency, :invoiceNumber, :now, :issuedBy, 'invoiced')`,
+          `INSERT INTO case_payments (payment_id, case_id, arbitrator_id, platform_fee, currency,
+             invoice_number, invoice_issued_at, invoice_issued_by, status,
+             subtotal_amount, tax_type, tax_rate, tax_amount, tax_exempt, invoice_description)
+           VALUES (:paymentId, :caseId, :arbitratorId, :fee, :currency, :invoiceNumber, :now, :issuedBy, 'invoiced',
+             :subtotal, :taxType, :taxRate, :taxAmount, :taxExempt, :description)`,
           {
             paymentId,
             caseId: body.caseId,
             arbitratorId: createdBy,
-            fee: body.amount,
+            fee: tax.total,       // total inclusive of tax
             currency: body.currency || 'KES',
             invoiceNumber,
             now: new Date(),
-            issuedBy: user.userId
+            issuedBy: user.userId,
+            subtotal,
+            taxType: tax.taxType,
+            taxRate: tax.taxRate,
+            taxAmount: tax.taxAmount,
+            taxExempt: tax.exempt,
+            description: body.description || null,
           }
         );
         await oracleDb.executeQuery(
           `UPDATE cases SET payment_status = 'invoiced', platform_fee = :fee, platform_fee_currency = :currency WHERE case_id = :caseId`,
-          { fee: body.amount, currency: body.currency || 'KES', caseId: body.caseId }
+          { fee: tax.total, currency: body.currency || 'KES', caseId: body.caseId }
         );
         // Notify arbitrator
         setImmediate(async () => {
@@ -2819,14 +2839,44 @@ ${extractedText.slice(0, 25000)}
       if (path === '/api/settings' && method === 'GET') {
         const user = authenticate(req, res);
         if (!user) return;
-        return sendJSON(res, 200, { settings: { institution: 'Arbitration Platform', timezone: 'Africa/Nairobi' } });
+        const rows = await oracleDb.executeQuery('SELECT key, value FROM platform_settings', {});
+        const settings = {};
+        for (const r of (rows.rows || [])) settings[r.key || r.KEY] = r.value || r.VALUE;
+        // Attach live tax rules for the home country
+        const homeCountry = settings.homeCountry || 'KE';
+        settings.taxRules = taxService.getRules(homeCountry);
+        return sendJSON(res, 200, { settings });
       }
 
       // --- PUT /api/settings ---
       if (path === '/api/settings' && method === 'PUT') {
         const user = authenticate(req, res, ['admin']);
         if (!user) return;
+        const body = await parseBody(req);
+        const allowed = ['homeCountry','homeCurrency','institutionName','taxRegistrationNumber','invoiceFooter'];
+        for (const key of allowed) {
+          if (body[key] !== undefined) {
+            await oracleDb.executeQuery(
+              `INSERT INTO platform_settings (key, value, updated_at, updated_by) VALUES (:key, :value, :now, :by)
+               ON CONFLICT (key) DO UPDATE SET value = :value, updated_at = :now, updated_by = :by`,
+              { key, value: String(body[key]), now: new Date(), by: user.userId }
+            );
+          }
+        }
         return sendJSON(res, 200, { success: true });
+      }
+
+      // --- GET /api/tax/rules ---
+      if (path === '/api/tax/rules' && method === 'GET') {
+        const user = authenticate(req, res);
+        if (!user) return;
+        const countryCode = parsedUrl.query.country;
+        if (countryCode) {
+          const rules = taxService.getRules(countryCode);
+          if (!rules) return sendJSON(res, 404, { error: `No tax rules found for country code: ${countryCode}` });
+          return sendJSON(res, 200, { rules, calculation: taxService.calculateTax(1000, countryCode) });
+        }
+        return sendJSON(res, 200, { countries: taxService.listCountries() });
       }
 
       // =============================================

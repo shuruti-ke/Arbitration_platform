@@ -1,11 +1,11 @@
 // src/pages/Payments.js  — Account Management
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   Container, Typography, Paper, Box, Button, TextField, Grid, Chip, Stack,
   Alert, Dialog, DialogTitle, DialogContent, DialogActions, Divider,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Tabs, Tab, CircularProgress, LinearProgress, Select, MenuItem,
-  FormControl, InputLabel, Card, CardContent, Tooltip, IconButton,
+  FormControl, InputLabel, Card, CardContent, Autocomplete,
 } from '@mui/material';
 import {
   Receipt as ReceiptIcon,
@@ -17,12 +17,14 @@ import {
   CreditCard as CardIcon,
   AccountBalanceWallet as WalletIcon,
   Sync as ReconcileIcon,
-  Description as StatementIcon,
-  Download as DownloadIcon,
   Print as PrintIcon,
   TrendingUp as TrendingUpIcon,
   Warning as WarningIcon,
   CheckCircleOutline as MatchedIcon,
+  Settings as SettingsIcon,
+  Public as CountryIcon,
+  Percent as TaxIcon,
+  Save as SaveIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { apiService } from '../services/api';
@@ -173,13 +175,46 @@ const Payments = () => {
   const [statementPeriod, setStatementPeriod] = useState('All time');
   const printRef = useRef();
 
+  // Org settings + tax
+  const [orgSettings, setOrgSettings] = useState({ homeCountry: 'KE', homeCurrency: 'KES', institutionName: '', taxRegistrationNumber: '', invoiceFooter: '', taxRules: null });
+  const [taxCountries, setTaxCountries] = useState([]);
+  const [settingsDialog, setSettingsDialog] = useState(false);
+  const [settingsDraft, setSettingsDraft] = useState({});
+  const [settingsSaving, setSettingsSaving] = useState(false);
+
+  // Live tax preview in invoice dialog
+  const taxPreview = useMemo(() => {
+    const amount = parseFloat(invoiceAmount) || 0;
+    if (!amount || !orgSettings.taxRules) return null;
+    const r = orgSettings.taxRules;
+    if (r.arbitrationExempt || r.arbitrationRate === 0) {
+      return { subtotal: amount, taxAmount: 0, total: amount, label: r.taxType === 'None' ? 'No tax' : `${r.taxType} — zero-rated / exempt`, exempt: true };
+    }
+    const taxAmount = parseFloat((amount * r.arbitrationRate).toFixed(2));
+    return {
+      subtotal: amount,
+      taxAmount,
+      total: parseFloat((amount + taxAmount).toFixed(2)),
+      label: `${r.taxType} ${(r.arbitrationRate * 100).toFixed(1)}%`,
+      exempt: false,
+    };
+  }, [invoiceAmount, orgSettings.taxRules]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiService.request('GET', '/payments');
-      setPayments(res.data?.payments || []);
-      setPendingCases(res.data?.pendingCases || []);
+      const [payRes, settingsRes, taxRes] = await Promise.all([
+        apiService.request('GET', '/payments'),
+        apiService.getSettings().catch(() => ({ data: { settings: {} } })),
+        apiService.request('GET', '/tax/rules').catch(() => ({ data: { countries: [] } })),
+      ]);
+      setPayments(payRes.data?.payments || []);
+      setPendingCases(payRes.data?.pendingCases || []);
+      const s = settingsRes.data?.settings || {};
+      setOrgSettings(prev => ({ ...prev, ...s }));
+      setSettingsDraft(s);
+      setTaxCountries(taxRes.data?.countries || []);
     } catch (e) {
       setError(e.response?.data?.error || 'Could not load account records.');
     } finally {
@@ -256,6 +291,28 @@ const Payments = () => {
     }
   };
 
+  const handleSaveSettings = async () => {
+    setSettingsSaving(true);
+    try {
+      await apiService.updateSettings(settingsDraft);
+      // Reload settings + tax rules
+      const [settingsRes, taxRulesRes] = await Promise.all([
+        apiService.getSettings(),
+        settingsDraft.homeCountry
+          ? apiService.request('GET', `/tax/rules?country=${settingsDraft.homeCountry}`)
+          : Promise.resolve({ data: { rules: null } }),
+      ]);
+      const s = settingsRes.data?.settings || {};
+      setOrgSettings(prev => ({ ...prev, ...s, taxRules: taxRulesRes.data?.rules || s.taxRules }));
+      setSettingsDialog(false);
+      setSuccessMsg('Organisation settings saved.');
+    } catch (e) {
+      setError('Could not save settings.');
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
+
   const handleApprove = async () => {
     if (!approvePayment) return;
     setApproveLoading(true);
@@ -305,17 +362,41 @@ const Payments = () => {
       }}>
         <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
           <WalletIcon sx={{ fontSize: 40 }} />
-          <Box>
+          <Box sx={{ flex: 1 }}>
             <Typography variant="h4" fontWeight={700} sx={{ letterSpacing: '-0.02em' }}>
               {isAdmin ? 'Account Management' : 'My Account'}
             </Typography>
             <Typography variant="body2" sx={{ opacity: 0.88, mt: 0.5 }}>
               {isAdmin
-                ? 'Invoicing, receipts, reconciliation, and financial statements for all arbitration cases.'
+                ? `Invoicing, receipts, reconciliation, and financial statements — ${orgSettings.institutionName || 'NCIA'}`
                 : 'View your invoices, upload proof of payment, and track case activation.'}
             </Typography>
           </Box>
+          {isAdmin && (
+            <Button variant="outlined" size="small" startIcon={<SettingsIcon />}
+              sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.5)', '&:hover': { borderColor: '#fff' } }}
+              onClick={() => { setSettingsDraft({ ...orgSettings }); setSettingsDialog(true); }}>
+              Org Settings
+            </Button>
+          )}
         </Stack>
+        {/* Tax rules banner */}
+        {isAdmin && orgSettings.taxRules && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 1, p: 1.5, borderRadius: 1, background: 'rgba(255,255,255,0.1)' }}>
+            <CountryIcon sx={{ fontSize: 18, opacity: 0.8 }} />
+            <Typography variant="caption" sx={{ opacity: 0.9 }}>
+              <strong>{orgSettings.taxRules.country}</strong> — {orgSettings.taxRules.taxType}
+              {orgSettings.taxRules.arbitrationExempt
+                ? ' (arbitration services zero-rated/exempt)'
+                : ` ${(orgSettings.taxRules.arbitrationRate * 100).toFixed(1)}% on arbitration services`}
+              {orgSettings.taxRegistrationNumber && ` · Tax Reg: ${orgSettings.taxRegistrationNumber}`}
+            </Typography>
+            <Box sx={{ flex: 1 }} />
+            <Typography variant="caption" sx={{ opacity: 0.7 }}>
+              {orgSettings.taxRules.taxAuthority}
+            </Typography>
+          </Box>
+        )}
 
         {/* Summary stat pills */}
         <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
@@ -819,21 +900,64 @@ const Payments = () => {
           </Typography>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <Stack direction="row" spacing={2}>
-              <TextField label="Platform Fee Amount" type="number" fullWidth value={invoiceAmount}
-                onChange={e => setInvoiceAmount(e.target.value)} helperText="Arbitration platform fee" />
-              <FormControl sx={{ minWidth: 140 }}>
+              <TextField label="Subtotal (before tax)" type="number" fullWidth value={invoiceAmount}
+                onChange={e => setInvoiceAmount(e.target.value)}
+                helperText={orgSettings.taxRules
+                  ? `Tax: ${orgSettings.taxRules.taxType} ${orgSettings.taxRules.arbitrationExempt ? '— exempt' : `${(orgSettings.taxRules.arbitrationRate*100).toFixed(1)}%`}`
+                  : 'Platform fee'} />
+              <FormControl sx={{ minWidth: 130 }}>
                 <InputLabel>Currency</InputLabel>
                 <Select value={invoiceCurrency} label="Currency" onChange={e => setInvoiceCurrency(e.target.value)}>
                   <MenuItem value="KES">KES</MenuItem>
                   <MenuItem value="USD">USD</MenuItem>
                   <MenuItem value="EUR">EUR</MenuItem>
                   <MenuItem value="GBP">GBP</MenuItem>
+                  <MenuItem value="UGX">UGX</MenuItem>
+                  <MenuItem value="TZS">TZS</MenuItem>
+                  <MenuItem value="ZAR">ZAR</MenuItem>
+                  <MenuItem value="NGN">NGN</MenuItem>
+                  <MenuItem value="GHS">GHS</MenuItem>
+                  <MenuItem value="AED">AED</MenuItem>
                 </Select>
               </FormControl>
             </Stack>
+
+            {/* Tax breakdown preview */}
+            {taxPreview && parseFloat(invoiceAmount) > 0 && (
+              <Paper variant="outlined" sx={{ p: 2, background: taxPreview.exempt ? '#f1f8e9' : '#fff8e1', borderRadius: 1 }}>
+                <Stack spacing={0.5}>
+                  <Stack direction="row" justifyContent="space-between">
+                    <Typography variant="body2" color="text.secondary">Subtotal</Typography>
+                    <Typography variant="body2">{invoiceCurrency} {taxPreview.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Typography>
+                  </Stack>
+                  <Stack direction="row" justifyContent="space-between">
+                    <Typography variant="body2" color="text.secondary">{taxPreview.label}</Typography>
+                    <Typography variant="body2" color={taxPreview.exempt ? 'success.main' : 'warning.dark'}>
+                      {taxPreview.exempt ? '—' : `${invoiceCurrency} ${taxPreview.taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                    </Typography>
+                  </Stack>
+                  <Divider />
+                  <Stack direction="row" justifyContent="space-between">
+                    <Typography variant="body2" fontWeight={700}>Invoice Total</Typography>
+                    <Typography variant="body2" fontWeight={700} color="primary">
+                      {invoiceCurrency} {taxPreview.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </Typography>
+                  </Stack>
+                </Stack>
+                {orgSettings.taxRegistrationNumber && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                    Tax Reg No: {orgSettings.taxRegistrationNumber}
+                  </Typography>
+                )}
+              </Paper>
+            )}
+
             <TextField label="Invoice Description (optional)" fullWidth value={invoiceDesc}
               onChange={e => setInvoiceDesc(e.target.value)}
               placeholder="e.g. Arbitration filing fee — Case No. 2026/001" />
+            {orgSettings.invoiceFooter && (
+              <Typography variant="caption" color="text.secondary">{orgSettings.invoiceFooter}</Typography>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -841,7 +965,7 @@ const Payments = () => {
           <Button variant="contained" onClick={handleIssueInvoice}
             disabled={invoiceLoading || !invoiceAmount}
             startIcon={invoiceLoading ? <CircularProgress size={16} /> : <ReceiptIcon />}>
-            {invoiceLoading ? 'Issuing…' : 'Issue Invoice'}
+            {invoiceLoading ? 'Issuing…' : `Issue Invoice${taxPreview && !taxPreview.exempt ? ` (${invoiceCurrency} ${taxPreview.total.toLocaleString(undefined,{minimumFractionDigits:2})})` : ''}`}
           </Button>
         </DialogActions>
       </Dialog>
@@ -918,6 +1042,75 @@ const Payments = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setStatementOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── Org Settings Dialog ── */}
+      <Dialog open={settingsDialog} onClose={() => setSettingsDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <SettingsIcon color="primary" />
+            <span>Organisation &amp; Tax Settings</span>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={2.5} sx={{ mt: 1 }}>
+            <TextField label="Institution Name" fullWidth value={settingsDraft.institutionName || ''}
+              onChange={e => setSettingsDraft(d => ({ ...d, institutionName: e.target.value }))} />
+
+            <Autocomplete
+              options={taxCountries}
+              getOptionLabel={o => `${o.name} (${o.code}) — ${o.taxType} ${o.standardRate > 0 ? (o.standardRate * 100).toFixed(1) + '%' : 'No tax'}`}
+              value={taxCountries.find(c => c.code === settingsDraft.homeCountry) || null}
+              onChange={(_, newVal) => setSettingsDraft(d => ({
+                ...d,
+                homeCountry: newVal?.code || d.homeCountry,
+                homeCurrency: newVal?.currency || d.homeCurrency,
+              }))}
+              renderInput={params => (
+                <TextField {...params} label="Home Country (determines tax rules)"
+                  helperText="Tax rates, invoice requirements, and legal basis are automatically applied from this country's tax law." />
+              )}
+            />
+
+            <TextField label="Tax / VAT Registration Number" fullWidth value={settingsDraft.taxRegistrationNumber || ''}
+              onChange={e => setSettingsDraft(d => ({ ...d, taxRegistrationNumber: e.target.value }))}
+              helperText="Printed on all invoices (e.g. KRA PIN for Kenya)" />
+
+            <TextField label="Invoice Footer Text" fullWidth multiline rows={2} value={settingsDraft.invoiceFooter || ''}
+              onChange={e => setSettingsDraft(d => ({ ...d, invoiceFooter: e.target.value }))}
+              placeholder="e.g. This invoice is subject to the laws of Kenya." />
+
+            {/* Tax rules summary for selected country */}
+            {settingsDraft.homeCountry && (() => {
+              const r = orgSettings.taxRules;
+              if (!r) return null;
+              return (
+                <Paper variant="outlined" sx={{ p: 2, background: '#f8f9fa', borderRadius: 1 }}>
+                  <Stack spacing={0.5}>
+                    <Typography variant="subtitle2" color="primary">{r.country} — {r.taxType}</Typography>
+                    <Typography variant="body2"><strong>Rate on arbitration services:</strong> {r.arbitrationExempt ? 'Exempt / Zero-rated' : `${(r.arbitrationRate * 100).toFixed(1)}%`}</Typography>
+                    <Typography variant="body2"><strong>Withholding tax:</strong> {r.withholdingRate > 0 ? `${(r.withholdingRate * 100).toFixed(1)}%` : 'None'}</Typography>
+                    <Typography variant="body2"><strong>Authority:</strong> {r.taxAuthority}</Typography>
+                    <Typography variant="body2"><strong>Legal basis:</strong> {r.legalBasis}</Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>{r.notes}</Typography>
+                    <Divider sx={{ my: 1 }} />
+                    <Typography variant="caption" fontWeight={600}>Invoice requirements:</Typography>
+                    {r.invoiceRequirements.map((req, i) => (
+                      <Typography key={i} variant="caption" color="text.secondary">• {req}</Typography>
+                    ))}
+                  </Stack>
+                </Paper>
+              );
+            })()}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSettingsDialog(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleSaveSettings} disabled={settingsSaving}
+            startIcon={settingsSaving ? <CircularProgress size={16} /> : <SaveIcon />}>
+            {settingsSaving ? 'Saving…' : 'Save Settings'}
+          </Button>
         </DialogActions>
       </Dialog>
 
