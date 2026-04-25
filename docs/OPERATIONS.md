@@ -19,7 +19,7 @@
    ```bash
    source /home/opc/.nvm/nvm.sh
    pm2 delete arbitration-backend || true
-   pm2 start ecosystem.config.js --only arbitration-backend --env production
+   pm2 start ecosystem.config.js --only arbitration-backend
    pm2 save
    ```
 7. Verify:

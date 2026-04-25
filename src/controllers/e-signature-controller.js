@@ -24,7 +24,7 @@ class ESignatureController {
    */
   async processDocumentForSigning(documentData, userData) {
     // Check if user has given consent
-    const hasConsent = this.consentService.hasConsent(userData.userId, 'e-signature');
+    const hasConsent = await this.consentService.hasConsent(userData.userId, 'e-signature');
     
     if (!hasConsent) {
       throw new Error('User consent required for e-signature');

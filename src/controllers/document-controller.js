@@ -19,7 +19,7 @@ class DocumentController {
    */
   async processCaseDocuments(caseData) {
     // Log the access
-    this.auditTrail.logEvent({
+    await this.auditTrail.logEvent({
       type: "document_processing",
       caseId: caseData.caseId,
       timestamp: new Date().toISOString(),
@@ -47,9 +47,9 @@ class DocumentController {
    * @param {object} documentData - Document data
    * @returns {object} Storage result
    */
-  storeDocumentWORM(documentId, documentData) {
+  async storeDocumentWORM(documentId, documentData) {
     // Log the storage operation
-    this.auditTrail.logEvent({
+    await this.auditTrail.logEvent({
       type: "document_storage",
       documentId: documentId,
       timestamp: new Date().toISOString(),
@@ -66,7 +66,7 @@ class DocumentController {
    */
   async scanCaseForConflicts(caseData) {
     // Log the scan operation
-    this.auditTrail.logEvent({
+    await this.auditTrail.logEvent({
       type: "conflict_scan_request",
       caseId: caseData.caseId,
       timestamp: new Date().toISOString(),
