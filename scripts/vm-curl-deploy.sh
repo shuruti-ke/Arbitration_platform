@@ -12,8 +12,10 @@ tar -czf "releases/pre-curl-deploy-$(date +%Y%m%d%H%M%S).tgz" src scripts packag
 fetch() {
   local src="$1"
   local dest="$2"
+  local stamp
+  stamp="$(date +%s%N)"
   mkdir -p "$(dirname "$dest")"
-  curl -fsSL "$BASE/$src" -o "$dest.tmp"
+  curl -fsSL -H 'Cache-Control: no-cache' "$BASE/$src?t=$stamp" -o "$dest.tmp"
   mv "$dest.tmp" "$dest"
   echo "updated $dest"
 }
