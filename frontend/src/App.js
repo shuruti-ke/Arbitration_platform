@@ -24,6 +24,7 @@ import Training from './pages/Training';
 import CourtFiling from './pages/CourtFiling';
 import AwardVerification from './pages/AwardVerification';
 import PlatformCharter from './pages/PlatformCharter';
+import Operator from './pages/Operator';
 import Navigation from './components/Navigation';
 import OfflineBanner from './components/OfflineBanner';
 import TosAcceptanceModal from './components/TosAcceptanceModal';
@@ -54,7 +55,7 @@ const buildTheme = (mode, direction) =>
     }
   });
 
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children, roles = [] }) => {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -65,7 +66,11 @@ const ProtectedRoute = ({ children }) => {
     );
   }
 
-  return user ? children : <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (roles.length && !roles.includes((user.role || '').toLowerCase())) {
+    return <Navigate to="/" replace />;
+  }
+  return children;
 };
 
 const AppRoutes = () => {
@@ -101,6 +106,7 @@ const AppRoutes = () => {
         <Route path="/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
         <Route path="/training" element={<ProtectedRoute><Training /></ProtectedRoute>} />
         <Route path="/court-filing" element={<ProtectedRoute><CourtFiling /></ProtectedRoute>} />
+        <Route path="/operator" element={<ProtectedRoute roles={['admin']}><Operator /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <TosAcceptanceModal open={showTos} onAccept={() => setShowTos(false)} />

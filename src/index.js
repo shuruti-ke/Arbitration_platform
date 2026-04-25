@@ -7,6 +7,7 @@ const url = require('url');
 const crypto = require('crypto');
 const fs = require('fs');
 const nodePath = require('path');
+const logger = require('./services/logger');
 
 // Static file serving for the React frontend build
 const STATIC_DIR = nodePath.join(__dirname, '..', 'public');
@@ -309,10 +310,50 @@ function sendJSON(res, statusCode, data) {
   res.end(JSON.stringify(data));
 }
 
+function buildOpsStatus({ oracleDb, moduleJobStore }) {
+  const memory = process.memoryUsage();
+  return {
+    status: oracleDb && oracleDb.isConnected() ? 'ready' : 'degraded',
+    timestamp: new Date().toISOString(),
+    uptimeSeconds: Math.round(process.uptime()),
+    version: process.env.npm_package_version || '1.0.0',
+    environment: process.env.NODE_ENV || 'development',
+    database: {
+      provider: process.env.DATABASE_URL ? 'neon-postgres' : 'oracle',
+      connected: !!(oracleDb && oracleDb.isConnected())
+    },
+    runtime: {
+      node: process.version,
+      platform: process.platform,
+      pid: process.pid,
+      memoryMb: {
+        rss: Math.round(memory.rss / 1024 / 1024),
+        heapUsed: Math.round(memory.heapUsed / 1024 / 1024),
+        heapTotal: Math.round(memory.heapTotal / 1024 / 1024)
+      }
+    },
+    queues: {
+      trainingJobs: moduleJobStore.size
+    },
+    checks: {
+      jwtSecret: Boolean(process.env.JWT_SECRET),
+      corsOrigin: Boolean(process.env.CORS_ORIGIN),
+      aiProviderConfigured: Boolean(process.env.OPENAI_API_KEY || process.env.QWEN_API_KEY || process.env.NVIDIA_API_KEY || process.env.NGC_API_KEY),
+      emailConfigured: Boolean(process.env.EMAIL_USER && process.env.EMAIL_PASS)
+    }
+  };
+}
+
 function parseBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
-    req.on('data', chunk => { body += chunk.toString(); });
+    const maxBodyBytes = Number(process.env.MAX_JSON_BODY_BYTES || 6 * 1024 * 1024);
+    req.on('data', chunk => {
+      body += chunk.toString();
+      if (Buffer.byteLength(body) > maxBodyBytes) {
+        req.destroy(Object.assign(new Error('Request body too large'), { statusCode: 413 }));
+      }
+    });
     req.on('end', () => {
       try {
         resolve(body ? JSON.parse(body) : {});
@@ -464,9 +505,12 @@ function createServer(services) {
   }
 
   return http.createServer(async (req, res) => {
+    const requestId = crypto.randomUUID();
+    const startedAt = Date.now();
     const parsedUrl = url.parse(req.url, true);
     const path = parsedUrl.pathname;
     const method = req.method;
+    res.setHeader('X-Request-Id', requestId);
 
     // CORS headers — credentials required for HttpOnly cookie transport (F-013)
     res.setHeader('Access-Control-Allow-Origin', corsOrigin);
@@ -513,6 +557,23 @@ function createServer(services) {
           });
         }
         return sendJSON(res, 200, { status: 'OK' });
+      }
+
+      // --- GET /api/ready ---
+      if (path === '/api/ready' && method === 'GET') {
+        const status = buildOpsStatus({ oracleDb, moduleJobStore });
+        return sendJSON(res, status.database.connected ? 200 : 503, {
+          status: status.status,
+          database: status.database.connected ? 'connected' : 'disconnected',
+          timestamp: status.timestamp
+        });
+      }
+
+      // --- GET /api/ops/status ---
+      if (path === '/api/ops/status' && method === 'GET') {
+        const user = authenticate(req, res, ['admin']);
+        if (!user) return;
+        return sendJSON(res, 200, buildOpsStatus({ oracleDb, moduleJobStore }));
       }
 
       // --- GET /api/models ---
@@ -1198,6 +1259,7 @@ score is 0-100.`;
         const user = authenticate(req, res);
         if (!user) return;
         const profile = await userService.findById(user.userId);
+        if (!profile) return sendJSON(res, 401, { error: 'User not found or inactive' });
         return sendJSON(res, 200, { user: userService._safeUser(profile) });
       }
 
@@ -3103,11 +3165,28 @@ Respond ONLY with valid JSON, no markdown, no extra text.`;
       return sendJSON(res, 404, { error: 'Not Found' });
 
     } catch (error) {
-      console.error('Request error:', error.message);
+      logger.error('request_failed', {
+        requestId,
+        method,
+        path,
+        durationMs: Date.now() - startedAt,
+        error: error.message
+      });
       if (error.message === 'Invalid JSON body') {
         return sendJSON(res, 400, { error: 'Invalid JSON body' });
       }
+      if (error.statusCode === 413 || error.message === 'Request body too large') {
+        return sendJSON(res, 413, { error: 'Request body too large' });
+      }
       return sendJSON(res, 500, { error: 'Internal server error' });
+    } finally {
+      logger.info('request_completed', {
+        requestId,
+        method,
+        path,
+        statusCode: res.statusCode,
+        durationMs: Date.now() - startedAt
+      });
     }
   });
 }
@@ -3123,13 +3202,18 @@ async function startServer() {
     ? await oracleDb.initNeonDatabase()
     : await oracleDb.initOracleDatabase();
   if (!dbConnected) {
-    console.warn('Warning: DB not connected. Audit logs will be in-memory only.');
+    const message = 'Database connection failed';
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(`${message}; refusing to start in production`);
+    }
+    logger.warn(message, { mode: 'development', fallback: 'memory-backed services may be used' });
   }
 
   // 2. Initialize services that depend on the DB
   const auditTrail = new AuditTrail(oracleDb);
   const consentService = new ConsentService(oracleDb);
   const userService = new UserService(oracleDb);
+  await userService.ready;
   const authService = new AuthService(userService, auditTrail, oracleDb);
   const hearingService = new HearingService(oracleDb);
 

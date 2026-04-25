@@ -5,6 +5,8 @@
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 
+const STRICT_DB = process.env.NODE_ENV === 'production';
+
 class HearingService {
   constructor(dbService = null) {
     this.dbService = dbService;
@@ -43,7 +45,10 @@ class HearingService {
         );
       } catch (err) {
         console.error('Assignment DB write failed:', err.message);
+        if (STRICT_DB) throw err;
       }
+    } else if (STRICT_DB) {
+      throw new Error('Assignment DB is not connected');
     }
 
     console.log(`Arbitrator ${arbitratorId} assigned to case ${caseId} as ${role}`);
@@ -72,7 +77,10 @@ class HearingService {
         );
       } catch (err) {
         console.error('Assignment response DB write failed:', err.message);
+        if (STRICT_DB) throw err;
       }
+    } else if (STRICT_DB) {
+      throw new Error('Assignment DB is not connected');
     }
 
     return assignment;
@@ -87,8 +95,11 @@ class HearingService {
         );
         return result.rows || [];
       } catch (err) {
-        console.error('Panel DB read failed, using in-memory:', err.message);
+        console.error('Panel DB read failed:', err.message);
+        if (STRICT_DB) throw err;
       }
+    } else if (STRICT_DB) {
+      throw new Error('Assignment DB is not connected');
     }
     return this.assignments.get(caseId) || [];
   }
@@ -128,7 +139,10 @@ class HearingService {
         );
       } catch (err) {
         console.error('Hearing DB write failed:', err.message);
+        if (STRICT_DB) throw err;
       }
+    } else if (STRICT_DB) {
+      throw new Error('Hearing DB is not connected');
     }
 
     console.log(`Hearing scheduled: ${hearingId} for case ${caseId} at ${startTime}`);
@@ -144,8 +158,11 @@ class HearingService {
         );
         if (result.rows && result.rows[0]) return result.rows[0];
       } catch (err) {
-        console.error('Hearing DB read failed, using in-memory:', err.message);
+        console.error('Hearing DB read failed:', err.message);
+        if (STRICT_DB) throw err;
       }
+    } else if (STRICT_DB) {
+      throw new Error('Hearing DB is not connected');
     }
     return this.hearings.get(hearingId) || null;
   }
@@ -159,8 +176,11 @@ class HearingService {
         );
         return result.rows || [];
       } catch (err) {
-        console.error('Case hearings DB read failed, using in-memory:', err.message);
+        console.error('Case hearings DB read failed:', err.message);
+        if (STRICT_DB) throw err;
       }
+    } else if (STRICT_DB) {
+      throw new Error('Hearing DB is not connected');
     }
     return Array.from(this.hearings.values()).filter(h => h.caseId === caseId);
   }
@@ -180,7 +200,10 @@ class HearingService {
         );
       } catch (err) {
         console.error('Hearing status DB write failed:', err.message);
+        if (STRICT_DB) throw err;
       }
+    } else if (STRICT_DB) {
+      throw new Error('Hearing DB is not connected');
     }
 
     return hearing || { hearingId, status };

@@ -9,12 +9,12 @@ const { Pool } = require('pg');
 function convertParams(sql, params = {}) {
   const values = [];
   const nameToIndex = {};
-  const converted = sql.replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, (_, name) => {
+  const converted = sql.replace(/(^|[^:]):([a-zA-Z_][a-zA-Z0-9_]*)/g, (match, prefix, name) => {
     if (!(name in nameToIndex)) {
       nameToIndex[name] = values.length + 1;
       values.push(params[name] !== undefined ? params[name] : null);
     }
-    return `$${nameToIndex[name]}`;
+    return `${prefix}$${nameToIndex[name]}`;
   });
   return { sql: converted, values };
 }

@@ -3,109 +3,90 @@
 
 const http = require('http');
 
-console.log('Running comprehensive system test...');
+const HOST = 'localhost';
+const PORT = 3000;
+const ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL || 'admin@rafikihr.com';
+const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD || 'Admin@2026!';
 
-// Test 1: Health check
-console.log('Test 1: Health check');
-const healthOptions = {
-  hostname: 'localhost',
-  port: 3000,
-  path: '/api/health',
-  method: 'GET'
-};
+function request(path, { method = 'GET', token = null, body = null } = {}) {
+  return new Promise((resolve, reject) => {
+    const payload = body ? JSON.stringify(body) : null;
+    const headers = {};
+    if (payload) {
+      headers['Content-Type'] = 'application/json';
+      headers['Content-Length'] = Buffer.byteLength(payload);
+    }
+    if (token) headers.Authorization = `Bearer ${token}`;
 
-const healthReq = http.request(healthOptions, (res) => {
-  let data = '';
-  res.on('data', (chunk) => {
-    data += chunk;
-  });
-  
-  res.on('end', () => {
-    console.log('Health check response:', data);
-    
-    // Test 2: Models endpoint
-    console.log('Test 2: Models endpoint');
-    const modelsOptions = {
-      hostname: 'localhost',
-      port: 3000,
-      path: '/api/models',
-      method: 'GET'
-    };
-    
-    const modelsReq = http.request(modelsOptions, (res) => {
+    const req = http.request({ hostname: HOST, port: PORT, path, method, headers }, (res) => {
       let data = '';
       res.on('data', (chunk) => {
         data += chunk;
       });
-      
       res.on('end', () => {
-        console.log('Models response:', data);
-        
-        // Test 3: Rules endpoint
-        console.log('Test 3: Rules endpoint');
-        const rulesOptions = {
-          hostname: 'localhost',
-          port: 3000,
-          path: '/api/rules',
-          method: 'GET'
-        };
-        
-        const rulesReq = http.request(rulesOptions, (res) => {
-          let data = '';
-          res.on('data', (chunk) => {
-            data += chunk;
-          });
-          
-          res.on('end', () => {
-            console.log('Rules response:', data);
-            
-            // Test 4: CA providers endpoint
-            console.log('Test 4: CA providers endpoint');
-            const caOptions = {
-              hostname: 'localhost',
-              port: 3000,
-              path: '/api/ca/providers',
-              method: 'GET'
-            };
-            
-            const caReq = http.request(caOptions, (res) => {
-              let data = '';
-              res.on('data', (chunk) => {
-                data += chunk;
-              });
-              
-              res.on('end', () => {
-                console.log('CA providers response:', data);
-                console.log('System test completed successfully');
-              });
-            });
-            
-            caReq.on('error', (error) => {
-              console.error('CA providers request error:', error.message);
-            });
-            
-            caReq.end();
-          });
-        });
-        
-        rulesReq.on('error', (error) => {
-          console.error('Rules request error:', error.message);
-        });
-        
-        rulesReq.end();
+        resolve({ statusCode: res.statusCode, data });
       });
     });
-    
-    modelsReq.on('error', (error) => {
-      console.error('Models request error:', error.message);
-    });
-    
-    modelsReq.end();
+
+    req.on('error', reject);
+    if (payload) req.write(payload);
+    req.end();
   });
-});
+}
 
-healthReq.on('error', (error) => {
-  console.error('Health request error:', error.message);
-});
+function assertStatus(label, response, expectedStatus = 200) {
+  if (response.statusCode === expectedStatus) return;
+  console.error(`${label} failed with status ${response.statusCode}:`, response.data);
+  process.exit(1);
+}
 
-healthReq.end();
+async function main() {
+  console.log('Running comprehensive system test...');
+
+  console.log('Test 1: Health check');
+  const health = await request('/api/health');
+  console.log('Health check response:', health.data);
+  assertStatus('Health check', health);
+
+  console.log('Test 2: Admin login');
+  const login = await request('/api/auth/login', {
+    method: 'POST',
+    body: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD }
+  });
+  console.log('Login status:', login.statusCode);
+  assertStatus('Admin login', login);
+
+  let token;
+  try {
+    token = JSON.parse(login.data).accessToken;
+  } catch (error) {
+    console.error('Login response was not valid JSON:', error.message);
+    process.exit(1);
+  }
+  if (!token) {
+    console.error('Login response did not include accessToken');
+    process.exit(1);
+  }
+
+  console.log('Test 3: Models endpoint');
+  const models = await request('/api/models', { token });
+  console.log('Models response:', models.data);
+  assertStatus('Models endpoint', models);
+
+  console.log('Test 4: Rules endpoint');
+  const rules = await request('/api/rules', { token });
+  console.log('Rules response:', rules.data);
+  assertStatus('Rules endpoint', rules);
+
+  console.log('Test 5: CA providers endpoint');
+  const caProviders = await request('/api/ca/providers', { token });
+  console.log('CA providers response:', caProviders.data);
+  assertStatus('CA providers endpoint', caProviders);
+
+  console.log('System test completed successfully');
+}
+
+main().catch((error) => {
+  console.error('System test failed:', error.message);
+  process.exit(1);
+});

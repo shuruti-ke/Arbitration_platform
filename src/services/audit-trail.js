@@ -1,6 +1,8 @@
 // src/services/audit-trail.js
 // Audit Trail service — persists to Oracle DB with in-memory fallback
 
+const STRICT_DB = process.env.NODE_ENV === 'production';
+
 class AuditTrail {
   /**
    * @param {object|null} dbService - OracleDatabaseService instance (optional)
@@ -34,8 +36,11 @@ class AuditTrail {
         await this.dbService.logAuditEvent(logEntry);
       } catch (error) {
         console.error(`Audit log DB write failed for ${logId}:`, error.message);
+        if (STRICT_DB) throw error;
         // Entry stays in memory; don't throw — audit failure must not break request flow
       }
+    } else if (STRICT_DB) {
+      throw new Error('Audit DB is not connected');
     }
 
     console.log(`Audit event logged: ${logId}`);
@@ -53,8 +58,11 @@ class AuditTrail {
       try {
         return await this.dbService.getAuditLogs({ caseId });
       } catch (error) {
-        console.error('DB read failed, using in-memory fallback:', error.message);
+        console.error('Audit DB read failed:', error.message);
+        if (STRICT_DB) throw error;
       }
+    } else if (STRICT_DB) {
+      throw new Error('Audit DB is not connected');
     }
     return this.logs.filter(log => log.caseId === caseId);
   }
@@ -69,8 +77,11 @@ class AuditTrail {
       try {
         return await this.dbService.getAuditLogs({ userId });
       } catch (error) {
-        console.error('DB read failed, using in-memory fallback:', error.message);
+        console.error('Audit DB read failed:', error.message);
+        if (STRICT_DB) throw error;
       }
+    } else if (STRICT_DB) {
+      throw new Error('Audit DB is not connected');
     }
     return this.logs.filter(log => log.userId === userId);
   }

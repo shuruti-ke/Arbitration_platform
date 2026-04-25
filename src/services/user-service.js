@@ -20,11 +20,16 @@ const ROLE_PERMISSIONS = {
   party:       ['cases:read', 'hearings:read', 'documents:read', 'consent:write']
 };
 
+const STRICT_DB = process.env.NODE_ENV === 'production';
+
 class UserService {
   constructor(dbService = null) {
     this.dbService = dbService;
     this.users = new Map(); // in-memory fallback
-    this._seedAdmin();
+    this.ready = this._seedAdmin().catch((err) => {
+      console.error('Admin seed failed:', err.message);
+      throw err;
+    });
   }
 
   async _seedAdmin() {
@@ -33,7 +38,7 @@ class UserService {
       { email: 'admin@arbitrationplatform.com', firstName: 'Platform', lastName: 'Admin' },
     ];
     for (const seed of seeds) {
-      const existing = await this.findByEmail(seed.email);
+      const existing = await this.findByEmail(seed.email, { skipReady: true });
       if (!existing) {
         await this.createUser({
           email: seed.email,
@@ -41,12 +46,13 @@ class UserService {
           firstName: seed.firstName,
           lastName: seed.lastName,
           role: ROLES.ADMIN
-        });
+        }, { skipReady: true });
       }
     }
   }
 
-  async createUser({ email, password, firstName, lastName, role }) {
+  async createUser({ email, password, firstName, lastName, role }, options = {}) {
+    if (this.ready && !options.skipReady) await this.ready;
     if (!email || !password || !role) throw new Error('email, password, and role are required');
     if (!ROLES[role.toUpperCase()]) throw new Error(`Invalid role: ${role}`);
 
@@ -76,6 +82,7 @@ class UserService {
         );
       } catch (err) {
         console.error('User DB write failed:', err.message);
+        throw err;
       }
     }
 
@@ -84,7 +91,8 @@ class UserService {
     return this._safeUser(user);
   }
 
-  async findByEmail(email) {
+  async findByEmail(email, options = {}) {
+    if (this.ready && !options.skipReady) await this.ready;
     if (!email) return null;
     const normalized = email.toLowerCase().trim();
 
@@ -96,7 +104,8 @@ class UserService {
         );
         if (result.rows && result.rows[0]) return result.rows[0];
       } catch (err) {
-        console.error('User DB read failed, using in-memory:', err.message);
+        console.error('User DB read failed:', err.message);
+        if (STRICT_DB) throw err;
       }
     }
 
@@ -107,6 +116,7 @@ class UserService {
   }
 
   async findById(userId) {
+    if (this.ready) await this.ready;
     if (this.dbService && this.dbService.isConnected()) {
       try {
         const result = await this.dbService.executeQuery(
@@ -115,7 +125,8 @@ class UserService {
         );
         if (result.rows && result.rows[0]) return result.rows[0];
       } catch (err) {
-        console.error('User DB read failed, using in-memory:', err.message);
+        console.error('User DB read failed:', err.message);
+        if (STRICT_DB) throw err;
       }
     }
     return this.users.get(userId) || null;
@@ -256,6 +267,7 @@ class UserService {
   }
 
   _safeUser(user) {
+    if (!user) return null;
     // Normalize Oracle uppercase column names to camelCase/lowercase
     const normalized = {
       userId:    user.userId    || user.USER_ID,

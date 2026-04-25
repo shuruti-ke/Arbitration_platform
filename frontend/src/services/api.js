@@ -24,6 +24,7 @@ api.interceptors.request.use((config) => {
 export const apiService = {
   // Health
   getHealth: () => api.get('/health'),
+  getOpsStatus: () => api.get('/ops/status'),
 
   // Cases
   getCases: () => api.get('/cases'),

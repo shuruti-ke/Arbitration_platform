@@ -12,7 +12,9 @@
     "test:conflict": "node test/ai-conflict-test.js",
     "test:comprehensive": "node test/comprehensive-test.js",
     "test:system": "node test/system-services-test.js",
-    "test:compliance-full": "node test/compliance-services-test.js"
+    "test:compliance-full": "node test/compliance-services-test.js",
+    "test:ci": "node test/basic-test.js && node test/e-signature-test.js && node test/ai-conflict-test.js && node test/compliance-test.js && node test/system-services-test.js && node test/compliance-services-test.js",
+    "migrate": "node scripts/run-migrations.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

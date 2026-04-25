@@ -37,12 +37,17 @@ const req = http.request(options, (res) => {
   
   res.on('end', () => {
     console.log('Health check response:', data);
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      console.error(`Health check failed with status ${res.statusCode}`);
+      process.exit(1);
+    }
     console.log('Comprehensive test completed successfully');
   });
 });
 
 req.on('error', (error) => {
   console.error('Test request error:', error.message);
+  process.exit(1);
 });
 
 req.end();

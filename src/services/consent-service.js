@@ -1,6 +1,8 @@
 // src/services/consent-service.js
 // Consent management service for PII handling and compliance
 
+const STRICT_DB = process.env.NODE_ENV === 'production';
+
 class ConsentService {
   /**
    * @param {object|null} dbService - OracleDatabaseService instance (optional)
@@ -36,7 +38,10 @@ class ConsentService {
         await this.dbService.recordConsent(consentId, userId, purpose, consentData);
       } catch (error) {
         console.error(`Consent DB write failed for ${consentId}:`, error.message);
+        if (STRICT_DB) throw error;
       }
+    } else if (STRICT_DB) {
+      throw new Error('Consent DB is not connected');
     }
 
     console.log(`Consent recorded for user ${userId}: ${consentId}`);
@@ -55,8 +60,11 @@ class ConsentService {
       try {
         return await this.dbService.hasConsent(userId, purpose);
       } catch (error) {
-        console.error('Consent DB check failed, using in-memory fallback:', error.message);
+        console.error('Consent DB check failed:', error.message);
+        if (STRICT_DB) throw error;
       }
+    } else if (STRICT_DB) {
+      throw new Error('Consent DB is not connected');
     }
 
     // In-memory fallback: check the Map
@@ -90,7 +98,10 @@ class ConsentService {
         return await this.dbService.revokeConsent(consentId);
       } catch (error) {
         console.error(`Consent revocation DB write failed for ${consentId}:`, error.message);
+        if (STRICT_DB) throw error;
       }
+    } else if (STRICT_DB) {
+      throw new Error('Consent DB is not connected');
     }
 
     return entry !== undefined;
@@ -106,8 +117,11 @@ class ConsentService {
       try {
         return await this.dbService.getUserConsents(userId);
       } catch (error) {
-        console.error('Consent DB read failed, using in-memory fallback:', error.message);
+        console.error('Consent DB read failed:', error.message);
+        if (STRICT_DB) throw error;
       }
+    } else if (STRICT_DB) {
+      throw new Error('Consent DB is not connected');
     }
 
     const results = [];
