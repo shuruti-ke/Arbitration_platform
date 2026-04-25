@@ -25,6 +25,8 @@ fetch ecosystem.config.js ecosystem.config.js
 fetch scripts/run-migrations.js scripts/run-migrations.js
 fetch scripts/wait-for-ready.sh scripts/wait-for-ready.sh
 fetch src/index.js src/index.js
+fetch src/controllers/document-controller.js src/controllers/document-controller.js
+fetch src/controllers/e-signature-controller.js src/controllers/e-signature-controller.js
 fetch src/services/logger.js src/services/logger.js
 fetch src/services/audit-trail.js src/services/audit-trail.js
 fetch src/services/consent-service.js src/services/consent-service.js
@@ -34,6 +36,8 @@ fetch src/services/user-service.js src/services/user-service.js
 
 source /home/opc/.nvm/nvm.sh
 node --check src/index.js
+node --check src/controllers/document-controller.js
+node --check src/controllers/e-signature-controller.js
 node --check src/services/logger.js
 node --check scripts/run-migrations.js
 npm run migrate
