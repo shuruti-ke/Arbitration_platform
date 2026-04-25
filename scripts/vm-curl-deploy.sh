@@ -38,7 +38,7 @@ node --check src/services/logger.js
 node --check scripts/run-migrations.js
 npm run migrate
 pm2 delete "$PM2_NAME" || true
-pm2 start ecosystem.config.js --only "$PM2_NAME" --env production
+pm2 start ecosystem.config.js --only "$PM2_NAME"
 pm2 save
 sleep 8
 pm2 status
