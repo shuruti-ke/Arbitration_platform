@@ -19,7 +19,7 @@
    ```bash
    source /home/opc/.nvm/nvm.sh
    pm2 delete arbitration-backend || true
-   pm2 start src/index.js --name arbitration-backend --cwd /home/opc/arbitration-platform
+   pm2 start ecosystem.config.js --only arbitration-backend --env production
    pm2 save
    ```
 7. Verify:
@@ -27,6 +27,13 @@
    curl -f http://152.70.201.154:3000/api/ready
    curl -f https://arbitration-platform.vercel.app/api/health
    ```
+
+## VM Hardening
+
+- Use the `scripts/vm-curl-deploy.sh` helper for backend updates. It backs up the current release, fetches only the changed files, runs migrations, restarts PM2 with the tuned ecosystem config, and waits for `/api/ready`.
+- If the VM starts timing out under load, enable swap with `scripts/setup-swap.sh` from the VM as root or via `sudo`.
+- Keep PM2 at one process only. If `pm2 status` shows duplicates, delete them before starting from `ecosystem.config.js`.
+- Keep boot work minimal. Avoid interactive SSH sessions that leave the VM waiting on long file uploads.
 
 ## Rollback
 
@@ -40,6 +47,7 @@
 - Poll `/api/ready` every minute from an external monitor.
 - Alert on any non-2xx response, response time over 5 seconds, or repeated restarts in PM2.
 - Check `pm2 logs arbitration-backend --lines 100` for JSON entries with `level:"error"`.
+- Watch for SSH banner exchange timeouts as an early signal that the VM is CPU-starved.
 
 ## Backup And Recovery
 

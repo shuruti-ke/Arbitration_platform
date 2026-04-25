@@ -54,43 +54,11 @@ jobs:
           chmod 600 ~/.ssh/oracle_vm
           ssh-keyscan -H "$ORACLE_VM_HOST" >> ~/.ssh/known_hosts
 
-      - name: Package backend
-        run: |
-          tar \
-            --exclude='.git' \
-            --exclude='.github' \
-            --exclude='node_modules' \
-            --exclude='frontend/node_modules' \
-            --exclude='frontend/build' \
-            --exclude='ignore' \
-            --exclude='.env.oracle' \
-            -czf backend-release.tgz src scripts package.json package-lock.json
-
-      - name: Upload release
-        env:
-          ORACLE_VM_HOST: ${{ secrets.ORACLE_VM_HOST }}
-          ORACLE_VM_USER: ${{ secrets.ORACLE_VM_USER || 'opc' }}
-        run: |
-          scp -i ~/.ssh/oracle_vm backend-release.tgz "$ORACLE_VM_USER@$ORACLE_VM_HOST:/tmp/backend-release.tgz"
-
       - name: Deploy and verify
         env:
           ORACLE_VM_HOST: ${{ secrets.ORACLE_VM_HOST }}
           ORACLE_VM_USER: ${{ secrets.ORACLE_VM_USER || 'opc' }}
         run: |
           ssh -i ~/.ssh/oracle_vm "$ORACLE_VM_USER@$ORACLE_VM_HOST" "
-            set -e
-            source /home/opc/.nvm/nvm.sh
-            mkdir -p '$APP_DIR'
-            cd '$APP_DIR'
-            mkdir -p releases
-            tar -czf releases/pre-deploy-\$(date +%Y%m%d%H%M%S).tgz src scripts package.json package-lock.json 2>/dev/null || true
-            tar -xzf /tmp/backend-release.tgz -C '$APP_DIR'
-            npm ci --omit=dev
-            npm run migrate
-            pm2 delete '$PM2_NAME' || true
-            pm2 start src/index.js --name '$PM2_NAME' --cwd '$APP_DIR'
-            pm2 save
-            sleep 3
-            curl -f http://127.0.0.1:3000/api/ready
+            curl -fsSL https://raw.githubusercontent.com/shuruti-ke/Arbitration_platform/main/scripts/vm-curl-deploy.sh | bash
           "

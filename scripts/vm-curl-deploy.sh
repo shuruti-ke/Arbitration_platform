@@ -19,7 +19,9 @@ fetch() {
 }
 
 fetch package.json package.json
+fetch ecosystem.config.js ecosystem.config.js
 fetch scripts/run-migrations.js scripts/run-migrations.js
+fetch scripts/wait-for-ready.sh scripts/wait-for-ready.sh
 fetch src/index.js src/index.js
 fetch src/services/logger.js src/services/logger.js
 fetch src/services/audit-trail.js src/services/audit-trail.js
@@ -34,8 +36,9 @@ node --check src/services/logger.js
 node --check scripts/run-migrations.js
 npm run migrate
 pm2 delete "$PM2_NAME" || true
-pm2 start src/index.js --name "$PM2_NAME" --cwd "$APP"
+pm2 start ecosystem.config.js --only "$PM2_NAME" --env production
 pm2 save
 sleep 8
 pm2 status
-curl -fsS --max-time 15 http://127.0.0.1:3000/api/ready
+chmod +x scripts/wait-for-ready.sh
+./scripts/wait-for-ready.sh
