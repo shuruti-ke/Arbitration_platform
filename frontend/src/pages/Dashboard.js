@@ -41,6 +41,9 @@ import {
   Send as SendIcon,
   Search as SearchIcon,
   MoreVert as MoreVertIcon,
+  HelpOutline as HelpIcon,
+  ChevronRight as ChevronRightIcon,
+  Lightbulb as LightbulbIcon,
 } from '@mui/icons-material';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
@@ -486,6 +489,8 @@ const ArbitratorDashboard = ({ cases, hearings, stats, t, firstName, navigate, o
   const [stageFilter, setStageFilter] = useState('all');
   const [moreAnchor, setMoreAnchor] = useState(null);
   const [moreCase, setMoreCase] = useState(null);
+  const [helpOpen, setHelpOpen] = useState(true);
+
   const normalisedCases = cases.map(normaliseCase);
   const activeCases = normalisedCases.filter(c => !['completed', 'closed', 'terminated'].includes((c.status || '').toLowerCase()));
   const closedCases = normalisedCases.filter(c => ['completed', 'closed', 'terminated'].includes((c.status || '').toLowerCase()));
@@ -515,18 +520,9 @@ const ArbitratorDashboard = ({ cases, hearings, stats, t, firstName, navigate, o
     if (action) qs.set('action', action);
     navigate(`/cases/${caseId}?${qs.toString()}`);
   };
-  const openMore = (event, c) => {
-    setMoreAnchor(event.currentTarget);
-    setMoreCase(c);
-  };
-  const closeMore = () => {
-    setMoreAnchor(null);
-    setMoreCase(null);
-  };
-  const goMore = (tab, action = '') => {
-    if (moreCase) goCase(moreCase.caseId, tab, action);
-    closeMore();
-  };
+  const openMore = (event, c) => { setMoreAnchor(event.currentTarget); setMoreCase(c); };
+  const closeMore = () => { setMoreAnchor(null); setMoreCase(null); };
+  const goMore = (tab, action = '') => { if (moreCase) goCase(moreCase.caseId, tab, action); closeMore(); };
 
   const stageIndex = (stage) => Math.max(0, workflowSteps.findIndex(s => s.key === stage));
   const nextAction = (c) => {
@@ -541,350 +537,505 @@ const ArbitratorDashboard = ({ cases, hearings, stats, t, firstName, navigate, o
   };
 
   const workspaceStats = [
-    { label: 'My Cases', value: normalisedCases.length, icon: <CasesIcon />, color: '#ef6c00', onClick: () => setStageFilter('all'), trend: '+0 this week' },
-    { label: 'Active Proceedings', value: activeCases.length, icon: <ActiveIcon />, color: '#1976d2', onClick: () => setStageFilter('all'), trend: `${stageSummary.length} active stage(s)` },
-    { label: 'Hearings Ahead', value: upcomingHearings.length, icon: <HearingIcon />, color: '#00838f', onClick: () => setStageFilter('hearing'), trend: nextHearing ? 'Next hearing scheduled' : 'No hearings due' },
-    { label: 'Awards Completed', value: closedCases.length || stats.completed, icon: <DoneIcon />, color: '#2e7d32', onClick: () => closedCases[0] ? openArchive(closedCases[0]) : setStageFilter('all'), trend: 'Closed record' },
+    { label: 'My Cases', value: normalisedCases.length, icon: <CasesIcon />, color: '#ef6c00', gradient: 'linear-gradient(135deg,#e65100,#ef6c00)', onClick: () => setStageFilter('all'), sub: `${activeCases.length} active` },
+    { label: 'Active Proceedings', value: activeCases.length, icon: <ActiveIcon />, color: '#1565c0', gradient: 'linear-gradient(135deg,#0d47a1,#1976d2)', onClick: () => setStageFilter('all'), sub: `${stageSummary.length} stage(s)` },
+    { label: 'Upcoming Hearings', value: upcomingHearings.length, icon: <HearingIcon />, color: '#00695c', gradient: 'linear-gradient(135deg,#004d40,#00796b)', onClick: () => setStageFilter('hearing'), sub: nextHearing ? 'Next hearing scheduled' : 'None due' },
+    { label: 'Awards Completed', value: closedCases.length || stats.completed, icon: <DoneIcon />, color: '#2e7d32', gradient: 'linear-gradient(135deg,#1b5e20,#388e3c)', onClick: () => closedCases[0] ? openArchive(closedCases[0]) : setStageFilter('all'), sub: 'Closed cases' },
   ];
 
+  const quickNavItems = [
+    { label: 'Open New Case', icon: <SendIcon />, to: '/cases/agreement', color: '#1565c0', desc: 'Start a new arbitration proceeding' },
+    { label: 'Hearing Calendar', icon: <HearingIcon />, to: '/hearings', color: '#0277bd', desc: 'Schedule & join hearing rooms' },
+    { label: 'Document Library', icon: <LibraryIcon />, to: '/documents', color: '#2e7d32', desc: 'Upload and manage case files' },
+    { label: 'Fees & Account', icon: <PaymentIcon />, to: '/payments', color: '#e65100', desc: 'Invoices, payment proofs & receipts' },
+    { label: 'Analytics', icon: <AnalyticsIcon />, to: '/analytics', color: '#6a1b9a', desc: 'Platform statistics & trends' },
+    { label: 'Compliance Tools', icon: <VerifiedIcon />, to: '/compliance', color: '#00695c', desc: 'Legal compliance and gap analysis' },
+  ];
+
+  const workflowGuide = [
+    { key: 'filing', label: 'Filing', desc: 'Claimant submits Request for Arbitration and supporting documents.' },
+    { key: 'response', label: 'Response', desc: 'Respondent files their Response to the claim.' },
+    { key: 'arbitrator_appointment', label: 'Appointment', desc: 'Arbitrator is formally appointed and parties are notified.' },
+    { key: 'terms_of_reference', label: 'Terms of Reference', desc: 'Tribunal sets procedural timetable and scope of issues.' },
+    { key: 'hearing', label: 'Hearing', desc: 'Virtual or in-person hearings are conducted by the Tribunal.' },
+    { key: 'deliberation', label: 'Deliberation', desc: 'Tribunal deliberates; AI draft award tool available here.' },
+    { key: 'award', label: 'Award', desc: 'Final arbitral award is issued and award pack is prepared.' },
+    { key: 'closed', label: 'Closed', desc: 'Case is concluded. Party access expires; file is archived.' },
+  ];
+
+  const stageAccentColor = (stage) => {
+    if (stage === 'deliberation' || stage === 'award') return '#2e7d32';
+    if (stage === 'hearing') return '#0277bd';
+    if (stage === 'terms_of_reference') return '#6a1b9a';
+    return '#1565c0';
+  };
+
+  const hasAlerts = draftFilings > 0 || nextHearing || deliberationCases > 0;
+
   return (
-    <Container maxWidth="xl" sx={{ mt: 3, mb: 5 }}>
-      <Paper
-        sx={{
-          p: { xs: 2.5, md: 3 },
-          mb: 3,
-          borderRadius: 2,
-          border: '1px solid',
-          borderColor: 'divider',
-          boxShadow: '0 10px 30px rgba(15, 23, 42, 0.08)',
-        }}
-      >
-        <Grid container spacing={3} alignItems="center">
+    <Box sx={{ bgcolor: '#f0f4f8', minHeight: '100vh', pb: 6 }}>
+
+      {/* ── Hero header ─────────────────────────────────────────────────── */}
+      <Box sx={{
+        background: 'linear-gradient(135deg, #0a1628 0%, #0d2444 45%, #1a3a6b 100%)',
+        color: '#fff',
+        px: { xs: 2, sm: 4, md: 6 },
+        pt: { xs: 4, md: 5 },
+        pb: { xs: 12, md: 14 },
+        position: 'relative',
+        overflow: 'hidden',
+      }}>
+        {/* decorative glows */}
+        <Box sx={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 80% 40%, rgba(200,168,75,0.10), transparent 55%)', pointerEvents: 'none' }} />
+        <Box sx={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 10% 80%, rgba(26,106,163,0.18), transparent 50%)', pointerEvents: 'none' }} />
+
+        <Grid container spacing={3} alignItems="center" sx={{ position: 'relative', zIndex: 1 }}>
           <Grid item xs={12} md={7}>
-            <Stack direction="row" spacing={2} alignItems="center">
-              <Box
-                sx={{
-                  width: 64,
-                  height: 64,
-                  borderRadius: 2,
-                  display: 'grid',
-                  placeItems: 'center',
-                  bgcolor: 'warning.light',
-                  color: 'warning.dark',
-                  flexShrink: 0,
-                }}
-              >
-                <BalanceIcon sx={{ fontSize: 38 }} />
+            <Stack direction="row" spacing={2.5} alignItems="center">
+              <Box sx={{
+                width: 68, height: 68, borderRadius: '50%',
+                background: 'rgba(200,168,75,0.18)',
+                border: '2px solid rgba(200,168,75,0.45)',
+                display: 'grid', placeItems: 'center', flexShrink: 0,
+              }}>
+                <BalanceIcon sx={{ fontSize: 36, color: '#c8a84b' }} />
               </Box>
               <Box>
-                <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.2 }}>
-                  {t('Arbitrator Portal')}
+                <Typography variant="overline" sx={{ color: '#c8a84b', letterSpacing: 2.5, fontSize: 11, fontWeight: 700 }}>
+                  ARBITRATOR PORTAL · RAFIKI ARBITRATION
                 </Typography>
-                <Typography variant="h4" fontWeight={850} sx={{ lineHeight: 1.1, letterSpacing: 0 }}>
-                  {t('Arbitrator Workspace')}
+                <Typography variant="h4" fontWeight={800} sx={{ lineHeight: 1.15, mt: 0.25 }}>
+                  Welcome back, {firstName}
                 </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, maxWidth: 680 }}>
-                  {t('Welcome, {{name}}. Manage your active proceedings, hearings, documents, deliberation, and awards from one focused workspace.', { name: firstName })}
+                <Typography variant="body2" sx={{ opacity: 0.7, mt: 0.75 }}>
+                  {activeCases.length} active {activeCases.length === 1 ? 'proceeding' : 'proceedings'}
+                  {upcomingHearings.length > 0 && ` · ${upcomingHearings.length} upcoming ${upcomingHearings.length === 1 ? 'hearing' : 'hearings'}`}
                 </Typography>
               </Box>
             </Stack>
           </Grid>
           <Grid item xs={12} md={5}>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="flex-end">
-              <Button variant="contained" size="large" startIcon={<CasesIcon />} onClick={() => navigate('/cases/agreement')}>
-                {t('Open New Arbitration')}
-              </Button>
-              <Button variant="outlined" size="large" startIcon={<LibraryIcon />} onClick={() => navigate('/documents')}>
-                {t('Documents')}
-              </Button>
-            </Stack>
-          </Grid>
-        </Grid>
-      </Paper>
-
-      <Grid container spacing={2.5} sx={{ mb: 3 }}>
-        {workspaceStats.map((item) => (
-          <Grid item xs={12} sm={6} md={3} key={item.label}>
-            <Paper
-              sx={{
-                p: 2.25,
-                borderRadius: 2,
-                border: '1px solid',
-                borderColor: 'divider',
-                height: '100%',
-                cursor: 'pointer',
-                transition: 'transform 120ms ease, box-shadow 120ms ease',
-                '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 10px 24px rgba(15, 23, 42, 0.10)' },
-              }}
-              onClick={item.onClick}
-              role="button"
-              tabIndex={0}
-            >
-              <Stack direction="row" alignItems="center" spacing={1.5}>
-                <Box sx={{ color: item.color, display: 'flex', '& svg': { fontSize: 34 } }}>{item.icon}</Box>
-                <Box>
-                  <Typography variant="body2" color="text.secondary">{t(item.label)}</Typography>
-                  <Typography variant="h4" fontWeight={850}>{item.value}</Typography>
-                  <Typography variant="caption" color="text.secondary">{t(item.trend)}</Typography>
-                </Box>
-              </Stack>
-            </Paper>
-          </Grid>
-        ))}
-      </Grid>
-
-      <Grid container spacing={2.5} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={4}>
-          <Paper
-            sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: draftFilings ? 'warning.light' : 'divider', cursor: draftFilings ? 'pointer' : 'default' }}
-            onClick={() => draftFilings && setStageFilter('filing')}
-          >
-            <Stack direction="row" spacing={1.5} alignItems="center">
-              <PendingActIcon color={draftFilings ? 'warning' : 'disabled'} />
-              <Box sx={{ flex: 1 }}>
-                <Typography variant="subtitle2" fontWeight={700}>{t('Filings to complete')}</Typography>
-                <Typography variant="body2" color="text.secondary">{draftFilings ? t('{{count}} draft filing(s) need submission. Review today.', { count: draftFilings }) : t('No draft filings waiting.')}</Typography>
-              </Box>
-              <Chip label={draftFilings} color={draftFilings ? 'warning' : 'default'} />
-            </Stack>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={4}>
-          <Paper
-            sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: nextHearing ? 'info.light' : 'divider', cursor: nextHearing ? 'pointer' : 'default' }}
-            onClick={() => nextHearing && goCase(nextHearing.CASE_ID || nextHearing.caseId, 'hearings')}
-          >
-            <Stack direction="row" spacing={1.5} alignItems="center">
-              <HearingIcon color={nextHearing ? 'info' : 'disabled'} />
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="subtitle2" fontWeight={700}>{t('Next hearing')}</Typography>
-                <Typography variant="body2" color="text.secondary" noWrap>
-                  {nextHearing ? `${nextHearing.TITLE || nextHearing.title || t('Hearing')} · ${nextHearing.START_TIME || nextHearing.startTime || '—'}` : t('No hearing scheduled.')}
-                </Typography>
-              </Box>
-            </Stack>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={4}>
-          <Paper
-            sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: deliberationCases ? 'success.light' : 'divider', cursor: deliberationCases ? 'pointer' : 'default' }}
-            onClick={() => deliberationCases && setStageFilter('deliberation')}
-          >
-            <Stack direction="row" spacing={1.5} alignItems="center">
-              <AutoAwesomeIcon color={deliberationCases ? 'success' : 'disabled'} />
-              <Box sx={{ flex: 1 }}>
-                <Typography variant="subtitle2" fontWeight={700}>{t('Awards in progress')}</Typography>
-                <Typography variant="body2" color="text.secondary">{deliberationCases ? t('{{count}} case(s) are ready for award work.', { count: deliberationCases }) : t('No award drafting currently due.')}</Typography>
-              </Box>
-              <Chip label={deliberationCases} color={deliberationCases ? 'success' : 'default'} />
-            </Stack>
-          </Paper>
-        </Grid>
-      </Grid>
-
-      <Grid container spacing={3}>
-        <Grid item xs={12} lg={8}>
-          <Paper sx={{ p: 2.5, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
-            <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ xs: 'stretch', md: 'center' }} spacing={1.5} sx={{ mb: 2 }}>
-              <AssignmentIcon color="primary" />
-              <Box sx={{ flex: 1 }}>
-                <Typography variant="h6" fontWeight={800}>{t('Case Management')}</Typography>
-                <Typography variant="body2" color="text.secondary">{t('Search, filter, and open the next procedural action for each assigned case.')}</Typography>
-              </Box>
-              <Button size="small" variant="outlined" onClick={() => navigate('/cases')}>{t('View All Cases')}</Button>
-            </Stack>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
-              <TextField
-                size="small"
-                fullWidth
-                value={caseSearch}
-                onChange={(e) => setCaseSearch(e.target.value)}
-                placeholder={t('Search cases, IDs, stages...')}
-                InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
-              />
-              <TextField
-                size="small"
-                select
-                label={t('Stage')}
-                value={stageFilter}
-                onChange={(e) => setStageFilter(e.target.value)}
-                sx={{ minWidth: { xs: '100%', md: 220 } }}
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent={{ md: 'flex-end' }}>
+              <Button
+                variant="contained"
+                size="large"
+                startIcon={<CasesIcon />}
+                onClick={() => navigate('/cases/agreement')}
+                sx={{ bgcolor: '#c8a84b', color: '#0a1628', fontWeight: 800, px: 3, '&:hover': { bgcolor: '#b5922e' }, boxShadow: '0 4px 16px rgba(200,168,75,0.35)' }}
               >
-                <MenuItem value="all">{t('All stages')}</MenuItem>
-                {workflowSteps.map(step => (
-                  <MenuItem key={step.key} value={step.key}>{t(step.label)}</MenuItem>
-                ))}
-              </TextField>
+                Open New Case
+              </Button>
+              <Button
+                variant="outlined"
+                size="large"
+                startIcon={<LibraryIcon />}
+                onClick={() => navigate('/documents')}
+                sx={{ borderColor: 'rgba(255,255,255,0.35)', color: '#fff', '&:hover': { borderColor: '#fff', bgcolor: 'rgba(255,255,255,0.08)' } }}
+              >
+                Documents
+              </Button>
             </Stack>
-            {stageSummary.length > 0 && (
-              <Stack direction="row" spacing={0.75} sx={{ mb: 2, flexWrap: 'wrap' }} useFlexGap>
-                {stageSummary.map(item => (
-                  <Chip
-                    key={item.key}
-                    size="small"
-                    label={`${t(item.label)} ${item.count}`}
-                    variant={stageFilter === item.key ? 'filled' : 'outlined'}
-                    color={stageFilter === item.key ? 'primary' : 'default'}
-                    onClick={() => setStageFilter(item.key)}
-                  />
-                ))}
-              </Stack>
-            )}
+          </Grid>
+        </Grid>
 
-            {activeCases.length === 0 ? (
-              <Alert severity="info">{t('No active arbitration cases are assigned to this arbitrator account yet.')}</Alert>
-            ) : filteredActiveCases.length === 0 ? (
-              <Alert severity="info">{t('No cases match the current search or filter.')}</Alert>
-            ) : (
-              <Stack spacing={2}>
-                {filteredActiveCases.map((c) => {
-                  const next = nextAction(c);
-                  const progress = Math.round(((stageIndex(c.caseStage) + 1) / workflowSteps.length) * 100);
-                  return (
-                    <Paper
-                      key={c.caseId}
-                      variant="outlined"
-                      sx={{
-                        p: 2,
-                        borderRadius: 2,
-                        borderLeft: 4,
-                        borderLeftColor: c.caseStage === 'deliberation' || c.caseStage === 'award' ? 'success.main' : c.caseStage === 'hearing' ? 'info.main' : 'primary.main',
-                        transition: 'border-color 120ms ease, box-shadow 120ms ease',
-                        '&:hover': { boxShadow: '0 8px 20px rgba(15, 23, 42, 0.08)' },
-                      }}
-                    >
-                      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'flex-start' }}>
-                        <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mb: 0.5 }}>
-                            <Typography variant="h6" fontWeight={800} sx={{ lineHeight: 1.15 }}>{c.title}</Typography>
-                            <Chip label={t(c.status)} size="small" color={c.status === 'active' ? 'primary' : 'warning'} />
-                            <Chip label={`${t('Stage')} ${stageIndex(c.caseStage) + 1}/${workflowSteps.length}: ${t(c.caseStage.replace(/_/g, ' '))}`} size="small" color="info" variant="outlined" />
+        {/* KPI stat cards — floating at bottom of hero */}
+        <Grid container spacing={2} sx={{ position: 'relative', zIndex: 1, mt: { xs: 3, md: 4 } }}>
+          {workspaceStats.map((item) => (
+            <Grid item xs={6} md={3} key={item.label}>
+              <Box
+                onClick={item.onClick}
+                role="button"
+                tabIndex={0}
+                sx={{
+                  p: 2.25,
+                  borderRadius: 2.5,
+                  background: 'rgba(255,255,255,0.07)',
+                  backdropFilter: 'blur(12px)',
+                  border: '1px solid rgba(255,255,255,0.13)',
+                  cursor: 'pointer',
+                  transition: 'all 160ms ease',
+                  '&:hover': { background: 'rgba(255,255,255,0.14)', transform: 'translateY(-3px)', boxShadow: '0 8px 24px rgba(0,0,0,0.25)' },
+                }}
+              >
+                <Box sx={{ color: item.color, '& svg': { fontSize: 26 }, mb: 1 }}>{item.icon}</Box>
+                <Typography variant="h3" fontWeight={800} sx={{ lineHeight: 1, color: '#fff' }}>{item.value}</Typography>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.75)', mt: 0.5 }}>{item.label}</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.45)' }}>{item.sub}</Typography>
+              </Box>
+            </Grid>
+          ))}
+        </Grid>
+      </Box>
+
+      {/* ── Main content (pulled up over hero) ──────────────────────────── */}
+      <Container maxWidth="xl" sx={{ mt: { xs: -8, md: -10 }, position: 'relative', zIndex: 2 }}>
+
+        {/* Alert strip */}
+        {hasAlerts && (
+          <Paper sx={{ p: 2, mb: 2.5, borderRadius: 2.5, boxShadow: '0 4px 24px rgba(0,0,0,0.10)', overflow: 'hidden' }}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={0} divider={<Divider orientation="vertical" flexItem />}>
+              {draftFilings > 0 && (
+                <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flex: 1, px: 2, py: 1, cursor: 'pointer', borderRadius: 1.5, '&:hover': { bgcolor: '#fff8e1' } }}
+                  onClick={() => setStageFilter('filing')}>
+                  <Box sx={{ width: 38, height: 38, borderRadius: 1.5, bgcolor: '#fff3cd', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                    <PendingActIcon sx={{ color: '#e65100', fontSize: 20 }} />
+                  </Box>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="subtitle2" fontWeight={700}>Filings to Complete</Typography>
+                    <Typography variant="caption" color="text.secondary">{draftFilings} draft filing(s) need submission</Typography>
+                  </Box>
+                  <Chip label={draftFilings} size="small" color="warning" sx={{ fontWeight: 700 }} />
+                </Stack>
+              )}
+              {nextHearing && (
+                <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flex: 1, px: 2, py: 1, cursor: 'pointer', borderRadius: 1.5, '&:hover': { bgcolor: '#e3f2fd' } }}
+                  onClick={() => goCase(nextHearing.CASE_ID || nextHearing.caseId, 'hearings')}>
+                  <Box sx={{ width: 38, height: 38, borderRadius: 1.5, bgcolor: '#dbeafe', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                    <HearingIcon sx={{ color: '#0277bd', fontSize: 20 }} />
+                  </Box>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="subtitle2" fontWeight={700}>Next Hearing</Typography>
+                    <Typography variant="caption" color="text.secondary" noWrap>
+                      {nextHearing.TITLE || nextHearing.title || 'Hearing'} · {nextHearing.START_TIME || nextHearing.startTime || '—'}
+                    </Typography>
+                  </Box>
+                  <ChevronRightIcon sx={{ color: 'text.disabled' }} />
+                </Stack>
+              )}
+              {deliberationCases > 0 && (
+                <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flex: 1, px: 2, py: 1, cursor: 'pointer', borderRadius: 1.5, '&:hover': { bgcolor: '#e8f5e9' } }}
+                  onClick={() => setStageFilter('deliberation')}>
+                  <Box sx={{ width: 38, height: 38, borderRadius: 1.5, bgcolor: '#dcfce7', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                    <AutoAwesomeIcon sx={{ color: '#2e7d32', fontSize: 20 }} />
+                  </Box>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="subtitle2" fontWeight={700}>Awards in Progress</Typography>
+                    <Typography variant="caption" color="text.secondary">{deliberationCases} case(s) ready for award work</Typography>
+                  </Box>
+                  <Chip label={deliberationCases} size="small" color="success" sx={{ fontWeight: 700 }} />
+                </Stack>
+              )}
+            </Stack>
+          </Paper>
+        )}
+
+        <Grid container spacing={3}>
+
+          {/* ── Left: Case Management ──────────────────────────────────── */}
+          <Grid item xs={12} lg={8}>
+            <Paper sx={{ borderRadius: 2.5, overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}>
+              {/* Card header */}
+              <Box sx={{ px: 3, py: 2, background: 'linear-gradient(135deg,#0d2444,#1a3a6b)', color: '#fff' }}>
+                <Stack direction="row" alignItems="center" spacing={1.5}>
+                  <AssignmentIcon />
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="h6" fontWeight={800}>My Cases</Typography>
+                    <Typography variant="caption" sx={{ opacity: 0.7 }}>Search, filter, and take the next procedural step</Typography>
+                  </Box>
+                  <Button size="small" variant="outlined"
+                    sx={{ borderColor: 'rgba(255,255,255,0.4)', color: '#fff', '&:hover': { borderColor: '#fff', bgcolor: 'rgba(255,255,255,0.1)' } }}
+                    onClick={() => navigate('/cases')}>
+                    View All
+                  </Button>
+                </Stack>
+              </Box>
+
+              <Box sx={{ px: 3, py: 2.5 }}>
+                {/* Search + stage filter */}
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
+                  <TextField
+                    size="small" fullWidth value={caseSearch}
+                    onChange={(e) => setCaseSearch(e.target.value)}
+                    placeholder="Search by case name, ID or stage…"
+                    InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }}
+                  />
+                  <TextField
+                    size="small" select label="Stage" value={stageFilter}
+                    onChange={(e) => setStageFilter(e.target.value)}
+                    sx={{ minWidth: { xs: '100%', md: 200 }, '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }}
+                  >
+                    <MenuItem value="all">All Stages</MenuItem>
+                    {workflowSteps.map(step => (
+                      <MenuItem key={step.key} value={step.key}>{t(step.label)}</MenuItem>
+                    ))}
+                  </TextField>
+                </Stack>
+
+                {/* Stage chips */}
+                {stageSummary.length > 0 && (
+                  <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: 2 }}>
+                    {stageSummary.map(item => (
+                      <Chip
+                        key={item.key} size="small"
+                        label={`${t(item.label)} (${item.count})`}
+                        variant={stageFilter === item.key ? 'filled' : 'outlined'}
+                        color={stageFilter === item.key ? 'primary' : 'default'}
+                        onClick={() => setStageFilter(item.key)}
+                      />
+                    ))}
+                  </Stack>
+                )}
+
+                {/* Case list */}
+                {activeCases.length === 0 ? (
+                  <Box sx={{ py: 5, textAlign: 'center' }}>
+                    <GavelIcon sx={{ fontSize: 52, color: 'text.disabled', mb: 1 }} />
+                    <Typography variant="h6" color="text.secondary" fontWeight={600}>No active cases yet</Typography>
+                    <Typography variant="body2" color="text.disabled" sx={{ mb: 2 }}>Open a new arbitration to begin a proceeding.</Typography>
+                    <Button variant="contained" startIcon={<SendIcon />} onClick={() => navigate('/cases/agreement')}>Open New Case</Button>
+                  </Box>
+                ) : filteredActiveCases.length === 0 ? (
+                  <Alert severity="info" sx={{ borderRadius: 1.5 }}>No cases match the current search or filter.</Alert>
+                ) : (
+                  <Stack spacing={2}>
+                    {filteredActiveCases.map((c) => {
+                      const next = nextAction(c);
+                      const progress = Math.round(((stageIndex(c.caseStage) + 1) / workflowSteps.length) * 100);
+                      const accent = stageAccentColor(c.caseStage);
+                      return (
+                        <Box
+                          key={c.caseId}
+                          sx={{
+                            p: 2.5, borderRadius: 2,
+                            border: '1px solid', borderColor: 'divider',
+                            borderLeft: `4px solid ${accent}`,
+                            bgcolor: '#fff',
+                            transition: 'box-shadow 160ms ease, transform 160ms ease',
+                            '&:hover': { boxShadow: '0 8px 28px rgba(0,0,0,0.10)', transform: 'translateY(-1px)' },
+                          }}
+                        >
+                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'flex-start' }} sx={{ mb: 1.5 }}>
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              <Typography variant="h6" fontWeight={800} sx={{ lineHeight: 1.2, mb: 0.5 }}>{c.title}</Typography>
+                              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                                <Chip label={t(c.status)} size="small" color={c.status === 'active' ? 'primary' : 'warning'} />
+                                <Chip
+                                  label={`Stage ${stageIndex(c.caseStage) + 1}/${workflowSteps.length}: ${t(c.caseStage.replace(/_/g, ' '))}`}
+                                  size="small" variant="outlined"
+                                  sx={{ borderColor: accent, color: accent }}
+                                />
+                              </Stack>
+                            </Box>
                           </Stack>
-                          <Box sx={{ mt: 1.5, mb: 1 }}>
-                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
-                              <Typography variant="caption" color="text.secondary">
-                                {t('Case progress')}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {progress}%
-                              </Typography>
+
+                          {/* Progress bar */}
+                          <Box sx={{ mb: 2 }}>
+                            <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                              <Typography variant="caption" color="text.secondary">Case Progress</Typography>
+                              <Typography variant="caption" fontWeight={700} sx={{ color: accent }}>{progress}%</Typography>
                             </Stack>
                             <LinearProgress
-                              variant="determinate"
-                              value={progress}
+                              variant="determinate" value={progress}
                               sx={{
-                                height: 8,
-                                borderRadius: 1,
-                                bgcolor: 'action.hover',
-                                '& .MuiLinearProgress-bar': { borderRadius: 1 },
+                                height: 7, borderRadius: 2, bgcolor: 'action.hover',
+                                '& .MuiLinearProgress-bar': { borderRadius: 2, bgcolor: accent },
                               }}
                             />
                           </Box>
+
+                          {/* Actions */}
                           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                            <Button size="small" variant="contained" startIcon={<ActiveIcon />} onClick={() => goCase(c.caseId, next.tab)} sx={{ fontWeight: 700 }}>
+                            <Button size="small" variant="contained" startIcon={<ActiveIcon />}
+                              onClick={() => goCase(c.caseId, next.tab)}
+                              sx={{ fontWeight: 700, bgcolor: accent, '&:hover': { bgcolor: accent, filter: 'brightness(0.88)' } }}>
                               {t(next.label)}
                             </Button>
-                            <Button size="small" variant="outlined" startIcon={<DocumentsIcon />} onClick={() => goCase(c.caseId, 'documents', 'upload')}>{t('Evidence')}</Button>
-                            <Button size="small" variant="outlined" startIcon={<HearingIcon />} onClick={() => goCase(c.caseId, 'hearings')}>{t('Hearings')}</Button>
-                            <Button
-                              size="small"
-                              variant="text"
-                              endIcon={<MoreVertIcon />}
-                              onClick={(event) => openMore(event, c)}
-                              aria-label={t('More case actions')}
-                            >
-                              {t('More')}
-                            </Button>
+                            <Button size="small" variant="outlined" startIcon={<DocumentsIcon />}
+                              onClick={() => goCase(c.caseId, 'documents', 'upload')}>Evidence</Button>
+                            <Button size="small" variant="outlined" startIcon={<HearingIcon />}
+                              onClick={() => goCase(c.caseId, 'hearings')}>Hearings</Button>
+                            <Button size="small" variant="text" endIcon={<MoreVertIcon />}
+                              onClick={(e) => openMore(e, c)}>More</Button>
                           </Stack>
                         </Box>
-                      </Stack>
-                    </Paper>
-                  );
-                })}
-              </Stack>
-            )}
+                      );
+                    })}
+                  </Stack>
+                )}
+              </Box>
+            </Paper>
+
             <Menu anchorEl={moreAnchor} open={Boolean(moreAnchor)} onClose={closeMore}>
-              <MenuItem onClick={() => goMore('overview', 'edit')}><EditIcon fontSize="small" sx={{ mr: 1 }} />{t('Edit case')}</MenuItem>
-              <MenuItem onClick={() => goMore('parties')}><GroupsIcon fontSize="small" sx={{ mr: 1 }} />{t('Parties')}</MenuItem>
-              <MenuItem onClick={() => goMore('ai-draft')}><AutoAwesomeIcon fontSize="small" sx={{ mr: 1 }} />{t('AI Draft Award')}</MenuItem>
-              <MenuItem onClick={() => goMore('award-pack')}><GavelIcon fontSize="small" sx={{ mr: 1 }} />{t('Award Pack')}</MenuItem>
+              <MenuItem onClick={() => goMore('overview', 'edit')}><EditIcon fontSize="small" sx={{ mr: 1 }} />Edit case</MenuItem>
+              <MenuItem onClick={() => goMore('parties')}><GroupsIcon fontSize="small" sx={{ mr: 1 }} />Parties</MenuItem>
+              <MenuItem onClick={() => goMore('ai-draft')}><AutoAwesomeIcon fontSize="small" sx={{ mr: 1 }} />AI Draft Award</MenuItem>
+              <MenuItem onClick={() => goMore('award-pack')}><GavelIcon fontSize="small" sx={{ mr: 1 }} />Award Pack</MenuItem>
             </Menu>
-          </Paper>
-        </Grid>
+          </Grid>
 
-        <Grid item xs={12} lg={4}>
-          <Stack spacing={2}>
-            <Paper sx={{ p: 2.5, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
-                <HearingIcon color="primary" />
-                <Typography variant="h6" fontWeight={700}>{t('Upcoming Hearings')}</Typography>
-              </Stack>
-              {upcomingHearings.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">{t('No upcoming hearings.')}</Typography>
-              ) : (
-                <Stack spacing={1.5}>
-                  {upcomingHearings.map((h) => {
-                    const hCaseId = h.CASE_ID || h.caseId;
-                    return (
-                      <Paper key={h.HEARING_ID || h.hearingId} variant="outlined" sx={{ p: 1.5, borderRadius: 1 }}>
-                        <Typography variant="body2" fontWeight={800}>{h.TITLE || h.title || t('Hearing')}</Typography>
-                        <Typography variant="caption" color="text.secondary" display="block">{hCaseId}</Typography>
-                        <Typography variant="caption" color="text.secondary" display="block">{h.START_TIME || h.startTime || '—'}</Typography>
-                        <Button size="small" variant="contained" sx={{ mt: 1 }} onClick={() => goCase(hCaseId, 'hearings')}>{t('Open Hearing Room')}</Button>
-                      </Paper>
-                    );
-                  })}
-                </Stack>
-              )}
-              <Button fullWidth variant="outlined" sx={{ mt: 2 }} onClick={() => navigate('/hearings')}>{t('Schedule / Manage Hearings')}</Button>
-            </Paper>
+          {/* ── Right sidebar ──────────────────────────────────────────── */}
+          <Grid item xs={12} lg={4}>
+            <Stack spacing={2.5}>
 
-            <Paper sx={{ p: 2.5, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
-              <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>{t('Arbitration Tools')}</Typography>
-              <Stack spacing={1}>
-                <Button fullWidth variant="contained" startIcon={<SendIcon />} onClick={() => navigate('/cases/agreement')}>{t('Start New Case')}</Button>
-                <Button fullWidth variant="outlined" startIcon={<HearingIcon />} onClick={() => navigate('/hearings')}>{t('Hearing Calendar')}</Button>
-                <Button fullWidth variant="outlined" startIcon={<LibraryIcon />} onClick={() => navigate('/documents')}>{t('Document Library')}</Button>
-                <Button fullWidth variant="outlined" startIcon={<PaymentIcon />} onClick={() => navigate('/payments')}>{t('Fees & Account')}</Button>
-                <Button fullWidth variant="outlined" startIcon={<AnalyticsIcon />} onClick={() => navigate('/analytics')}>{t('Analytics')}</Button>
-              </Stack>
-            </Paper>
-
-            {closedCases.length > 0 ? (
-              <Paper sx={{ p: 2.5, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
-                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-                  <ArchiveIcon color="action" />
-                  <Typography variant="h6" fontWeight={700}>{t('Closed Files')}</Typography>
-                  <Chip label={closedCases.length} size="small" />
-                </Stack>
-                {closedCases.slice(0, 4).map(c => (
-                  <Box key={c.caseId} sx={{ py: 1, borderTop: '1px solid', borderColor: 'divider' }}>
-                    <Typography variant="body2" fontWeight={600}>{c.title}</Typography>
-                    <Button size="small" onClick={() => openArchive(c)}>{t('Browse File')}</Button>
-                    <Button size="small" onClick={() => goCase(c.caseId, 'overview')}>{t('Open')}</Button>
-                  </Box>
-                ))}
-              </Paper>
-            ) : (
-              <Paper sx={{ p: 2.5, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
-                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-                  <AlertIcon color="primary" />
-                  <Typography variant="h6" fontWeight={700}>{t('Recent Activity')}</Typography>
-                </Stack>
-                <Stack spacing={1}>
-                  {activeCases.slice(0, 3).map(c => (
-                    <Box key={c.caseId} sx={{ py: 1, borderTop: '1px solid', borderColor: 'divider' }}>
-                      <Typography variant="body2" fontWeight={700}>{c.title}</Typography>
-                      <Typography variant="caption" color="text.secondary">{t('Currently at')} {t(c.caseStage.replace(/_/g, ' '))}</Typography>
+              {/* Upcoming Hearings */}
+              <Paper sx={{ borderRadius: 2.5, overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}>
+                <Box sx={{ px: 2.5, py: 1.75, background: 'linear-gradient(135deg,#0277bd,#01579b)', color: '#fff' }}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <HearingIcon sx={{ fontSize: 20 }} />
+                    <Typography variant="subtitle1" fontWeight={700}>Upcoming Hearings</Typography>
+                    <Chip label={upcomingHearings.length} size="small"
+                      sx={{ ml: 'auto', bgcolor: 'rgba(255,255,255,0.2)', color: '#fff', fontWeight: 700 }} />
+                  </Stack>
+                </Box>
+                <Box sx={{ p: 2 }}>
+                  {upcomingHearings.length === 0 ? (
+                    <Box sx={{ py: 2, textAlign: 'center' }}>
+                      <HearingIcon sx={{ fontSize: 36, color: 'text.disabled', mb: 0.5 }} />
+                      <Typography variant="body2" color="text.secondary">No upcoming hearings.</Typography>
                     </Box>
-                  ))}
-                </Stack>
+                  ) : (
+                    <Stack spacing={1.25}>
+                      {upcomingHearings.map((h) => {
+                        const hCaseId = h.CASE_ID || h.caseId;
+                        return (
+                          <Box key={h.HEARING_ID || h.hearingId}
+                            onClick={() => goCase(hCaseId, 'hearings')}
+                            sx={{ p: 1.5, borderRadius: 1.5, border: '1px solid', borderColor: 'divider', cursor: 'pointer', transition: 'all 140ms', '&:hover': { bgcolor: '#f0f7ff', borderColor: '#0277bd' } }}>
+                            <Typography variant="body2" fontWeight={700}>{h.TITLE || h.title || 'Hearing'}</Typography>
+                            <Typography variant="caption" color="text.secondary" display="block">{h.START_TIME || h.startTime || '—'}</Typography>
+                            <Button size="small" variant="contained" sx={{ mt: 1, fontSize: 11, py: 0.4 }}
+                              onClick={(e) => { e.stopPropagation(); goCase(hCaseId, 'hearings'); }}>
+                              Join Room
+                            </Button>
+                          </Box>
+                        );
+                      })}
+                    </Stack>
+                  )}
+                  <Button fullWidth variant="outlined" size="small" sx={{ mt: 2, borderRadius: 1.5 }}
+                    startIcon={<HearingIcon />} onClick={() => navigate('/hearings')}>
+                    Manage All Hearings
+                  </Button>
+                </Box>
               </Paper>
-            )}
-          </Stack>
+
+              {/* Quick Navigation */}
+              <Paper sx={{ borderRadius: 2.5, overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}>
+                <Box sx={{ px: 2.5, py: 1.75, background: 'linear-gradient(135deg,#4a148c,#6a1b9a)', color: '#fff' }}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <OpenIcon sx={{ fontSize: 18 }} />
+                    <Typography variant="subtitle1" fontWeight={700}>Quick Navigation</Typography>
+                  </Stack>
+                </Box>
+                <Box sx={{ p: 1.5 }}>
+                  <Stack spacing={0.5}>
+                    {quickNavItems.map((item) => (
+                      <Box key={item.label} onClick={() => navigate(item.to)}
+                        sx={{
+                          px: 1.5, py: 1.25, borderRadius: 1.5, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 1.5,
+                          transition: 'all 140ms ease',
+                          '&:hover': { bgcolor: item.color + '12', transform: 'translateX(4px)' },
+                        }}>
+                        <Box sx={{ width: 34, height: 34, borderRadius: 1.25, bgcolor: item.color + '15', display: 'grid', placeItems: 'center', flexShrink: 0, color: item.color }}>
+                          {React.cloneElement(item.icon, { sx: { fontSize: 18 } })}
+                        </Box>
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography variant="body2" fontWeight={700}>{item.label}</Typography>
+                          <Typography variant="caption" color="text.secondary" noWrap>{item.desc}</Typography>
+                        </Box>
+                        <ChevronRightIcon sx={{ color: 'text.disabled', fontSize: 18 }} />
+                      </Box>
+                    ))}
+                  </Stack>
+                </Box>
+              </Paper>
+
+              {/* Help & Navigation Guide */}
+              <Paper sx={{ borderRadius: 2.5, overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}>
+                <Box
+                  onClick={() => setHelpOpen(!helpOpen)}
+                  sx={{ px: 2.5, py: 1.75, background: 'linear-gradient(135deg,#92711a,#c8a84b)', color: '#fff', cursor: 'pointer', userSelect: 'none' }}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <HelpIcon sx={{ fontSize: 20 }} />
+                    <Typography variant="subtitle1" fontWeight={700}>Help & Guide</Typography>
+                    <Typography variant="caption" sx={{ ml: 'auto', opacity: 0.85, fontWeight: 600 }}>
+                      {helpOpen ? '▲ Collapse' : '▼ Expand'}
+                    </Typography>
+                  </Stack>
+                </Box>
+                {helpOpen && (
+                  <Box sx={{ p: 2 }}>
+                    <Typography variant="caption" fontWeight={700} color="text.secondary"
+                      sx={{ textTransform: 'uppercase', letterSpacing: 1, display: 'block', mb: 1.25 }}>
+                      Arbitration Workflow
+                    </Typography>
+                    <Stack spacing={1} sx={{ mb: 2 }}>
+                      {workflowGuide.map((step, i) => (
+                        <Stack key={step.key} direction="row" spacing={1.25} alignItems="flex-start">
+                          <Box sx={{
+                            width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                            background: 'linear-gradient(135deg,#0d2444,#1a3a6b)',
+                            color: '#fff', display: 'grid', placeItems: 'center',
+                            fontSize: 10, fontWeight: 800, mt: 0.15,
+                          }}>{i + 1}</Box>
+                          <Box>
+                            <Typography variant="body2" fontWeight={700}>{step.label}</Typography>
+                            <Typography variant="caption" color="text.secondary">{step.desc}</Typography>
+                          </Box>
+                        </Stack>
+                      ))}
+                    </Stack>
+
+                    <Divider sx={{ my: 1.5 }} />
+
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                      <LightbulbIcon sx={{ fontSize: 16, color: '#c8a84b' }} />
+                      <Typography variant="caption" fontWeight={700} color="text.secondary"
+                        sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>Quick Tips</Typography>
+                    </Stack>
+                    <Stack spacing={0.75}>
+                      {[
+                        'Click any case card to open full details.',
+                        'Use "Open New Case" to start a new arbitration.',
+                        'Upload evidence via the Documents tab in each case.',
+                        'Join hearings directly from the Hearings tab.',
+                        'AI Draft Award is available during deliberation stage.',
+                        'Use Compliance Tools for legal gap analysis.',
+                      ].map((tip, i) => (
+                        <Stack key={i} direction="row" spacing={1} alignItems="flex-start">
+                          <Typography sx={{ color: '#c8a84b', fontWeight: 900, lineHeight: 1.6, flexShrink: 0 }}>›</Typography>
+                          <Typography variant="caption" color="text.secondary">{tip}</Typography>
+                        </Stack>
+                      ))}
+                    </Stack>
+                  </Box>
+                )}
+              </Paper>
+
+              {/* Closed Files */}
+              {closedCases.length > 0 && (
+                <Paper sx={{ borderRadius: 2.5, overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}>
+                  <Box sx={{ px: 2.5, py: 1.75, bgcolor: '#f8f9fa', borderBottom: '1px solid', borderColor: 'divider' }}>
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <ArchiveIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+                      <Typography variant="subtitle1" fontWeight={700}>Closed Files</Typography>
+                      <Chip label={closedCases.length} size="small" sx={{ ml: 'auto' }} />
+                    </Stack>
+                  </Box>
+                  <Box sx={{ p: 2 }}>
+                    <Stack spacing={0.5}>
+                      {closedCases.slice(0, 4).map(c => (
+                        <Box key={c.caseId} sx={{ py: 1.25, borderBottom: '1px solid', borderColor: 'divider' }}>
+                          <Typography variant="body2" fontWeight={700} sx={{ mb: 0.5 }}>{c.title}</Typography>
+                          <Stack direction="row" spacing={0.5}>
+                            <Button size="small" variant="outlined" sx={{ fontSize: 11, py: 0.3, borderRadius: 1 }}
+                              onClick={() => openArchive(c)}>Browse File</Button>
+                            <Button size="small" variant="text" sx={{ fontSize: 11, py: 0.3 }}
+                              onClick={() => goCase(c.caseId, 'overview')}>Open</Button>
+                          </Stack>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Box>
+                </Paper>
+              )}
+
+            </Stack>
+          </Grid>
         </Grid>
-      </Grid>
-    </Container>
+      </Container>
+    </Box>
   );
 };
 
