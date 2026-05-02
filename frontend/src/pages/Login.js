@@ -81,12 +81,20 @@ const Login = () => {
                     <Typography variant="caption" sx={{ opacity: 0.84 }}>{t('Secure dispute resolution workspace')}</Typography>
                   </Box>
                 </Stack>
-                <Typography variant="h3" fontWeight={850} sx={{ lineHeight: 1.08, mb: 2 }}>
-                  {t('Manage proceedings with clarity.')}
-                </Typography>
-                <Typography variant="body1" sx={{ opacity: 0.88, maxWidth: 440, lineHeight: 1.7 }}>
-                  {t('Access cases, hearings, documents, payments, and awards through a role-based legal technology platform built for arbitration workflows.')}
-                </Typography>
+                <Box
+                  component="img"
+                  src="/login-justice.jpg"
+                  alt={t('Lady Justice statue')}
+                  sx={{
+                    width: '100%',
+                    height: { xs: 260, md: 360 },
+                    objectFit: 'cover',
+                    objectPosition: 'center',
+                    borderRadius: 3,
+                    boxShadow: '0 24px 48px rgba(0,0,0,0.24)',
+                    border: '1px solid rgba(255,255,255,0.24)',
+                  }}
+                />
               </Box>
               <Stack spacing={1.5} sx={{ mt: 5 }}>
                 <Stack direction="row" spacing={1.25} alignItems="center">
