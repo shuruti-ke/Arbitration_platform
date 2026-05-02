@@ -2,10 +2,17 @@
 import React, { useState } from 'react';
 import {
   Container, Paper, Typography, TextField,
-  Button, Box, Alert, CircularProgress, Chip
+  Button, Box, Alert, CircularProgress, Checkbox, FormControlLabel,
+  Grid, Link, InputAdornment, IconButton, Stack, Divider
 } from '@mui/material';
 
-import { LockOutlined as LockIcon } from '@mui/icons-material';
+import {
+  LockOutlined as LockIcon,
+  Balance as BalanceIcon,
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon,
+  Shield as ShieldIcon,
+} from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getApiErrorMessage } from '../services/apiErrors';
@@ -17,6 +24,8 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -35,19 +44,70 @@ const Login = () => {
   };
 
   return (
-    <Container maxWidth="sm" sx={{ mt: 10 }}>
-      <Paper sx={{ p: 4 }}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 3 }}>
-            <LockIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />
-            <Typography variant="h5" fontWeight="bold">{t('Arbitration Platform')}</Typography>
-            <Typography variant="body2" color="textSecondary">{t('Sign in to your account')}</Typography>
-            <Typography variant="body2" color="textSecondary" sx={{ mt: 1, textAlign: 'center' }}>
-              {t('Arbitration Facilitation Platform — Case management and hearing support for arbitration proceedings')}
-            </Typography>
-            <Alert severity="info" variant="outlined" sx={{ mt: 1, mb: 0 }}>
-              {t('This platform facilitates arbitration proceedings only. It has no arbitral authority and does not make awards or legal determinations.')}
-            </Alert>
-          </Box>
+    <Box
+      sx={{
+        minHeight: 'calc(100vh - 64px)',
+        display: 'flex',
+        alignItems: 'center',
+        bgcolor: '#f4f7fb',
+        py: { xs: 4, md: 7 },
+      }}
+    >
+      <Container maxWidth="lg">
+        <Paper sx={{ overflow: 'hidden', borderRadius: 3, boxShadow: '0 24px 60px rgba(15, 23, 42, 0.14)' }}>
+          <Grid container>
+            <Grid
+              item
+              xs={12}
+              md={6}
+              sx={{
+                p: { xs: 3, md: 5 },
+                color: 'white',
+                minHeight: { md: 620 },
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                background:
+                  'linear-gradient(135deg, rgba(13,71,161,0.98), rgba(21,101,192,0.92)), repeating-linear-gradient(45deg, rgba(255,255,255,0.12) 0 1px, transparent 1px 16px)',
+              }}
+            >
+              <Box>
+                <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 5 }}>
+                  <Box sx={{ width: 48, height: 48, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.16)', display: 'grid', placeItems: 'center' }}>
+                    <BalanceIcon />
+                  </Box>
+                  <Box>
+                    <Typography variant="h6" fontWeight={850}>{t('Arbitration Platform')}</Typography>
+                    <Typography variant="caption" sx={{ opacity: 0.84 }}>{t('Secure dispute resolution workspace')}</Typography>
+                  </Box>
+                </Stack>
+                <Typography variant="h3" fontWeight={850} sx={{ lineHeight: 1.08, mb: 2 }}>
+                  {t('Manage proceedings with clarity.')}
+                </Typography>
+                <Typography variant="body1" sx={{ opacity: 0.88, maxWidth: 440, lineHeight: 1.7 }}>
+                  {t('Access cases, hearings, documents, payments, and awards through a role-based legal technology platform built for arbitration workflows.')}
+                </Typography>
+              </Box>
+              <Stack spacing={1.5} sx={{ mt: 5 }}>
+                <Stack direction="row" spacing={1.25} alignItems="center">
+                  <ShieldIcon fontSize="small" />
+                  <Typography variant="body2">{t('Secure login protected by encrypted transport')}</Typography>
+                </Stack>
+                <Typography variant="caption" sx={{ opacity: 0.78 }}>
+                  {t('For sensitive legal data, sign out when using a shared device.')}
+                </Typography>
+              </Stack>
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <Box sx={{ p: { xs: 3, sm: 5 }, maxWidth: 440, mx: 'auto' }}>
+                <Box sx={{ mb: 3 }}>
+                  <LockIcon sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
+                  <Typography variant="h4" fontWeight={850}>{t('Arbitration Platform - Sign In')}</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+                    {t('Your role is detected automatically from your credentials.')}
+                  </Typography>
+                </Box>
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
@@ -61,39 +121,72 @@ const Login = () => {
             onChange={(e) => setEmail(e.target.value)}
             sx={{ mb: 2 }}
             autoComplete="email"
+            inputProps={{ 'aria-label': t('Email address') }}
           />
           <TextField
             label={t('Password')}
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             fullWidth
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            sx={{ mb: 3 }}
+            sx={{ mb: 1 }}
             autoComplete="current-password"
+            inputProps={{ 'aria-label': t('Password') }}
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    aria-label={showPassword ? t('Hide password') : t('Show password')}
+                    onClick={() => setShowPassword(v => !v)}
+                    edge="end"
+                  >
+                    {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                  </IconButton>
+                </InputAdornment>
+              )
+            }}
           />
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+            <FormControlLabel
+              control={<Checkbox checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />}
+              label={<Typography variant="body2">{t('Remember me')}</Typography>}
+            />
+            <Link component="button" type="button" variant="body2" underline="hover" onClick={() => setError(t('Password reset is handled by the platform administrator. Contact support to reset access.'))}>
+              {t('Forgot password?')}
+            </Link>
+          </Stack>
           <Button
             type="submit"
             variant="contained"
             fullWidth
             size="large"
             disabled={loading}
+            sx={{ minHeight: 48, fontWeight: 800 }}
           >
             {loading ? <CircularProgress size={24} color="inherit" /> : t('Sign In')}
           </Button>
         </form>
 
-        <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          {['admin', 'arbitrator', 'secretariat', 'counsel', 'party'].map(role => (
-            <Chip key={role} label={t(role === 'counsel' ? 'Legal Counsel' : role === 'party' ? 'Party (Claimant / Respondent)' : role === 'admin' ? 'Administrator' : role === 'secretariat' ? 'Secretariat' : 'Arbitrator')} size="small" variant="outlined" />
-          ))}
-        </Box>
-
-        <Typography variant="caption" sx={{ mt: 2, display: 'block', textAlign: 'center' }}>
-          <a href="/charter" style={{ color: 'inherit' }}>Platform Charter & Legal Documents</a>
-        </Typography>
-      </Paper>
-    </Container>
+                <Divider sx={{ my: 3 }} />
+                <Stack spacing={1} alignItems="center">
+                  <Typography variant="caption" color="text.secondary" textAlign="center">
+                    {t('This platform facilitates arbitration proceedings only. It has no arbitral authority and does not make awards or legal determinations.')}
+                  </Typography>
+                  <Stack direction="row" spacing={2} flexWrap="wrap" justifyContent="center" useFlexGap>
+                    <Link href="/charter" variant="caption" underline="hover">{t('Platform Charter')}</Link>
+                    <Link href="/training" variant="caption" underline="hover">{t('Help / Support')}</Link>
+                    <Link href="/settings" variant="caption" underline="hover">{t('Privacy')}</Link>
+                    <Link href="/settings" variant="caption" underline="hover">{t('Terms')}</Link>
+                    <Link href="mailto:support@arbplat.com" variant="caption" underline="hover">{t('Contact Support')}</Link>
+                  </Stack>
+                </Stack>
+              </Box>
+            </Grid>
+          </Grid>
+        </Paper>
+      </Container>
+    </Box>
   );
 };
 
