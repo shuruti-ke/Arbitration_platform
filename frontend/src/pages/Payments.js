@@ -53,7 +53,16 @@ const PAYMENT_METHODS = [
 const fmtCurrency = (amount, currency = 'KES') =>
   amount ? `${currency} ${parseFloat(amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—';
 const fmtDate = (val) => val ? new Date(val).toLocaleDateString('en-KE', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
-const v = (row, ...keys) => { for (const k of keys) { const u = k.toUpperCase(), l = k.toLowerCase(); if (row[u] !== undefined) return row[u]; if (row[l] !== undefined) return row[l]; } return undefined; };
+const v = (row, ...keys) => {
+  if (!row || typeof row !== 'object') return undefined;
+  for (const k of keys) {
+    const u = k.toUpperCase();
+    const l = k.toLowerCase();
+    if (row[u] !== undefined) return row[u];
+    if (row[l] !== undefined) return row[l];
+  }
+  return undefined;
+};
 
 // ─── Stat Card ───────────────────────────────────────────────────────────────
 const StatCard = ({ label, value, sub, color = '#1976d2', icon }) => (
