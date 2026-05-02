@@ -313,6 +313,22 @@ class NeonDatabaseService {
       )
     `);
 
+    await this._createTableSafe('ai_award_drafts', `
+      CREATE TABLE IF NOT EXISTS ai_award_drafts (
+        id                   INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        draft_id             VARCHAR(100) UNIQUE NOT NULL,
+        case_id              VARCHAR(50) NOT NULL,
+        arbitrator_id        VARCHAR(100) NOT NULL,
+        prompt_version       VARCHAR(50) NOT NULL,
+        source_snapshot_hash VARCHAR(64) NOT NULL,
+        draft_text           TEXT NOT NULL,
+        draft_json           TEXT,
+        status               VARCHAR(50) DEFAULT 'draft',
+        created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        reviewed_at          TIMESTAMP
+      )
+    `);
+
     await this._createTableSafe('rule_guidance_cache', `
       CREATE TABLE IF NOT EXISTS rule_guidance_cache (
         id                  INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -545,7 +561,7 @@ class NeonDatabaseService {
     const allTables = [
       'users','arbitrator_assignments','hearings','hearing_participants','cases','documents',
       'audit_logs','consents','ai_intelligence_reports','ai_document_analyses',
-      'rule_guidance_cache','case_agreements','case_agreement_parties',
+      'ai_award_drafts','rule_guidance_cache','case_agreements','case_agreement_parties',
       'case_agreement_signatures','case_agreement_extractions','parties','case_counsel',
       'case_milestones','case_payments'
     ];

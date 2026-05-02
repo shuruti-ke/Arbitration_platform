@@ -8,7 +8,8 @@ const { Client } = require('pg');
 
 const MIGRATIONS = [
   'migrate-security-tables.sql',
-  'migrate-tax-and-settings.sql'
+  'migrate-tax-and-settings.sql',
+  'migrate-ai-award-drafts.sql'
 ];
 
 async function main() {

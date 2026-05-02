@@ -21,6 +21,7 @@ import {
   Verified as VerifiedIcon,
   Fingerprint as HashIcon,
   ContentCopy as CopyIcon,
+  AutoAwesome as AutoAwesomeIcon,
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
@@ -78,6 +79,9 @@ const CaseDetail = () => {
   const [awardPackLoading, setAwardPackLoading] = useState(false);
   const [awardPackError, setAwardPackError] = useState(null);
   const [awardSeat, setAwardSeat] = useState('');
+  const [aiAwardDraft, setAiAwardDraft] = useState(null);
+  const [aiAwardLoading, setAiAwardLoading] = useState(false);
+  const [aiAwardError, setAiAwardError] = useState(null);
 
   const load = async () => {
     try {
@@ -387,6 +391,42 @@ const CaseDetail = () => {
     }
   };
 
+  const normalizeAiDraft = (draft) => draft ? {
+    draftId: draft.DRAFT_ID || draft.draftId || draft.draft_id,
+    caseId: draft.CASE_ID || draft.caseId || draft.case_id,
+    sourceSnapshotHash: draft.SOURCE_SNAPSHOT_HASH || draft.sourceSnapshotHash || draft.source_snapshot_hash,
+    draftText: draft.DRAFT_TEXT || draft.draftText || draft.draft_text,
+    status: draft.STATUS || draft.status,
+    createdAt: draft.CREATED_AT || draft.createdAt || draft.created_at,
+  } : null;
+
+  const loadAiAwardDraft = async () => {
+    if (user?.role !== 'arbitrator') return;
+    setAiAwardLoading(true);
+    setAiAwardError(null);
+    try {
+      const res = await apiService.getAIAwardDraft(caseId);
+      setAiAwardDraft(normalizeAiDraft(res.data?.draft));
+    } catch (err) {
+      setAiAwardError(err.response?.data?.error || t('Failed to load AI draft award.'));
+    } finally {
+      setAiAwardLoading(false);
+    }
+  };
+
+  const generateAiAwardDraft = async () => {
+    setAiAwardLoading(true);
+    setAiAwardError(null);
+    try {
+      const res = await apiService.generateAIAwardDraft(caseId);
+      setAiAwardDraft(normalizeAiDraft(res.data?.draft));
+    } catch (err) {
+      setAiAwardError(err.response?.data?.error || t('Failed to generate AI draft award.'));
+    } finally {
+      setAiAwardLoading(false);
+    }
+  };
+
   const openUploadDialog = (purpose = 'contract') => {
     setUploadPurpose(purpose);
     setUploadCategory(purpose === 'service' ? 'Proof of Service' : 'Contract / Agreement');
@@ -509,7 +549,10 @@ const CaseDetail = () => {
       </Box>
 
       <Paper sx={{ mb: 3 }}>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto">
+        <Tabs value={tab} onChange={(_, v) => {
+          setTab(v);
+          if (v === 8 && user?.role === 'arbitrator') loadAiAwardDraft();
+        }} variant="scrollable" scrollButtons="auto">
           <Tab label={t('Overview')} />
           <Tab label={`${t('Parties')} (${parties.length})`} />
           <Tab label={`${t('Counsel')} (${counsel.length})`} />
@@ -519,6 +562,9 @@ const CaseDetail = () => {
           <Tab label={t('Audit Log')} />
           {['admin', 'secretariat', 'arbitrator'].includes(user?.role) && (
             <Tab label={t('Award Pack')} icon={<GavelIcon fontSize="small" />} iconPosition="start" />
+          )}
+          {user?.role === 'arbitrator' && (
+            <Tab label={t('AI Draft Award')} icon={<AutoAwesomeIcon fontSize="small" />} iconPosition="start" />
           )}
         </Tabs>
       </Paper>
@@ -1010,6 +1056,73 @@ const CaseDetail = () => {
           </Paper>
         );
       })()}
+
+      {/* AI DRAFT AWARD */}
+      {tab === 8 && user?.role === 'arbitrator' && (
+        <Paper sx={{ p: 3 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            <AutoAwesomeIcon color="primary" />
+            <Typography variant="subtitle1" fontWeight={700}>{t('AI Draft Award')}</Typography>
+            <Chip label={t('Arbitrator only')} size="small" color="primary" variant="outlined" />
+          </Box>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {t('This draft is confidential and advisory only. It is visible only to the assigned arbitrator and must be reviewed, edited, and adopted independently before any actual award is issued.')}
+          </Alert>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+            <Button
+              variant="contained"
+              startIcon={aiAwardLoading ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
+              onClick={generateAiAwardDraft}
+              disabled={aiAwardLoading}
+            >
+              {aiAwardDraft ? t('Regenerate Draft Award') : t('Generate Draft Award')}
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={loadAiAwardDraft}
+              disabled={aiAwardLoading}
+            >
+              {t('Load Latest Draft')}
+            </Button>
+            {aiAwardDraft?.draftText && (
+              <IconButton
+                onClick={() => navigator.clipboard.writeText(aiAwardDraft.draftText).catch(() => {})}
+                title={t('Copy draft')}
+              >
+                <CopyIcon fontSize="small" />
+              </IconButton>
+            )}
+          </Box>
+          {aiAwardError && <Alert severity="error" sx={{ mb: 2 }}>{aiAwardError}</Alert>}
+          {aiAwardDraft ? (
+            <Box>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+                <Chip label={`${t('Status')}: ${aiAwardDraft.status || 'draft'}`} size="small" />
+                {aiAwardDraft.createdAt && <Chip label={`${t('Generated')}: ${new Date(aiAwardDraft.createdAt).toLocaleString()}`} size="small" />}
+                {aiAwardDraft.sourceSnapshotHash && <Chip label={`${t('Record hash')}: ${String(aiAwardDraft.sourceSnapshotHash).slice(0, 12)}...`} size="small" variant="outlined" />}
+              </Box>
+              <TextField
+                fullWidth
+                multiline
+                minRows={18}
+                value={aiAwardDraft.draftText || ''}
+                InputProps={{ readOnly: true }}
+                sx={{
+                  '& textarea': {
+                    fontFamily: 'Georgia, serif',
+                    fontSize: '0.95rem',
+                    lineHeight: 1.65,
+                  }
+                }}
+              />
+            </Box>
+          ) : (
+            <Alert severity="info">
+              {t('No AI draft award has been generated for this case yet. Generate one after the pleadings, evidence, and hearing record are ready for deliberation.')}
+            </Alert>
+          )}
+        </Paper>
+      )}
 
       {/* Edit Case Dialog */}
       <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="md" fullWidth>

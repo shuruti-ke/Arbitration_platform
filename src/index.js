@@ -391,6 +391,104 @@ function buildRuleGuidanceSummary(data = {}) {
   return cleanModelText(summaryParts.join(' '));
 }
 
+function valueOf(row = {}, key) {
+  return row[key] ?? row[key.toUpperCase()] ?? row[key.toLowerCase()];
+}
+
+function limitText(value, max = 9000) {
+  const text = cleanModelText(value);
+  return text.length > max ? `${text.slice(0, max)}\n[truncated]` : text;
+}
+
+function safeJson(value) {
+  try { return JSON.stringify(value); } catch { return '{}'; }
+}
+
+async function isAssignedArbitrator(oracleDb, caseId, userId) {
+  const result = await oracleDb.executeQuery(
+    `SELECT 1 FROM cases WHERE case_id = :caseId AND created_by = :userId
+     UNION SELECT 1 FROM arbitrator_assignments WHERE case_id = :caseId AND arbitrator_id = :userId
+     LIMIT 1`,
+    { caseId, userId }
+  ).catch(() => null);
+  return !!(result && result.rows && result.rows.length > 0);
+}
+
+function buildAwardDraftPrompt(bundle) {
+  return `You are acting as an AI arbitral award drafting assistant for the assigned arbitrator.
+
+This output is NOT the final award and must not be presented to parties as an award. It is a confidential draft for the arbitrator's private review only. The arbitrator remains solely responsible for the actual award.
+
+Task:
+Prepare a reasoned draft arbitral award based only on the case record below. Use neutral tribunal language. If evidence is missing or a fact is disputed, flag it rather than inventing facts. Do not cite authorities unless they are present in the record or you are certain they are real and applicable.
+
+Required structure:
+1. AI advisory notice
+2. Tribunal and parties
+3. Procedural history
+4. Jurisdiction and applicable rules/law
+5. Issues for determination
+6. Parties' positions
+7. Findings of fact
+8. Analysis and reasons
+9. Dispositive orders
+10. Costs, interest, and payment directions if supported by the record
+11. Formal award checklist for signature, date, seat, reasons, and delivery
+12. Uncertainty and evidence gaps
+
+CASE RECORD:
+${JSON.stringify(bundle, null, 2)}
+
+Return a polished draft award in plain text.`;
+}
+
+async function buildAwardProceedingsBundle(oracleDb, caseId) {
+  const [
+    caseResult,
+    partiesResult,
+    counselResult,
+    milestonesResult,
+    docsResult,
+    hearingsResult,
+    agreementResult
+  ] = await Promise.all([
+    oracleDb.executeQuery('SELECT * FROM cases WHERE case_id = :caseId', { caseId }),
+    oracleDb.executeQuery('SELECT * FROM parties WHERE case_id = :caseId ORDER BY party_type', { caseId }),
+    oracleDb.executeQuery('SELECT * FROM case_counsel WHERE case_id = :caseId', { caseId }),
+    oracleDb.executeQuery('SELECT * FROM case_milestones WHERE case_id = :caseId ORDER BY created_at', { caseId }),
+    oracleDb.executeQuery(`SELECT id, document_name, category, description, text_content, created_at
+      FROM documents WHERE case_id = :caseId ORDER BY created_at DESC LIMIT 20`, { caseId }),
+    oracleDb.executeQuery('SELECT * FROM hearings WHERE case_id = :caseId ORDER BY start_time', { caseId }),
+    oracleDb.executeQuery('SELECT * FROM case_agreements WHERE case_id = :caseId ORDER BY created_at DESC LIMIT 1', { caseId })
+  ]);
+
+  const caseRow = caseResult.rows?.[0];
+  if (!caseRow) return null;
+
+  const documents = (docsResult.rows || []).map((doc) => ({
+    id: valueOf(doc, 'id'),
+    name: valueOf(doc, 'document_name'),
+    category: valueOf(doc, 'category'),
+    description: valueOf(doc, 'description'),
+    uploadedAt: valueOf(doc, 'created_at'),
+    textExcerpt: limitText(valueOf(doc, 'text_content'), 7000)
+  }));
+
+  const bundle = {
+    case: caseRow,
+    parties: partiesResult.rows || [],
+    counsel: counselResult.rows || [],
+    milestones: milestonesResult.rows || [],
+    hearings: hearingsResult.rows || [],
+    latestAgreement: agreementResult.rows?.[0] || null,
+    documents,
+    generatedAt: new Date().toISOString()
+  };
+
+  const sourceSnapshotHash = crypto.createHash('sha256').update(safeJson(bundle)).digest('hex');
+  return { bundle, sourceSnapshotHash };
+}
+
 // --- F-002 remediation: Login rate limiter (per-email + per-IP) ---
 // Max 5 failed attempts per 15 minutes, then 15-minute lockout
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
@@ -858,6 +956,103 @@ Be specific and cite actual legal provisions. If information is missing, state w
             generatedBy: awardRecord.generatedBy, seat: awardRecord.seat }
         ).catch(err => console.error('Award hash persist error:', err.message));
         return sendJSON(res, 200, { ...pack, verificationHash });
+      }
+
+      // --- GET /api/cases/:caseId/ai-award-draft ---
+      if (path.match(/^\/api\/cases\/[^/]+\/ai-award-draft$/) && method === 'GET') {
+        const user = authenticate(req, res, ['arbitrator']);
+        if (!user) return;
+        const caseId = path.split('/')[3];
+        if (!(await isAssignedArbitrator(oracleDb, caseId, user.userId))) {
+          return sendJSON(res, 403, { error: 'Access denied. This AI draft award is visible only to the assigned arbitrator.' });
+        }
+
+        const result = await oracleDb.executeQuery(
+          `SELECT draft_id, case_id, arbitrator_id, prompt_version, source_snapshot_hash,
+                  draft_text, draft_json, status, created_at, reviewed_at
+           FROM ai_award_drafts
+           WHERE case_id = :caseId AND arbitrator_id = :arbitratorId
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          { caseId, arbitratorId: user.userId }
+        );
+        const draft = result.rows?.[0] || null;
+        if (draft) {
+          await auditTrail.logEvent({
+            type: 'ai_award_draft_viewed',
+            caseId,
+            userId: user.userId,
+            action: 'view_ai_award_draft',
+            details: { draftId: valueOf(draft, 'draft_id') }
+          });
+        }
+        return sendJSON(res, 200, { draft });
+      }
+
+      // --- POST /api/cases/:caseId/ai-award-draft ---
+      if (path.match(/^\/api\/cases\/[^/]+\/ai-award-draft$/) && method === 'POST') {
+        const user = authenticate(req, res, ['arbitrator']);
+        if (!user) return;
+        const caseId = path.split('/')[3];
+        if (!(await isAssignedArbitrator(oracleDb, caseId, user.userId))) {
+          return sendJSON(res, 403, { error: 'Access denied. Only the assigned arbitrator can generate this draft.' });
+        }
+        if (!OPENAI_API_KEY && !QWEN_API_KEY && !NVIDIA_API_KEY) {
+          return sendJSON(res, 503, { error: 'No AI provider configured' });
+        }
+
+        const proceedings = await buildAwardProceedingsBundle(oracleDb, caseId);
+        if (!proceedings) return sendJSON(res, 404, { error: 'Case not found' });
+
+        const promptVersion = 'ai-award-draft-v1';
+        const draftText = await callAI(buildAwardDraftPrompt(proceedings.bundle), 6000);
+        const draftId = `award-draft-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+        const draftJson = {
+          advisoryOnly: true,
+          visibility: 'assigned_arbitrator_only',
+          sourceSnapshotHash: proceedings.sourceSnapshotHash,
+          promptVersion,
+          generatedAt: new Date().toISOString(),
+          modelHint: OPENAI_API_KEY ? OPENAI_MODEL : QWEN_API_KEY ? QWEN_MODEL : NVIDIA_MODEL
+        };
+
+        await oracleDb.executeQuery(
+          `INSERT INTO ai_award_drafts
+             (draft_id, case_id, arbitrator_id, prompt_version, source_snapshot_hash,
+              draft_text, draft_json, status)
+           VALUES
+             (:draftId, :caseId, :arbitratorId, :promptVersion, :sourceSnapshotHash,
+              :draftText, :draftJson, 'draft')`,
+          {
+            draftId,
+            caseId,
+            arbitratorId: user.userId,
+            promptVersion,
+            sourceSnapshotHash: proceedings.sourceSnapshotHash,
+            draftText: cleanModelText(draftText),
+            draftJson: JSON.stringify(draftJson)
+          }
+        );
+        await auditTrail.logEvent({
+          type: 'ai_award_draft_generated',
+          caseId,
+          userId: user.userId,
+          action: 'generate_ai_award_draft',
+          details: { draftId, sourceSnapshotHash: proceedings.sourceSnapshotHash, promptVersion }
+        });
+        return sendJSON(res, 201, {
+          draft: {
+            draftId,
+            caseId,
+            arbitratorId: user.userId,
+            promptVersion,
+            sourceSnapshotHash: proceedings.sourceSnapshotHash,
+            draftText: cleanModelText(draftText),
+            draftJson,
+            status: 'draft',
+            createdAt: new Date().toISOString()
+          }
+        });
       }
 
       // --- GET /api/awards/verify ---
