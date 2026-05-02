@@ -1,6 +1,6 @@
 # Platform Handover Document
 
-**Last updated:** 2026-05-02  
+**Last updated:** 2026-05-02 (UI redesign)
 **Platform name:** Rafiki Arbitration  
 **Public URL:** https://arbitration-platform.vercel.app  
 **Repository:** https://github.com/shuruti-ke/Arbitration_platform
@@ -23,6 +23,33 @@
 ```json
 "/api/:path*" -> "https://vps-5968ce23.vps.ovh.us/api/:path*"
 ```
+
+---
+
+## 2026-05-02 UI Redesign Summary
+
+### Platform-wide Design System (latest)
+- MUI theme overhauled in `frontend/src/App.js` (`buildTheme`). Changes cascade to all pages automatically via component overrides — no per-page edits needed.
+- **Design tokens:**
+  - Page background: `#f7f9fc`
+  - Paper/Card: `#ffffff` + `#e8edf3` border, `borderRadius: 8`
+  - Primary: `#1565c0` / Secondary: `#6a1b9a`
+  - Font: Inter → Roboto fallback
+  - Buttons: `disableElevation`, `textTransform: none`, `borderRadius: 6`
+  - Table headers: `#fafbfd` bg, uppercase, `#6b7280` text
+  - Dialogs: 12px radius, bordered title/actions rows
+- **Navigation** (`frontend/src/components/Navigation.js`):
+  - White sticky AppBar (no dark blue)
+  - Blue logo mark + "Rafiki Arbitration" wordmark
+  - Smaller icon buttons with hover highlight
+  - Name + role text on right, compact logout button
+
+### Arbitrator Dashboard Redesign
+- Compact white header bar (replaced oversized dark hero)
+- KPI cards: white with colored top-border accent, hover lift
+- Alert strip for pending filings / next hearing / awards in progress
+- Right sidebar: Upcoming Hearings · Quick Navigation (6 links with descriptions) · Help & Guide (collapsible — all 8 workflow stages + tips) · Closed Files
+- Case cards: colored left border by stage, progress bar, hover lift
 
 ---
 
