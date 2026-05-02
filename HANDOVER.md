@@ -40,6 +40,7 @@
   - **IPv4:** `135.148.120.31`
   - **Hostname:** `vps-5968ce23.vps.ovh.us`
   - **SSH user:** `ubuntu`
+  - **Local SSH key:** `C:\Users\shuru\Documents\AIProjects\Arbitration_Platform\ovh-vps-135-148-120-31_ed25519`
 - Backend app directory on OVH:
   - `/home/ubuntu/arbitration-platform`
 - PM2 process:
@@ -283,12 +284,68 @@ vercel logs
 
 Use curl/small-file updates where possible because the VM is sensitive and should not be overloaded by heavy operations.
 
-```bash
+#### SSH Login
+
+From PowerShell in the repository root:
+
+```powershell
+cd C:\Users\shuru\Documents\AIProjects\Arbitration_Platform
 ssh -i .\ovh-vps-135-148-120-31_ed25519 ubuntu@135.148.120.31
+```
+
+Equivalent full-path command:
+
+```powershell
+ssh -i "C:\Users\shuru\Documents\AIProjects\Arbitration_Platform\ovh-vps-135-148-120-31_ed25519" ubuntu@135.148.120.31
+```
+
+Hostnames that should resolve to the same VPS:
+
+```text
+135.148.120.31
+vps-5968ce23.vps.ovh.us
+```
+
+If SSH warns about a changed host key after reinstalling the VPS, remove the stale known-host entry for `135.148.120.31` and reconnect.
+
+#### On-Server Commands
+
+```bash
 cd /home/ubuntu/arbitration-platform
 pm2 status
 pm2 logs arbitration-backend --lines 80
 pm2 restart arbitration-backend
+```
+
+Useful PM2 commands:
+
+```bash
+pm2 describe arbitration-backend
+pm2 monit
+pm2 save
+```
+
+Check current env keys without printing secrets:
+
+```bash
+cd /home/ubuntu/arbitration-platform
+grep -E '^(NODE_ENV|PORT|DATABASE_URL|CORS_ORIGIN|OPENAI_API_KEY|DAILY_)=' .env.oracle | sed 's/=.*/=set/'
+```
+
+#### Small File Deploy Pattern
+
+Use targeted copy/update commands, then restart PM2:
+
+```powershell
+scp -i .\ovh-vps-135-148-120-31_ed25519 .\src\services\hearing-service.js ubuntu@135.148.120.31:/home/ubuntu/arbitration-platform/src/services/hearing-service.js
+```
+
+Then on the server:
+
+```bash
+cd /home/ubuntu/arbitration-platform
+pm2 restart arbitration-backend
+pm2 logs arbitration-backend --lines 80
 ```
 
 Health check:
@@ -306,6 +363,19 @@ Expected unauthenticated response:
 ### Backend Deploy Note
 
 The old handover said there was no git on the VM and to SCP files to Oracle. That is no longer the live deployment path. The live backend is OVH. Prefer small, targeted file transfers or curl-based updates, then restart PM2.
+
+### Legacy Oracle Access
+
+Oracle Cloud was the previous backend host and should be treated as legacy unless explicitly rolling back.
+
+| Item | Legacy value |
+|---|---|
+| Host | `152.70.201.154` |
+| User | `opc` |
+| Old app dir | `/home/opc/arbitration-platform` |
+| Old local key | `C:\Users\shuru\Downloads\ssh-key-2026-04-14 (1).key` |
+
+Do not update Vercel rewrites back to Oracle unless intentionally performing a rollback.
 
 ---
 
