@@ -9,6 +9,7 @@ import {
 } from '@mui/material';
 import {
   Gavel as CasesIcon,
+  Gavel as GavelIcon,
   Description as DocumentsIcon,
   BarChart as AnalyticsIcon,
   FolderOpen as RepoIcon,
