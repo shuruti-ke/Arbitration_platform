@@ -26,6 +26,15 @@ import {
   AccountBalanceWallet as MoneyIcon,
   Timeline as TimelineIcon,
   NoteAdd as NoteAddIcon,
+  Work as WorkIcon,
+  Category as CategoryIcon,
+  Lock as LockIcon,
+  Article as ArticleIcon,
+  Place as PlaceIcon,
+  Language as LanguageIcon,
+  Groups as GroupsIcon,
+  Rule as RuleIcon,
+  InfoOutlined as InfoIcon,
 } from '@mui/icons-material';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
@@ -39,6 +48,44 @@ const Field = ({ label, value }) => (
   <Box sx={{ mb: 1.5 }}>
     <Typography variant="caption" color="text.secondary" display="block">{label}</Typography>
     <Typography variant="body2">{value || '—'}</Typography>
+  </Box>
+);
+
+const overviewCardSx = (accent) => ({
+  p: { xs: 2, md: 3 },
+  borderRadius: 2,
+  border: '1px solid',
+  borderColor: 'divider',
+  borderLeft: '5px solid',
+  borderLeftColor: accent,
+  minHeight: 300,
+  height: '100%',
+  boxShadow: '0 1px 3px rgba(15, 23, 42, 0.08)',
+  transition: 'transform 180ms ease, box-shadow 180ms ease',
+  '&:hover': {
+    transform: 'translateY(-2px)',
+    boxShadow: '0 10px 30px rgba(15, 23, 42, 0.10)',
+  },
+});
+
+const SectionTitle = ({ icon, title }) => (
+  <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+    {icon}
+    <Typography variant="h6" fontWeight={850}>{title}</Typography>
+  </Stack>
+);
+
+const DetailTile = ({ icon, label, value, valueNode }) => (
+  <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: '#f9fafb', height: '100%' }}>
+    <Stack direction="row" spacing={1.25} alignItems="flex-start">
+      <Box sx={{ color: 'primary.main', display: 'flex', mt: 0.2 }}>{icon}</Box>
+      <Box sx={{ minWidth: 0 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+          {label}
+        </Typography>
+        {valueNode || <Typography variant="body2" fontWeight={650}>{value || 'Not recorded'}</Typography>}
+      </Box>
+    </Stack>
   </Box>
 );
 
@@ -486,6 +533,19 @@ const CaseDetail = () => {
     { label: t('Created'), value: createdAt, tone: 'default' },
   ].filter(item => item.value);
 
+  const activeSince = filingDate || createdAt || submittedAt;
+  const activeDays = activeSince
+    ? Math.max(0, Math.round((Date.now() - new Date(activeSince).getTime()) / 86400000))
+    : null;
+  const nextDeadline = responseDeadline || milestones
+    .map(m => m.DUE_DATE || m.dueDate)
+    .filter(Boolean)
+    .sort((a, b) => new Date(a) - new Date(b))[0];
+  const nextDeadlineLabel = formatDate(nextDeadline) || t('Not set');
+  const agreementStatus = agreement?.AGREEMENT_STATUS || agreement?.agreement_status || c.AGREEMENT_STATUS || c.agreementStatus || 'none';
+  const agreementDocName = agreement?.SOURCE_DOCUMENT_NAME || agreement?.source_document_name || c.AGREEMENT_DOCUMENT_NAME || c.agreementDocumentName;
+  const agreementTemplateName = agreement?.TEMPLATE_NAME || agreement?.template_name;
+
   const recentActivity = [
     ...auditLog.slice(0, 3).map((a) => ({
       title: a.ACTION || a.action || a.EVENT_TYPE || a.eventType || t('Case activity'),
@@ -711,6 +771,40 @@ const CaseDetail = () => {
       {/* OVERVIEW */}
       {tab === 0 && (
         <Grid container spacing={3}>
+          <Grid item xs={12}>
+            <Paper
+              sx={{
+                p: { xs: 2, md: 2.5 },
+                borderRadius: 2,
+                border: '1px solid',
+                borderColor: 'divider',
+                boxShadow: '0 8px 26px rgba(15, 23, 42, 0.08)',
+              }}
+            >
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'center' }}>
+                <Stack direction="row" spacing={1.25} alignItems="center" sx={{ flex: 1 }}>
+                  <TimelineIcon color="primary" />
+                  <Box>
+                    <Typography variant="h6" fontWeight={900}>{t('Case Overview')}</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {t('Stage')} {safeStageIndex + 1}/{STAGE_ORDER.length}: {displayStage(currentStage)}
+                    </Typography>
+                  </Box>
+                </Stack>
+                <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
+                  <Chip label={activeDays !== null ? t('{{count}} day(s) active', { count: activeDays }) : t('Active period not set')} variant="outlined" />
+                  <Chip label={`${t('Next deadline')}: ${nextDeadlineLabel}`} color={nextDeadline ? 'warning' : 'default'} variant="outlined" />
+                  <Chip label={formatMoney(disputeAmount, c.CURRENCY || c.currency || 'USD') || t('Dispute amount not set')} color="primary" variant="outlined" />
+                </Stack>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  <Button variant="contained" startIcon={<EditIcon />} onClick={openEdit}>{t('Edit Case')}</Button>
+                  <Button variant="outlined" startIcon={<NoteAddIcon />} onClick={openEdit}>{t('Add Note')}</Button>
+                  <Button variant="outlined" startIcon={<CalendarIcon />} onClick={() => setTab(4)}>{t('Schedule Hearing')}</Button>
+                </Stack>
+              </Stack>
+              <LinearProgress variant="determinate" value={progressPercent} sx={{ mt: 2, height: 8, borderRadius: 1 }} />
+            </Paper>
+          </Grid>
           <Grid item xs={12} sm={6} md={3}>
             <Paper sx={{ p: 2.25, borderRadius: 2, border: '1px solid', borderColor: 'primary.light', height: '100%' }}>
               <Stack direction="row" spacing={1.5} alignItems="center">
@@ -782,14 +876,53 @@ const CaseDetail = () => {
           </Grid>
 
           <Grid item xs={12} lg={7}>
-            <Paper sx={{ p: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider', height: '100%' }}>
-              <Typography variant="h6" fontWeight={850} sx={{ mb: 2 }}>{t('Case Details')}</Typography>
+            <Paper sx={overviewCardSx('#3B82F6')}>
+              <SectionTitle icon={<ArticleIcon color="primary" />} title={t('Case Details')} />
               <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}><Field label={t('Case Type')} value={displayCaseType(c.CASE_TYPE || c.caseType)} /></Grid>
-                <Grid item xs={12} sm={6}><Field label={t('Sector / Industry')} value={displayCaseType(c.SECTOR || c.sector)} /></Grid>
-                <Grid item xs={12} sm={6}><Field label={t('Dispute Category')} value={displayDisputeCategory(c.DISPUTE_CATEGORY || c.disputeCategory)} /></Grid>
-                <Grid item xs={12} sm={6}><Field label={t('Status')} value={displayStatus(c.STATUS || c.status)} /></Grid>
-                <Grid item xs={12}><Field label={t('Description')} value={c.DESCRIPTION || c.description} /></Grid>
+                <Grid item xs={12} sm={6}>
+                  <DetailTile icon={<WorkIcon fontSize="small" />} label={t('Case Type')} value={displayCaseType(c.CASE_TYPE || c.caseType)} />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <DetailTile icon={<CategoryIcon fontSize="small" />} label={t('Sector / Industry')} value={displayCaseType(c.SECTOR || c.sector)} />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <DetailTile icon={<InfoIcon fontSize="small" />} label={t('Dispute Category')} value={displayDisputeCategory(c.DISPUTE_CATEGORY || c.disputeCategory)} />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <DetailTile
+                    icon={<LockIcon fontSize="small" />}
+                    label={t('Status')}
+                    valueNode={
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography variant="body2" fontWeight={650}>{displayStatus(c.STATUS || c.status)}</Typography>
+                        {(c.STATUS || c.status) === 'active' && (
+                          <Box sx={{
+                            width: 9,
+                            height: 9,
+                            borderRadius: '50%',
+                            bgcolor: 'success.main',
+                            animation: 'casePulse 1.6s ease-in-out infinite',
+                            '@keyframes casePulse': {
+                              '0%': { boxShadow: '0 0 0 0 rgba(46, 125, 50, 0.45)' },
+                              '70%': { boxShadow: '0 0 0 8px rgba(46, 125, 50, 0)' },
+                              '100%': { boxShadow: '0 0 0 0 rgba(46, 125, 50, 0)' },
+                            },
+                          }} />
+                        )}
+                      </Stack>
+                    }
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: '#f9fafb' }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                      {t('Description')}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, lineHeight: 1.7 }}>
+                      {c.DESCRIPTION || c.description || t('No case description has been recorded yet.')}
+                    </Typography>
+                  </Box>
+                </Grid>
                 {(c.RELIEF_SOUGHT || c.reliefSought) && (
                   <Grid item xs={12}><Field label={t('Relief Sought')} value={c.RELIEF_SOUGHT || c.reliefSought} /></Grid>
                 )}
@@ -797,18 +930,24 @@ const CaseDetail = () => {
             </Paper>
           </Grid>
           <Grid item xs={12} lg={5}>
-            <Paper sx={{ p: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider', height: '100%' }}>
-              <Typography variant="h6" fontWeight={850} sx={{ mb: 2 }}>{t('Key Dates')}</Typography>
+            <Paper sx={overviewCardSx('#10B981')}>
+              <SectionTitle icon={<CalendarIcon color="success" />} title={t('Key Dates')} />
               {keyDates.length === 0 ? (
                 <Alert severity="info">{t('No key dates have been recorded yet.')}</Alert>
               ) : (
-                <Stack spacing={1.5}>
-                  {keyDates.map((item) => (
-                    <Stack key={item.label} direction="row" spacing={1.5} alignItems="center">
-                      <Chip size="small" color={item.tone} label=" " sx={{ width: 10, minWidth: 10, height: 10, '& .MuiChip-label': { p: 0 } }} />
-                      <Box>
-                        <Typography variant="body2" fontWeight={700}>{item.label}</Typography>
-                        <Typography variant="body2" color="text.secondary">{formatDate(item.value)}</Typography>
+                <Stack spacing={0}>
+                  {keyDates.map((item, i) => (
+                    <Stack key={item.label} direction="row" spacing={1.75} alignItems="stretch">
+                      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', pt: 0.4 }}>
+                        <Box sx={{ width: 14, height: 14, borderRadius: '50%', bgcolor: item.tone === 'warning' ? 'warning.main' : item.tone === 'error' ? 'error.main' : i === 0 ? 'primary.main' : 'success.main', boxShadow: '0 0 0 4px rgba(16, 185, 129, 0.12)' }} />
+                        {i < keyDates.length - 1 && <Box sx={{ width: 2, flex: 1, minHeight: 36, bgcolor: '#d1fae5', my: 0.5 }} />}
+                      </Box>
+                      <Box sx={{ flex: 1, pb: i < keyDates.length - 1 ? 1.5 : 0 }}>
+                        <Stack direction="row" justifyContent="space-between" spacing={2}>
+                          <Typography variant="body2" fontWeight={800}>{item.label}</Typography>
+                          <Typography variant="body2" fontWeight={650}>{formatDate(item.value, false)}</Typography>
+                        </Stack>
+                        <Typography variant="caption" color="text.secondary">{relativeDate(item.value)}</Typography>
                       </Box>
                     </Stack>
                   ))}
@@ -823,15 +962,16 @@ const CaseDetail = () => {
             </Paper>
           </Grid>
           <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider', height: '100%' }}>
-              <Typography variant="h6" fontWeight={850} sx={{ mb: 2 }}>{t('Procedural')}</Typography>
-              <Field label={t('Arbitration Rules')} value={c.ARBITRATION_RULES || c.arbitrationRules} />
-              <Field label={t('Seat of Arbitration')} value={c.SEAT_OF_ARBITRATION || c.seatOfArbitration} />
-              <Field label={t('Governing Law')} value={c.GOVERNING_LAW || c.governingLaw} />
-              <Field label={t('Language of Proceedings')} value={displayLanguage(c.LANGUAGE_OF_PROCEEDINGS || c.languageOfProceedings)} />
-              <Field label={t('Number of Arbitrators')} value={c.NUM_ARBITRATORS || c.numArbitrators} />
-              <Field label={t('Institution Reference')} value={c.INSTITUTION_REF || c.institutionRef} />
-              <Field label={t('Third Party Funding')} value={(c.THIRD_PARTY_FUNDING || c.thirdPartyFunding) ? t('Yes') : t('No')} />
+            <Paper sx={overviewCardSx('#6366F1')}>
+              <SectionTitle icon={<GavelIcon sx={{ color: '#6366F1' }} />} title={t('Procedural')} />
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}><DetailTile icon={<RuleIcon fontSize="small" />} label={t('Arbitration Rules')} value={c.ARBITRATION_RULES || c.arbitrationRules} /></Grid>
+                <Grid item xs={12} sm={6}><DetailTile icon={<PlaceIcon fontSize="small" />} label={t('Seat of Arbitration')} value={c.SEAT_OF_ARBITRATION || c.seatOfArbitration} /></Grid>
+                <Grid item xs={12} sm={6}><DetailTile icon={<GavelIcon fontSize="small" />} label={t('Governing Law')} value={c.GOVERNING_LAW || c.governingLaw} /></Grid>
+                <Grid item xs={12} sm={6}><DetailTile icon={<LanguageIcon fontSize="small" />} label={t('Language')} value={displayLanguage(c.LANGUAGE_OF_PROCEEDINGS || c.languageOfProceedings)} /></Grid>
+                <Grid item xs={12} sm={6}><DetailTile icon={<GroupsIcon fontSize="small" />} label={t('Arbitrators')} value={c.NUM_ARBITRATORS || c.numArbitrators} /></Grid>
+                <Grid item xs={12} sm={6}><DetailTile icon={<InfoIcon fontSize="small" />} label={t('Third Party Funding')} value={(c.THIRD_PARTY_FUNDING || c.thirdPartyFunding) ? t('Yes') : t('No')} /></Grid>
+              </Grid>
               <Divider sx={{ my: 1.5 }} />
               <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('Arbitrator Nomination')}</Typography>
               <Field label={t('Nominated Arbitrator')} value={c.ARBITRATOR_NOMINEE || c.arbitratorNominee} />
@@ -843,11 +983,32 @@ const CaseDetail = () => {
             </Paper>
           </Grid>
           <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider', height: '100%' }}>
-              <Typography variant="h6" fontWeight={850} sx={{ mb: 2 }}>{t('Agreement Record')}</Typography>
-              <Field label={t('Agreement Status')} value={agreement?.AGREEMENT_STATUS || agreement?.agreement_status || c.AGREEMENT_STATUS || c.agreementStatus || 'none'} />
-              <Field label={t('Agreement Document')} value={agreement?.SOURCE_DOCUMENT_NAME || agreement?.source_document_name || c.AGREEMENT_DOCUMENT_NAME || c.agreementDocumentName} />
-              <Field label={t('Agreement Template')} value={agreement?.TEMPLATE_NAME || agreement?.template_name} />
+            <Paper sx={overviewCardSx('#F59E0B')}>
+              <SectionTitle icon={<DocIcon sx={{ color: '#F59E0B' }} />} title={t('Agreement Record')} />
+              <DetailTile icon={<InfoIcon fontSize="small" />} label={t('Agreement Status')} value={displayEnum(agreementStatus)} />
+              <Box sx={{ mt: 2, p: 1.5, borderRadius: 1.5, bgcolor: '#fffbeb', border: '1px solid #fde68a' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                  {t('Agreement Document')}
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 0.5 }}>{agreementDocName || t('No agreement document uploaded yet.')}</Typography>
+                {!agreementDocName && (
+                  <Button size="small" variant="contained" startIcon={<UploadIcon />} sx={{ mt: 1 }} onClick={() => openUploadDialog('contract')}>
+                    {t('Upload Document')}
+                  </Button>
+                )}
+              </Box>
+              <Box sx={{ mt: 2, p: 1.5, borderRadius: 1.5, bgcolor: '#f9fafb', border: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                  {t('Agreement Template')}
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 0.5 }}>{agreementTemplateName || t('No template selected.')}</Typography>
+                {!agreementTemplateName && (
+                  <Button size="small" variant="outlined" sx={{ mt: 1 }} onClick={() => navigate('/cases/agreement')}>
+                    {t('Select Template')}
+                  </Button>
+                )}
+              </Box>
+              <Divider sx={{ my: 2 }} />
               <Field label={t('Signed At')} value={agreement?.SIGNED_AT || agreement?.signed_at ? new Date(agreement.SIGNED_AT || agreement.signed_at).toLocaleString() : null} />
               <Field label={t('Effective Date')} value={agreement?.EFFECTIVE_DATE || agreement?.effective_date ? new Date(agreement.EFFECTIVE_DATE || agreement.effective_date).toLocaleDateString() : null} />
               <Field label={t('Agreement Parties')} value={agreementParties.length ? `${agreementParties.length} ${t('record(s)')}` : t('None recorded')} />
