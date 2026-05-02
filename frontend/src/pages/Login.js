@@ -77,7 +77,7 @@ const Login = () => {
                     <BalanceIcon />
                   </Box>
                   <Box>
-                    <Typography variant="h6" fontWeight={850}>{t('Arbitration Platform')}</Typography>
+                    <Typography variant="h6" fontWeight={850}>{t('Rafiki Arbitration')}</Typography>
                     <Typography variant="caption" sx={{ opacity: 0.84 }}>{t('Secure dispute resolution workspace')}</Typography>
                   </Box>
                 </Stack>
@@ -95,6 +95,9 @@ const Login = () => {
                     border: '1px solid rgba(255,255,255,0.24)',
                   }}
                 />
+                <Typography variant="h6" fontWeight={800} sx={{ mt: 3, lineHeight: 1.35 }}>
+                  {t('An advanced AI enabled arbitration platform using RafikiAi')}
+                </Typography>
               </Box>
               <Stack spacing={1.5} sx={{ mt: 5 }}>
                 <Stack direction="row" spacing={1.25} alignItems="center">
@@ -111,10 +114,7 @@ const Login = () => {
               <Box sx={{ p: { xs: 3, sm: 5 }, maxWidth: 440, mx: 'auto' }}>
                 <Box sx={{ mb: 3 }}>
                   <LockIcon sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
-                  <Typography variant="h4" fontWeight={850}>{t('Arbitration Platform - Sign In')}</Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
-                    {t('Your role is detected automatically from your credentials.')}
-                  </Typography>
+                  <Typography variant="h4" fontWeight={850}>{t('Rafiki Arbitration - Sign In')}</Typography>
                 </Box>
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
