@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "http://152.70.201.154:3000/api/:path*"
+      "destination": "https://vps-5968ce23.vps.ovh.us/api/:path*"
     },
     {
       "source": "/(.*)",

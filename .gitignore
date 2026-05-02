@@ -5,6 +5,7 @@ node_modules/
 *.key
 *.p12
 *.pfx
+ovh-vps-*_ed25519*
 /wallet/
 dist/
 coverage/

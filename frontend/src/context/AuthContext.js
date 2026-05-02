@@ -66,7 +66,18 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const token = getStoredToken();
+    const refreshToken = (() => {
+      try { return localStorage.getItem('refreshToken'); } catch { return null; }
+    })();
+
     if (token) applyToken(token);
+
+    if (!token && !refreshToken) {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+
     fetchProfile();
   }, []);
 
