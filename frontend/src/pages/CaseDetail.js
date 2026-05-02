@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Container, Typography, Box, Paper, Tabs, Tab, Chip, Grid,
-  CircularProgress, Alert, Button, Divider,
+  CircularProgress, Alert, Button, Divider, LinearProgress, Stack, Breadcrumbs, Link,
   Table, TableBody, TableCell, TableHead, TableRow, Stepper,
   Step, StepLabel, IconButton, Dialog, DialogTitle,
   DialogContent, DialogActions, TextField, FormControl,
@@ -22,6 +22,10 @@ import {
   Fingerprint as HashIcon,
   ContentCopy as CopyIcon,
   AutoAwesome as AutoAwesomeIcon,
+  CalendarToday as CalendarIcon,
+  AccountBalanceWallet as MoneyIcon,
+  Timeline as TimelineIcon,
+  NoteAdd as NoteAddIcon,
 } from '@mui/icons-material';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
@@ -352,10 +356,48 @@ const CaseDetail = () => {
 
   const currentStage = c.CASE_STAGE || c.caseStage || 'filing';
   const stageIndex = STAGE_ORDER.indexOf(currentStage);
+  const safeStageIndex = Math.max(stageIndex, 0);
+  const progressPercent = Math.round(((safeStageIndex + 1) / STAGE_ORDER.length) * 100);
 
   const submissionStatus = c.SUBMISSION_STATUS || c.submissionStatus || 'draft';
   const displayCaseStatus = t(c.STATUS || c.status || '');
   const displaySubmissionStatus = t(submissionStatus);
+
+  const caseTitle = c.TITLE || c.title || t('Untitled case');
+  const caseNumber = c.CASE_ID || c.caseId;
+  const disputeAmount = c.DISPUTE_AMOUNT || c.disputeAmount;
+  const filingFee = c.FILING_FEE || c.filingFee;
+  const filingDate = c.FILING_DATE || c.filingDate;
+  const responseDeadline = c.RESPONSE_DEADLINE || c.responseDeadline;
+  const submittedAt = c.SUBMITTED_AT || c.submittedAt;
+  const createdAt = c.CREATED_AT || c.createdAt;
+
+  const formatMoney = (amount, currency = 'USD') => {
+    if (amount === null || amount === undefined || amount === '') return null;
+    const numeric = Number(amount);
+    return `${currency} ${Number.isFinite(numeric) ? numeric.toLocaleString() : amount}`;
+  };
+
+  const relativeDate = (value) => {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    const days = Math.round((date.getTime() - Date.now()) / 86400000);
+    const abs = Math.abs(days);
+    if (abs === 0) return t('today');
+    if (abs < 30) return days > 0 ? t('in {{count}} day(s)', { count: abs }) : t('{{count}} day(s) ago', { count: abs });
+    const months = Math.round(abs / 30);
+    return days > 0 ? t('in {{count}} month(s)', { count: months }) : t('{{count}} month(s) ago', { count: months });
+  };
+
+  const formatDate = (value, includeRelative = true) => {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    const formatted = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    const rel = includeRelative ? relativeDate(value) : null;
+    return rel ? `${formatted} · ${rel}` : formatted;
+  };
 
   // Arbitration Filing Checklist
   const claimant = claimants[0];
@@ -405,6 +447,53 @@ const CaseDetail = () => {
 
   const allChecksPass = nciaChecks.every(ch => ch.ok);
   const passCount = nciaChecks.filter(ch => ch.ok).length;
+
+  const nextActions = [
+    submissionStatus === 'draft' && {
+      label: t('Submit the filing package to the Registrar'),
+      helper: allChecksPass ? t('Checklist is complete and ready for submission.') : t('{{count}} filing checklist item(s) remain.', { count: nciaChecks.length - passCount }),
+      color: allChecksPass ? 'success' : 'warning',
+      action: () => { setSubmitOpen(true); setSubmitSuccess(false); setSubmitError(null); },
+      button: t('Submit')
+    },
+    documents.length === 0 && {
+      label: t('Upload the contract, clause, or evidence'),
+      helper: t('Documents are needed for the case record and later award drafting.'),
+      color: 'info',
+      action: () => openUploadDialog('contract'),
+      button: t('Upload')
+    },
+    hearings.length === 0 && {
+      label: t('Schedule the first procedural hearing'),
+      helper: t('Add the hearing once the parties are ready to proceed.'),
+      color: 'primary',
+      action: () => setTab(4),
+      button: t('Hearings')
+    },
+    submissionStatus === 'submitted' && {
+      label: t('Awaiting next procedural step'),
+      helper: responseDeadline ? `${t('Response deadline')}: ${formatDate(responseDeadline)}` : t('No response deadline has been set yet.'),
+      color: 'success',
+      action: () => openEdit(),
+      button: t('Edit dates')
+    },
+  ].filter(Boolean).slice(0, 3);
+
+  const keyDates = [
+    { label: t('Filed'), value: filingDate, tone: 'primary' },
+    { label: t('Response due'), value: responseDeadline, tone: responseDeadline && new Date(responseDeadline) < new Date() ? 'error' : 'warning' },
+    { label: t('Submitted'), value: submittedAt, tone: 'success' },
+    { label: t('Created'), value: createdAt, tone: 'default' },
+  ].filter(item => item.value);
+
+  const recentActivity = [
+    ...auditLog.slice(0, 3).map((a) => ({
+      title: a.ACTION || a.action || a.EVENT_TYPE || a.eventType || t('Case activity'),
+      meta: formatDate(a.CREATED_AT || a.createdAt) || t('Date unavailable')
+    })),
+    submittedAt && { title: t('Submitted to Registrar'), meta: formatDate(submittedAt) },
+    documents[0] && { title: t('Latest document added'), meta: documents[0].DOCUMENT_NAME || documents[0].documentName },
+  ].filter(Boolean).slice(0, 4);
 
   const numArbitrators = c.NUM_ARBITRATORS || c.numArbitrators || 1;
   const requiredCopies = parseInt(numArbitrators) === 1 ? 2 : 4;
@@ -547,28 +636,45 @@ const CaseDetail = () => {
   return (
     <Container maxWidth="lg" sx={{ mt: 3, mb: 5 }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-        <IconButton onClick={() => navigate('/cases')}><BackIcon /></IconButton>
-        <Box sx={{ flex: 1 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="h5" fontWeight="bold">{c.TITLE || c.title}</Typography>
-            <IconButton size="small" onClick={openEdit} title={t('Edit Case')}><EditIcon fontSize="small" /></IconButton>
-          </Box>
-          <Box sx={{ display: 'flex', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
-            <Chip label={c.CASE_ID || c.caseId} size="small" variant="outlined" />
-            <Chip label={displayCaseStatus} size="small" color={statusColor(c.STATUS || c.status)} />
-            <Chip label={`${t('Stage')}: ${displayStage(currentStage)}`} size="small" variant="outlined" color="info" />
-            {(c.CASE_TYPE || c.caseType) && <Chip label={displayCaseType(c.CASE_TYPE || c.caseType)} size="small" />}
-            {(c.CONFIDENTIALITY_LEVEL || c.confidentialityLevel) &&
-              <Chip label={displayConfidentiality(c.CONFIDENTIALITY_LEVEL || c.confidentialityLevel)} size="small" color="warning" />}
-            <Chip
-              label={`${t('Submission')}: ${displaySubmissionStatus}`}
-              size="small"
-              color={submissionStatus === 'submitted' ? 'success' : submissionStatus === 'commenced' ? 'info' : 'default'}
-              icon={submissionStatus === 'submitted' ? <CheckCircleIcon /> : undefined}
-            />
-          </Box>
-        </Box>
+      <Box sx={{ mb: 2 }}>
+        <Breadcrumbs sx={{ mb: 1 }}>
+          <Link component="button" underline="hover" color="inherit" onClick={() => navigate('/cases')}>
+            {t('Cases')}
+          </Link>
+          <Typography color="text.primary">{caseTitle}</Typography>
+        </Breadcrumbs>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'center' }}>
+          <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flex: 1, minWidth: 0 }}>
+            <IconButton onClick={() => navigate('/cases')}><BackIcon /></IconButton>
+            <Box sx={{ minWidth: 0 }}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Typography variant="h5" fontWeight={800} noWrap>{caseTitle}</Typography>
+                <IconButton
+                  size="medium"
+                  color="primary"
+                  onClick={openEdit}
+                  title={t('Edit Case')}
+                  sx={{ border: '1px solid', borderColor: 'primary.light' }}
+                >
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              </Stack>
+              <Stack direction="row" gap={1} sx={{ mt: 0.75, flexWrap: 'wrap' }}>
+                <Chip label={caseNumber} size="small" variant="outlined" />
+                <Chip label={displayCaseStatus} size="small" color={statusColor(c.STATUS || c.status)} />
+                <Chip label={displayStage(currentStage)} size="small" variant="outlined" color="info" />
+                {(c.CASE_TYPE || c.caseType) && <Chip label={displayCaseType(c.CASE_TYPE || c.caseType)} size="small" variant="outlined" />}
+                {(c.CONFIDENTIALITY_LEVEL || c.confidentialityLevel) &&
+                  <Chip label={displayConfidentiality(c.CONFIDENTIALITY_LEVEL || c.confidentialityLevel)} size="small" color="warning" variant="outlined" />}
+                <Chip
+                  label={displaySubmissionStatus}
+                  size="small"
+                  color={submissionStatus === 'submitted' ? 'success' : submissionStatus === 'commenced' ? 'info' : 'default'}
+                  icon={submissionStatus === 'submitted' ? <CheckCircleIcon /> : undefined}
+                />
+              </Stack>
+            </Box>
+          </Stack>
         {submissionStatus === 'draft' && (
           <Button variant="contained" color="success" startIcon={<SendIcon />}
             onClick={() => { setSubmitOpen(true); setSubmitSuccess(false); setSubmitError(null); }}>
@@ -578,6 +684,7 @@ const CaseDetail = () => {
         {submissionStatus === 'submitted' && (
               <Chip label={t('Submitted to Registrar')} color="success" icon={<CheckCircleIcon />} />
         )}
+        </Stack>
       </Box>
 
       <Paper sx={{ mb: 3 }}>
@@ -587,9 +694,9 @@ const CaseDetail = () => {
         }} variant="scrollable" scrollButtons="auto">
           <Tab label={t('Overview')} />
           <Tab label={`${t('Parties')} (${parties.length})`} />
-          <Tab label={`${t('Counsel')} (${counsel.length})`} />
-          <Tab label={`${t('Documents')} (${documents.length})`} />
-          <Tab label={`${t('Hearings')} (${hearings.length})`} />
+          <Tab label={`${t('Counsel')} (${counsel.length})`} sx={{ display: counsel.length ? undefined : 'none' }} />
+          <Tab label={`${t('Documents')} (${documents.length})`} sx={{ display: documents.length ? undefined : 'none' }} />
+          <Tab label={`${t('Hearings')} (${hearings.length})`} sx={{ display: hearings.length ? undefined : 'none' }} />
           <Tab label={t('Timeline')} />
           <Tab label={t('Audit Log')} />
           {['admin', 'secretariat', 'arbitrator'].includes(user?.role) && (
@@ -604,45 +711,120 @@ const CaseDetail = () => {
       {/* OVERVIEW */}
       {tab === 0 && (
         <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 3 }}>
-              <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2 }}>{t('Case Details')}</Typography>
-              <Field label={t('Case ID')} value={c.CASE_ID || c.caseId} />
-              <Field label={t('Title')} value={c.TITLE || c.title} />
-              <Field label={t('Case Type')} value={displayCaseType(c.CASE_TYPE || c.caseType)} />
-              <Field label={t('Sector / Industry')} value={displayCaseType(c.SECTOR || c.sector)} />
-              <Field label={t('Dispute Category')} value={displayDisputeCategory(c.DISPUTE_CATEGORY || c.disputeCategory)} />
-              <Field label={t('Status')} value={displayStatus(c.STATUS || c.status)} />
-              <Field label={t('Current Stage')} value={displayStage(c.CASE_STAGE || c.caseStage)} />
-              <Field label={t('Description')} value={c.DESCRIPTION || c.description} />
-              {(c.RELIEF_SOUGHT || c.reliefSought) && (
-                <Field label={t('Relief Sought')} value={c.RELIEF_SOUGHT || c.reliefSought} />
+          <Grid item xs={12} sm={6} md={3}>
+            <Paper sx={{ p: 2.25, borderRadius: 2, border: '1px solid', borderColor: 'primary.light', height: '100%' }}>
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <MoneyIcon color="primary" />
+                <Box>
+                  <Typography variant="caption" color="text.secondary">{t('Dispute Amount')}</Typography>
+                  <Typography variant="h5" fontWeight={850}>{formatMoney(disputeAmount, c.CURRENCY || c.currency || 'USD') || t('Not set')}</Typography>
+                </Box>
+              </Stack>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Paper sx={{ p: 2.25, borderRadius: 2, border: '1px solid', borderColor: 'divider', height: '100%' }}>
+              <Typography variant="caption" color="text.secondary">{t('Current Stage')}</Typography>
+              <Typography variant="h6" fontWeight={800}>{displayStage(currentStage)}</Typography>
+              <LinearProgress variant="determinate" value={progressPercent} sx={{ mt: 1, height: 8, borderRadius: 1 }} />
+            </Paper>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Paper sx={{ p: 2.25, borderRadius: 2, border: '1px solid', borderColor: 'divider', height: '100%' }}>
+              <Typography variant="caption" color="text.secondary">{t('Parties')}</Typography>
+              <Typography variant="h6" fontWeight={800}>{claimants.length} {t('claimant(s)')} / {respondents.length} {t('respondent(s)')}</Typography>
+              <Typography variant="body2" color="text.secondary">{counsel.length ? `${counsel.length} ${t('counsel recorded')}` : t('No counsel recorded')}</Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Paper sx={{ p: 2.25, borderRadius: 2, border: '1px solid', borderColor: responseDeadline ? 'warning.light' : 'divider', height: '100%' }}>
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <CalendarIcon color={responseDeadline ? 'warning' : 'disabled'} />
+                <Box>
+                  <Typography variant="caption" color="text.secondary">{t('Response Deadline')}</Typography>
+                  <Typography variant="body1" fontWeight={800}>{formatDate(responseDeadline) || t('Not set')}</Typography>
+                </Box>
+              </Stack>
+            </Paper>
+          </Grid>
+
+          <Grid item xs={12}>
+            <Paper sx={{ p: 2.5, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'center' }}>
+                <Box sx={{ flex: 1 }}>
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                    <TimelineIcon color="primary" />
+                    <Typography variant="h6" fontWeight={850}>{t('Case Progress')}</Typography>
+                    <Chip size="small" label={`${progressPercent}%`} color="primary" variant="outlined" />
+                  </Stack>
+                  <Stepper activeStep={safeStageIndex} alternativeLabel sx={{ display: { xs: 'none', md: 'flex' } }}>
+                    {STAGE_ORDER.map((stage) => (
+                      <Step key={stage} completed={STAGE_ORDER.indexOf(stage) < safeStageIndex}>
+                        <StepLabel>{displayStage(stage)}</StepLabel>
+                      </Step>
+                    ))}
+                  </Stepper>
+                  <Stepper activeStep={safeStageIndex} orientation="vertical" sx={{ display: { xs: 'block', md: 'none' } }}>
+                    {STAGE_ORDER.map((stage) => (
+                      <Step key={stage} completed={STAGE_ORDER.indexOf(stage) < safeStageIndex}>
+                        <StepLabel>{displayStage(stage)}</StepLabel>
+                      </Step>
+                    ))}
+                  </Stepper>
+                </Box>
+                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+                  <Button variant="contained" startIcon={<UploadIcon />} onClick={() => openUploadDialog('contract')}>{t('Upload Document')}</Button>
+                  <Button variant="outlined" startIcon={<NoteAddIcon />} onClick={openEdit}>{t('Add / Edit Note')}</Button>
+                  <Button variant="outlined" startIcon={<CalendarIcon />} onClick={() => setTab(4)}>{t('Schedule Hearing')}</Button>
+                </Stack>
+              </Stack>
+            </Paper>
+          </Grid>
+
+          <Grid item xs={12} lg={7}>
+            <Paper sx={{ p: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider', height: '100%' }}>
+              <Typography variant="h6" fontWeight={850} sx={{ mb: 2 }}>{t('Case Details')}</Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}><Field label={t('Case Type')} value={displayCaseType(c.CASE_TYPE || c.caseType)} /></Grid>
+                <Grid item xs={12} sm={6}><Field label={t('Sector / Industry')} value={displayCaseType(c.SECTOR || c.sector)} /></Grid>
+                <Grid item xs={12} sm={6}><Field label={t('Dispute Category')} value={displayDisputeCategory(c.DISPUTE_CATEGORY || c.disputeCategory)} /></Grid>
+                <Grid item xs={12} sm={6}><Field label={t('Status')} value={displayStatus(c.STATUS || c.status)} /></Grid>
+                <Grid item xs={12}><Field label={t('Description')} value={c.DESCRIPTION || c.description} /></Grid>
+                {(c.RELIEF_SOUGHT || c.reliefSought) && (
+                  <Grid item xs={12}><Field label={t('Relief Sought')} value={c.RELIEF_SOUGHT || c.reliefSought} /></Grid>
+                )}
+              </Grid>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} lg={5}>
+            <Paper sx={{ p: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider', height: '100%' }}>
+              <Typography variant="h6" fontWeight={850} sx={{ mb: 2 }}>{t('Key Dates')}</Typography>
+              {keyDates.length === 0 ? (
+                <Alert severity="info">{t('No key dates have been recorded yet.')}</Alert>
+              ) : (
+                <Stack spacing={1.5}>
+                  {keyDates.map((item) => (
+                    <Stack key={item.label} direction="row" spacing={1.5} alignItems="center">
+                      <Chip size="small" color={item.tone} label=" " sx={{ width: 10, minWidth: 10, height: 10, '& .MuiChip-label': { p: 0 } }} />
+                      <Box>
+                        <Typography variant="body2" fontWeight={700}>{item.label}</Typography>
+                        <Typography variant="body2" color="text.secondary">{formatDate(item.value)}</Typography>
+                      </Box>
+                    </Stack>
+                  ))}
+                </Stack>
+              )}
+              {filingFee && (
+                <>
+                  <Divider sx={{ my: 2 }} />
+                  <Field label={t('Filing Fee')} value={formatMoney(filingFee, c.FILING_FEE_CURRENCY || c.filingFeeCurrency || 'KES')} />
+                </>
               )}
             </Paper>
           </Grid>
           <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 3 }}>
-              <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2 }}>{t('Financial & Dates')}</Typography>
-              <Field label={t('Dispute Amount')}
-                value={(c.DISPUTE_AMOUNT || c.disputeAmount)
-                  ? `${c.CURRENCY || c.currency || 'USD'} ${Number(c.DISPUTE_AMOUNT || c.disputeAmount).toLocaleString()}`
-                  : null} />
-              <Field label={t('Filing Fee')}
-                value={(c.FILING_FEE || c.filingFee)
-                  ? `${c.FILING_FEE_CURRENCY || c.filingFeeCurrency || 'KES'} ${Number(c.FILING_FEE || c.filingFee).toLocaleString()}`
-                  : null} />
-              <Divider sx={{ my: 1.5 }} />
-              <Field label={t('Filing Date')} value={c.FILING_DATE ? new Date(c.FILING_DATE).toLocaleDateString() : null} />
-              <Field label={t('Response Deadline')} value={c.RESPONSE_DEADLINE ? new Date(c.RESPONSE_DEADLINE).toLocaleDateString() : null} />
-              {(c.SUBMITTED_AT || c.submittedAt) && (
-                <Field label={t('Submitted to Registrar')} value={new Date(c.SUBMITTED_AT || c.submittedAt).toLocaleDateString()} />
-              )}
-              <Field label={t('Created At')} value={c.CREATED_AT ? new Date(c.CREATED_AT).toLocaleDateString() : null} />
-            </Paper>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 3 }}>
-              <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2 }}>{t('Procedural')}</Typography>
+            <Paper sx={{ p: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider', height: '100%' }}>
+              <Typography variant="h6" fontWeight={850} sx={{ mb: 2 }}>{t('Procedural')}</Typography>
               <Field label={t('Arbitration Rules')} value={c.ARBITRATION_RULES || c.arbitrationRules} />
               <Field label={t('Seat of Arbitration')} value={c.SEAT_OF_ARBITRATION || c.seatOfArbitration} />
               <Field label={t('Governing Law')} value={c.GOVERNING_LAW || c.governingLaw} />
@@ -661,13 +843,13 @@ const CaseDetail = () => {
             </Paper>
           </Grid>
           <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 3 }}>
-              <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2 }}>{t('Agreement Record')}</Typography>
+            <Paper sx={{ p: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider', height: '100%' }}>
+              <Typography variant="h6" fontWeight={850} sx={{ mb: 2 }}>{t('Agreement Record')}</Typography>
               <Field label={t('Agreement Status')} value={agreement?.AGREEMENT_STATUS || agreement?.agreement_status || c.AGREEMENT_STATUS || c.agreementStatus || 'none'} />
-              <Field label={t('Agreement Document')} value={agreement?.SOURCE_DOCUMENT_NAME || agreement?.source_document_name || c.AGREEMENT_DOCUMENT_NAME || c.agreementDocumentName || '—'} />
-              <Field label={t('Agreement Template')} value={agreement?.TEMPLATE_NAME || agreement?.template_name || '—'} />
-              <Field label={t('Signed At')} value={agreement?.SIGNED_AT || agreement?.signed_at ? new Date(agreement.SIGNED_AT || agreement.signed_at).toLocaleString() : '—'} />
-              <Field label={t('Effective Date')} value={agreement?.EFFECTIVE_DATE || agreement?.effective_date ? new Date(agreement.EFFECTIVE_DATE || agreement.effective_date).toLocaleDateString() : '—'} />
+              <Field label={t('Agreement Document')} value={agreement?.SOURCE_DOCUMENT_NAME || agreement?.source_document_name || c.AGREEMENT_DOCUMENT_NAME || c.agreementDocumentName} />
+              <Field label={t('Agreement Template')} value={agreement?.TEMPLATE_NAME || agreement?.template_name} />
+              <Field label={t('Signed At')} value={agreement?.SIGNED_AT || agreement?.signed_at ? new Date(agreement.SIGNED_AT || agreement.signed_at).toLocaleString() : null} />
+              <Field label={t('Effective Date')} value={agreement?.EFFECTIVE_DATE || agreement?.effective_date ? new Date(agreement.EFFECTIVE_DATE || agreement.effective_date).toLocaleDateString() : null} />
               <Field label={t('Agreement Parties')} value={agreementParties.length ? `${agreementParties.length} ${t('record(s)')}` : t('None recorded')} />
               <Field label={t('Agreement Signatures')} value={agreementSignatures.length ? `${agreementSignatures.length} ${t('record(s)')}` : t('None recorded')} />
               <Field label={t('Agreement Extractions')} value={agreementExtractions.length ? `${agreementExtractions.length} ${t('record(s)')}` : t('None recorded')} />
@@ -677,15 +859,41 @@ const CaseDetail = () => {
             </Paper>
           </Grid>
           <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 3 }}>
-              <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>{t('Case Progression')}</Typography>
-              <Stepper activeStep={stageIndex} orientation="vertical">
-                {STAGE_ORDER.map((stage) => (
-                  <Step key={stage} completed={STAGE_ORDER.indexOf(stage) < stageIndex}>
-                    <StepLabel>{displayStage(stage)}</StepLabel>
-                  </Step>
-                ))}
-              </Stepper>
+            <Paper sx={{ p: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider', height: '100%' }}>
+              <Typography variant="h6" fontWeight={850} sx={{ mb: 2 }}>{t('Next Actions')}</Typography>
+              <Stack spacing={1.5}>
+                {nextActions.length ? nextActions.map((item) => (
+                  <Paper key={item.label} variant="outlined" sx={{ p: 1.5, borderRadius: 1.5 }}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', sm: 'center' }}>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="body2" fontWeight={800}>{item.label}</Typography>
+                        <Typography variant="caption" color="text.secondary">{item.helper}</Typography>
+                      </Box>
+                      <Button size="small" variant="contained" color={item.color} onClick={item.action}>{item.button}</Button>
+                    </Stack>
+                  </Paper>
+                )) : (
+                  <Alert severity="success">{t('No urgent case actions are pending.')}</Alert>
+                )}
+              </Stack>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider', height: '100%' }}>
+              <Typography variant="h6" fontWeight={850} sx={{ mb: 2 }}>{t('Recent Activity')}</Typography>
+              <Stack spacing={1.5}>
+                {recentActivity.length ? recentActivity.map((item, i) => (
+                  <Stack key={`${item.title}-${i}`} direction="row" spacing={1.5}>
+                    <Box sx={{ width: 8, height: 8, mt: 0.8, borderRadius: '50%', bgcolor: i === 0 ? 'primary.main' : 'divider', flexShrink: 0 }} />
+                    <Box>
+                      <Typography variant="body2" fontWeight={750}>{item.title}</Typography>
+                      <Typography variant="caption" color="text.secondary">{item.meta}</Typography>
+                    </Box>
+                  </Stack>
+                )) : (
+                  <Alert severity="info">{t('No recent activity has been recorded for this case yet.')}</Alert>
+                )}
+              </Stack>
             </Paper>
           </Grid>
 
