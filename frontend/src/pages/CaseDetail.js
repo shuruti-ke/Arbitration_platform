@@ -564,7 +564,7 @@ const CaseDetail = () => {
       const res = await apiService.joinHearing(hearingId);
       const hearing = hearings.find(h => (h.HEARING_ID || h.hearingId) === hearingId);
       const title = hearing ? (hearing.TITLE || hearing.title || t('Hearing room')) : t('Hearing room');
-      openMeetingDock({ url: res.data.videoUrl || res.data.jitsiUrl, title });
+      openMeetingDock({ url: res.data.videoUrl, title });
     } catch (err) {
       setError(err.response?.data?.error || t('Failed to join hearing.'));
     } finally {

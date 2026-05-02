@@ -2,9 +2,6 @@
 // src/services/hearing-service.js
 // Hearing scheduling and arbitrator assignment workflow
 
-const crypto = require('crypto');
-const jwt = require('jsonwebtoken');
-
 const STRICT_DB = process.env.NODE_ENV === 'production';
 
 class HearingService {
@@ -110,7 +107,7 @@ class HearingService {
     if (!caseId || !startTime || !endTime) throw new Error('caseId, startTime, and endTime are required');
 
     const hearingId = 'hearing-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6);
-    const jitsiRoom = `arb-${caseId}-${hearingId}`.replace(/[^a-zA-Z0-9-]/g, '-');
+    const dailyRoom = `arb-${caseId}-${hearingId}`.replace(/[^a-zA-Z0-9-]/g, '-');
 
     const hearing = {
       hearingId,
@@ -121,7 +118,7 @@ class HearingService {
       endTime,
       type, // virtual | in-person | hybrid
       agenda,
-      jitsiRoom,
+      dailyRoom,
       status: 'scheduled', // scheduled | in-progress | completed | cancelled
       createdAt: new Date().toISOString(),
       participants: []
@@ -135,7 +132,7 @@ class HearingService {
           `INSERT INTO hearings
             (hearing_id, case_id, title, scheduled_by, start_time, end_time, type, agenda, jitsi_room, status, created_at)
            VALUES (:hearingId, :caseId, :title, :scheduledBy, :startTime, :endTime, :type, :agenda, :jitsiRoom, 'scheduled', CURRENT_TIMESTAMP)`,
-          { hearingId, caseId, title: hearing.title, scheduledBy, startTime, endTime, type, agenda, jitsiRoom }
+          { hearingId, caseId, title: hearing.title, scheduledBy, startTime, endTime, type, agenda, jitsiRoom: dailyRoom }
         );
       } catch (err) {
         console.error('Hearing DB write failed:', err.message);
@@ -271,10 +268,6 @@ class HearingService {
     return Array.from(this.hearings.values());
   }
 
-  getJitsiRoomUrl(jitsiBaseUrl, jitsiRoom) {
-    return `${jitsiBaseUrl}/${jitsiRoom}`;
-  }
-
   getDailyRoomName(hearing) {
     const existingRoom = hearing.jitsiRoom || hearing.JITSI_ROOM || hearing.dailyRoom || hearing.DAILY_ROOM;
     const fallback = `arb-${hearing.caseId || hearing.CASE_ID}-${hearing.hearingId || hearing.HEARING_ID}`;
@@ -295,6 +288,11 @@ class HearingService {
     const room = await this.ensureDailyRoom({ dailyConfig, hearing, roomName });
     const token = await this.createDailyMeetingToken({ dailyConfig, hearing, roomName, user, isModerator });
     return token ? `${room.url}?t=${encodeURIComponent(token)}` : room.url;
+  }
+
+  getDailyRoomUrl({ dailyConfig, hearing }) {
+    const roomName = this.getDailyRoomName(hearing);
+    return dailyConfig && dailyConfig.domain ? `https://${dailyConfig.domain}/${roomName}` : null;
   }
 
   async ensureDailyRoom({ dailyConfig, hearing, roomName }) {
@@ -331,10 +329,30 @@ class HearingService {
       }
     };
 
-    return this.dailyRequest(dailyConfig, '/rooms', {
-      method: 'POST',
-      body: roomBody
-    });
+    try {
+      return await this.dailyRequest(dailyConfig, '/rooms', {
+        method: 'POST',
+        body: roomBody
+      });
+    } catch (err) {
+      console.warn('Daily room creation with advanced properties failed, retrying minimal room:', err.message);
+      return this.dailyRequest(dailyConfig, '/rooms', {
+        method: 'POST',
+        body: {
+          name: roomName,
+          privacy: 'private',
+          properties: {
+            nbf,
+            exp,
+            eject_at_room_exp: true,
+            enable_prejoin_ui: false,
+            enable_screenshare: true,
+            enable_chat: true,
+            enable_recording: 'cloud'
+          }
+        }
+      });
+    }
   }
 
   async createDailyMeetingToken({ dailyConfig, hearing, roomName, user, isModerator }) {
@@ -351,37 +369,13 @@ class HearingService {
         user_name: userName,
         user_id: String(user.userId || user.USER_ID || '').slice(0, 36),
         enable_prejoin_ui: false,
-        enable_live_captions_ui: true,
-        enable_recording: 'cloud',
-        enable_recording_ui: !!isModerator,
         start_video_off: false,
         start_audio_off: false,
-        close_tab_on_exit: dailyConfig.closeTabOnExit !== false,
-        permissions: {
-          hasPresence: true,
-          canSend: true,
-          canReceive: {},
-          canAdmin: isModerator ? ['participants', 'transcription'] : false
-        }
+        close_tab_on_exit: dailyConfig.closeTabOnExit !== false
       }
     };
 
-    if (isModerator && dailyConfig.autoRecord) {
-      body.properties.start_cloud_recording = true;
-      body.properties.start_cloud_recording_opts = {
-        type: 'cloud',
-        dataOutputs: ['event-json', 'transcript-webvtt']
-      };
-    }
-
-    if (isModerator && dailyConfig.autoTranscribe) {
-      body.properties.auto_start_transcription = true;
-    }
-
-    const token = await this.dailyRequest(dailyConfig, '/meeting-tokens', {
-      method: 'POST',
-      body
-    });
+    const token = await this.dailyRequest(dailyConfig, '/meeting-tokens', { method: 'POST', body });
     return token && token.token;
   }
 
@@ -404,7 +398,8 @@ class HearingService {
 
     if (!res.ok) {
       const message = payload && (payload.error || payload.info) ? (payload.error || payload.info) : `Daily API ${res.status}`;
-      throw new Error(`Daily API request failed: ${message}`);
+      const detail = payload ? ` ${JSON.stringify(payload)}` : '';
+      throw new Error(`Daily API request failed: ${message}${detail}`);
     }
 
     return payload || {};
@@ -416,74 +411,6 @@ class HearingService {
     return Math.floor((base + fallbackOffsetSeconds * 1000) / 1000);
   }
 
-  generateJaaSJwt({ appId, apiKeyId, privateKey, user, room, isModerator = false }) {
-    if (!appId || !apiKeyId || !privateKey) return null;
-    try {
-      const normalizedAppId = String(appId || '').trim().split('/').filter(Boolean)[0] || '';
-      const normalizedApiKeyId = String(apiKeyId || '').trim().split('/').filter(Boolean).pop() || '';
-      const now = Math.floor(Date.now() / 1000);
-      const payload = {
-        iss: 'chat',
-        iat: now,
-        exp: now + 7200,
-        nbf: now - 10,
-        aud: 'jitsi',
-        sub: normalizedAppId,
-        room: '*',
-        context: {
-          user: {
-            id: user.userId,
-            name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
-            email: user.email,
-            moderator: isModerator
-          },
-          features: {
-            recording: isModerator,
-            livestreaming: false,
-            transcription: false,
-            'outbound-call': false
-          }
-        }
-      };
-      const pem = this._normalizeJaaSPrivateKey(privateKey);
-      const key = crypto.createPrivateKey({ key: pem, format: 'pem' });
-      return jwt.sign(payload, key, { algorithm: 'RS256', header: { kid: normalizedApiKeyId, alg: 'RS256' } });
-    } catch (err) {
-      console.error('JaaS JWT error:', err.message);
-      return null;
-    }
-  }
-
-  getJaaSRoomUrl({ appId, apiKeyId, privateKey, jitsiRoom, user, isModerator }) {
-    const token = this.generateJaaSJwt({ appId, apiKeyId, privateKey, user, room: jitsiRoom, isModerator });
-    const normalizedAppId = String(appId || '').trim().split('/').filter(Boolean)[0] || '';
-    const baseUrl = `https://8x8.vc/${normalizedAppId}/${jitsiRoom}`;
-    return token ? `${baseUrl}?jwt=${token}` : baseUrl;
-  }
-
-  _normalizeJaaSPrivateKey(rawKey) {
-    let keyText = String(rawKey || '').trim();
-    if (keyText.length >= 2 && keyText[0] === keyText[keyText.length - 1] && (keyText[0] === '"' || keyText[0] === "'")) {
-      keyText = keyText.slice(1, -1).trim();
-    }
-    keyText = keyText.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n');
-
-    if (keyText.includes('-----BEGIN') && keyText.includes('PRIVATE KEY')) {
-      if (!keyText.endsWith('\n')) keyText += '\n';
-      return keyText;
-    }
-
-    try {
-      const decoded = Buffer.from(keyText, 'base64').toString('utf8').trim();
-      if (decoded.includes('-----BEGIN') && decoded.includes('PRIVATE KEY')) {
-        return decoded.endsWith('\n') ? decoded : `${decoded}\n`;
-      }
-    } catch (err) {
-      // Fall through to the validation error below.
-    }
-
-    throw new Error('JAAS_PRIVATE_KEY must be a PEM private key or base64-encoded PEM');
-  }
 }
 
 module.exports = HearingService;

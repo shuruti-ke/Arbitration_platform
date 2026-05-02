@@ -275,7 +275,7 @@ Opening a case: navigate to Cases → New Case. Complete the intake form includi
 
 Adding parties and counsel: from the case detail page, use the Parties and Counsel tabs to add respondents, claimants, and their legal representatives. Each contact receives automated email notifications for key case events.
 
-Scheduling hearings: go to Hearings → Schedule Hearing. Select virtual, in-person, or hybrid format. Virtual hearings generate a Jitsi meeting room. Live transcription is available through the browser microphone for virtual sessions.
+Scheduling hearings: go to Hearings → Schedule Hearing. Select virtual, in-person, or hybrid format. Virtual hearings open inside the platform using Daily.co rooms. Camera, microphone, recording, and transcription support are handled in the embedded hearing room.
 
 Document management: upload submissions, evidence, and correspondence through the Documents tab within each case. Files are categorised automatically and retained in the case record. AI analysis is available for uploaded documents.
 

@@ -1728,7 +1728,7 @@ score is 0-100.`;
                 caseId: body.caseId,
                 hearingDate: startDate ? startDate.toLocaleDateString() : '—',
                 hearingTime: startDate ? startDate.toLocaleTimeString() : '—',
-                location: body.location || body.jitsiRoom || 'Virtual (platform)',
+                location: body.location || 'Virtual (Daily.co in-platform room)',
                 hearingType: body.hearingType || body.type || 'Procedural',
                 notes: body.notes || null,
               });
@@ -1746,12 +1746,8 @@ score is 0-100.`;
         const hearingId = path.split('/api/hearings/')[1];
         const hearing = await hearingService.getHearing(hearingId);
         if (!hearing) return sendJSON(res, 404, { error: 'Hearing not found' });
-        const roomName = hearingService.getDailyRoomName(hearing);
-        const videoProvider = config.daily.apiKey ? 'daily' : 'jitsi';
-        const videoUrl = videoProvider === 'daily'
-          ? `https://${config.daily.domain || 'daily.co'}/${roomName}`
-          : hearingService.getJitsiRoomUrl(config.jitsi.baseUrl, hearing.jitsiRoom || hearing.JITSI_ROOM);
-        return sendJSON(res, 200, { hearing, videoProvider, videoUrl, jitsiUrl: videoUrl });
+        const videoUrl = config.daily.apiKey ? hearingService.getDailyRoomUrl({ dailyConfig: config.daily, hearing }) : null;
+        return sendJSON(res, 200, { hearing, videoProvider: videoUrl ? 'daily' : 'none', videoUrl });
       }
 
       // --- GET /api/hearings/case/:caseId ---
@@ -1803,35 +1799,20 @@ score is 0-100.`;
         const hearing = await hearingService.getHearing(hearingId);
         if (!hearing) return sendJSON(res, 404, { error: 'Hearing not found' });
         await hearingService.addParticipant(hearingId, user.userId, user.role);
-        const jitsiRoom = hearing.jitsiRoom || hearing.JITSI_ROOM;
         const isModerator = ['admin', 'secretariat', 'arbitrator'].includes(user.role);
-        let videoUrl;
-        let videoProvider = 'jitsi';
-        if (config.daily.apiKey) {
-          const userProfile = await userService.findById(user.userId);
-          videoUrl = await hearingService.getDailyJoinUrl({
-            dailyConfig: config.daily,
-            hearing,
-            user: userProfile || user,
-            isModerator
-          });
-          videoProvider = 'daily';
-        } else if (config.jitsi.appId && config.jitsi.apiKeyId && config.jitsi.privateKey) {
-          // Use JaaS authenticated URL with platform branding
-          const userProfile = await userService.findById(user.userId);
-          videoUrl = hearingService.getJaaSRoomUrl({
-            appId: config.jitsi.appId,
-            apiKeyId: config.jitsi.apiKeyId,
-            privateKey: config.jitsi.privateKey,
-            jitsiRoom,
-            user: userProfile || user,
-            isModerator
-          });
-        } else {
-          videoUrl = hearingService.getJitsiRoomUrl(config.jitsi.baseUrl, jitsiRoom);
+        if (!config.daily.apiKey) {
+          return sendJSON(res, 503, { error: 'Daily.co is not configured for video hearings.' });
         }
+        const userProfile = await userService.findById(user.userId);
+        const videoUrl = await hearingService.getDailyJoinUrl({
+          dailyConfig: config.daily,
+          hearing,
+          user: userProfile || user,
+          isModerator
+        });
+        const videoProvider = 'daily';
         await auditTrail.logEvent({ type: 'hearing_join', userId: user.userId, action: 'join', details: { hearingId, videoProvider } });
-        return sendJSON(res, 200, { success: true, videoProvider, videoUrl, jitsiUrl: videoUrl, jitsiRoom });
+        return sendJSON(res, 200, { success: true, videoProvider, videoUrl });
       }
 
       // =============================================

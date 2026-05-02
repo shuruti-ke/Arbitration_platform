@@ -137,7 +137,7 @@ const Hearings = () => {
       const res = await apiService.joinHearing(hearingId);
       const hearing = hearings.find(h => (h.HEARING_ID || h.hearingId) === hearingId);
       const title = hearing ? (hearing.TITLE || hearing.title || t('Hearing room')) : t('Hearing room');
-      const url = res.data.videoUrl || res.data.jitsiUrl;
+      const url = res.data.videoUrl;
       openMeetingDock({ url, title });
       setJoinUrl(url);
     } catch (err) {
