@@ -573,41 +573,33 @@ const ArbitratorDashboard = ({ cases, hearings, stats, t, firstName, navigate, o
   const hasAlerts = draftFilings > 0 || nextHearing || deliberationCases > 0;
 
   return (
-    <Box sx={{ bgcolor: '#f0f4f8', minHeight: '100vh', pb: 6 }}>
+    <Box sx={{ bgcolor: '#f7f9fc', minHeight: '100vh', pb: 6 }}>
 
-      {/* ── Hero header ─────────────────────────────────────────────────── */}
+      {/* ── Compact header ──────────────────────────────────────────────── */}
       <Box sx={{
-        background: 'linear-gradient(135deg, #0a1628 0%, #0d2444 45%, #1a3a6b 100%)',
-        color: '#fff',
-        px: { xs: 2, sm: 4, md: 6 },
-        pt: { xs: 4, md: 5 },
-        pb: { xs: 12, md: 14 },
-        position: 'relative',
-        overflow: 'hidden',
+        bgcolor: '#fff',
+        borderBottom: '1px solid #e8edf3',
+        px: { xs: 2, sm: 3, md: 4 },
+        py: 2,
       }}>
-        {/* decorative glows */}
-        <Box sx={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 80% 40%, rgba(200,168,75,0.10), transparent 55%)', pointerEvents: 'none' }} />
-        <Box sx={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 10% 80%, rgba(26,106,163,0.18), transparent 50%)', pointerEvents: 'none' }} />
-
-        <Grid container spacing={3} alignItems="center" sx={{ position: 'relative', zIndex: 1 }}>
+        <Grid container spacing={2} alignItems="center">
           <Grid item xs={12} md={7}>
-            <Stack direction="row" spacing={2.5} alignItems="center">
+            <Stack direction="row" spacing={2} alignItems="center">
               <Box sx={{
-                width: 68, height: 68, borderRadius: '50%',
-                background: 'rgba(200,168,75,0.18)',
-                border: '2px solid rgba(200,168,75,0.45)',
+                width: 44, height: 44, borderRadius: 1.5,
+                background: 'linear-gradient(135deg,#1565c0,#1976d2)',
                 display: 'grid', placeItems: 'center', flexShrink: 0,
               }}>
-                <BalanceIcon sx={{ fontSize: 36, color: '#c8a84b' }} />
+                <BalanceIcon sx={{ fontSize: 24, color: '#fff' }} />
               </Box>
               <Box>
-                <Typography variant="overline" sx={{ color: '#c8a84b', letterSpacing: 2.5, fontSize: 11, fontWeight: 700 }}>
-                  ARBITRATOR PORTAL · RAFIKI ARBITRATION
+                <Typography variant="overline" sx={{ color: 'text.disabled', letterSpacing: 1.5, fontSize: 10, lineHeight: 1 }}>
+                  ARBITRATOR PORTAL
                 </Typography>
-                <Typography variant="h4" fontWeight={800} sx={{ lineHeight: 1.15, mt: 0.25 }}>
+                <Typography variant="h6" fontWeight={800} sx={{ lineHeight: 1.2 }}>
                   Welcome back, {firstName}
                 </Typography>
-                <Typography variant="body2" sx={{ opacity: 0.7, mt: 0.75 }}>
+                <Typography variant="caption" color="text.secondary">
                   {activeCases.length} active {activeCases.length === 1 ? 'proceeding' : 'proceedings'}
                   {upcomingHearings.length > 0 && ` · ${upcomingHearings.length} upcoming ${upcomingHearings.length === 1 ? 'hearing' : 'hearings'}`}
                 </Typography>
@@ -615,60 +607,52 @@ const ArbitratorDashboard = ({ cases, hearings, stats, t, firstName, navigate, o
             </Stack>
           </Grid>
           <Grid item xs={12} md={5}>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent={{ md: 'flex-end' }}>
-              <Button
-                variant="contained"
-                size="large"
-                startIcon={<CasesIcon />}
+            <Stack direction="row" spacing={1} justifyContent={{ md: 'flex-end' }}>
+              <Button variant="contained" size="medium" startIcon={<CasesIcon />}
                 onClick={() => navigate('/cases/agreement')}
-                sx={{ bgcolor: '#c8a84b', color: '#0a1628', fontWeight: 800, px: 3, '&:hover': { bgcolor: '#b5922e' }, boxShadow: '0 4px 16px rgba(200,168,75,0.35)' }}
-              >
+                sx={{ fontWeight: 700, boxShadow: 'none', '&:hover': { boxShadow: 'none' } }}>
                 Open New Case
               </Button>
-              <Button
-                variant="outlined"
-                size="large"
-                startIcon={<LibraryIcon />}
-                onClick={() => navigate('/documents')}
-                sx={{ borderColor: 'rgba(255,255,255,0.35)', color: '#fff', '&:hover': { borderColor: '#fff', bgcolor: 'rgba(255,255,255,0.08)' } }}
-              >
+              <Button variant="outlined" size="medium" startIcon={<LibraryIcon />}
+                onClick={() => navigate('/documents')}>
                 Documents
               </Button>
             </Stack>
           </Grid>
         </Grid>
+      </Box>
 
-        {/* KPI stat cards — floating at bottom of hero */}
-        <Grid container spacing={2} sx={{ position: 'relative', zIndex: 1, mt: { xs: 3, md: 4 } }}>
+      {/* ── Main content ────────────────────────────────────────────────── */}
+      <Container maxWidth="xl" sx={{ mt: 3, position: 'relative', zIndex: 1 }}>
+
+        {/* KPI cards */}
+        <Grid container spacing={2} sx={{ mb: 2.5 }}>
           {workspaceStats.map((item) => (
             <Grid item xs={6} md={3} key={item.label}>
-              <Box
+              <Paper
                 onClick={item.onClick}
                 role="button"
                 tabIndex={0}
+                elevation={0}
                 sx={{
-                  p: 2.25,
-                  borderRadius: 2.5,
-                  background: 'rgba(255,255,255,0.07)',
-                  backdropFilter: 'blur(12px)',
-                  border: '1px solid rgba(255,255,255,0.13)',
-                  cursor: 'pointer',
-                  transition: 'all 160ms ease',
-                  '&:hover': { background: 'rgba(255,255,255,0.14)', transform: 'translateY(-3px)', boxShadow: '0 8px 24px rgba(0,0,0,0.25)' },
+                  p: 2, borderRadius: 2, border: '1px solid #e8edf3', bgcolor: '#fff',
+                  cursor: 'pointer', transition: 'all 150ms ease',
+                  borderTop: `3px solid ${item.color}`,
+                  '&:hover': { boxShadow: '0 4px 16px rgba(0,0,0,0.09)', transform: 'translateY(-2px)' },
                 }}
               >
-                <Box sx={{ color: item.color, '& svg': { fontSize: 26 }, mb: 1 }}>{item.icon}</Box>
-                <Typography variant="h3" fontWeight={800} sx={{ lineHeight: 1, color: '#fff' }}>{item.value}</Typography>
-                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.75)', mt: 0.5 }}>{item.label}</Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.45)' }}>{item.sub}</Typography>
-              </Box>
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                  <Box sx={{ color: item.color, '& svg': { fontSize: 28 } }}>{item.icon}</Box>
+                  <Box>
+                    <Typography variant="h4" fontWeight={800} sx={{ lineHeight: 1 }}>{item.value}</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>{item.label}</Typography>
+                    <Typography variant="caption" color="text.disabled">{item.sub}</Typography>
+                  </Box>
+                </Stack>
+              </Paper>
             </Grid>
           ))}
         </Grid>
-      </Box>
-
-      {/* ── Main content (pulled up over hero) ──────────────────────────── */}
-      <Container maxWidth="xl" sx={{ mt: { xs: -8, md: -10 }, position: 'relative', zIndex: 2 }}>
 
         {/* Alert strip */}
         {hasAlerts && (
@@ -723,20 +707,16 @@ const ArbitratorDashboard = ({ cases, hearings, stats, t, firstName, navigate, o
 
           {/* ── Left: Case Management ──────────────────────────────────── */}
           <Grid item xs={12} lg={8}>
-            <Paper sx={{ borderRadius: 2.5, overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}>
+            <Paper elevation={0} sx={{ borderRadius: 2, overflow: 'hidden', border: '1px solid #e8edf3', bgcolor: '#fff' }}>
               {/* Card header */}
-              <Box sx={{ px: 3, py: 2, background: 'linear-gradient(135deg,#0d2444,#1a3a6b)', color: '#fff' }}>
+              <Box sx={{ px: 3, py: 1.75, bgcolor: '#fafbfd', borderBottom: '1px solid #e8edf3' }}>
                 <Stack direction="row" alignItems="center" spacing={1.5}>
-                  <AssignmentIcon />
+                  <AssignmentIcon color="primary" sx={{ fontSize: 20 }} />
                   <Box sx={{ flex: 1 }}>
-                    <Typography variant="h6" fontWeight={800}>My Cases</Typography>
-                    <Typography variant="caption" sx={{ opacity: 0.7 }}>Search, filter, and take the next procedural step</Typography>
+                    <Typography variant="subtitle1" fontWeight={800}>My Cases</Typography>
+                    <Typography variant="caption" color="text.secondary">Search, filter, and take the next procedural step</Typography>
                   </Box>
-                  <Button size="small" variant="outlined"
-                    sx={{ borderColor: 'rgba(255,255,255,0.4)', color: '#fff', '&:hover': { borderColor: '#fff', bgcolor: 'rgba(255,255,255,0.1)' } }}
-                    onClick={() => navigate('/cases')}>
-                    View All
-                  </Button>
+                  <Button size="small" variant="outlined" onClick={() => navigate('/cases')}>View All</Button>
                 </Stack>
               </Box>
 
@@ -869,13 +849,12 @@ const ArbitratorDashboard = ({ cases, hearings, stats, t, firstName, navigate, o
             <Stack spacing={2.5}>
 
               {/* Upcoming Hearings */}
-              <Paper sx={{ borderRadius: 2.5, overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}>
-                <Box sx={{ px: 2.5, py: 1.75, background: 'linear-gradient(135deg,#0277bd,#01579b)', color: '#fff' }}>
+              <Paper elevation={0} sx={{ borderRadius: 2, overflow: 'hidden', border: '1px solid #e8edf3', bgcolor: '#fff' }}>
+                <Box sx={{ px: 2.5, py: 1.5, bgcolor: '#fafbfd', borderBottom: '1px solid #e8edf3' }}>
                   <Stack direction="row" alignItems="center" spacing={1}>
-                    <HearingIcon sx={{ fontSize: 20 }} />
-                    <Typography variant="subtitle1" fontWeight={700}>Upcoming Hearings</Typography>
-                    <Chip label={upcomingHearings.length} size="small"
-                      sx={{ ml: 'auto', bgcolor: 'rgba(255,255,255,0.2)', color: '#fff', fontWeight: 700 }} />
+                    <HearingIcon sx={{ fontSize: 18, color: '#0277bd' }} />
+                    <Typography variant="subtitle2" fontWeight={700}>Upcoming Hearings</Typography>
+                    <Chip label={upcomingHearings.length} size="small" sx={{ ml: 'auto', fontWeight: 700 }} />
                   </Stack>
                 </Box>
                 <Box sx={{ p: 2 }}>
@@ -911,11 +890,11 @@ const ArbitratorDashboard = ({ cases, hearings, stats, t, firstName, navigate, o
               </Paper>
 
               {/* Quick Navigation */}
-              <Paper sx={{ borderRadius: 2.5, overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}>
-                <Box sx={{ px: 2.5, py: 1.75, background: 'linear-gradient(135deg,#4a148c,#6a1b9a)', color: '#fff' }}>
+              <Paper elevation={0} sx={{ borderRadius: 2, overflow: 'hidden', border: '1px solid #e8edf3', bgcolor: '#fff' }}>
+                <Box sx={{ px: 2.5, py: 1.5, bgcolor: '#fafbfd', borderBottom: '1px solid #e8edf3' }}>
                   <Stack direction="row" alignItems="center" spacing={1}>
-                    <OpenIcon sx={{ fontSize: 18 }} />
-                    <Typography variant="subtitle1" fontWeight={700}>Quick Navigation</Typography>
+                    <OpenIcon sx={{ fontSize: 18, color: '#6a1b9a' }} />
+                    <Typography variant="subtitle2" fontWeight={700}>Quick Navigation</Typography>
                   </Stack>
                 </Box>
                 <Box sx={{ p: 1.5 }}>
@@ -942,15 +921,15 @@ const ArbitratorDashboard = ({ cases, hearings, stats, t, firstName, navigate, o
               </Paper>
 
               {/* Help & Navigation Guide */}
-              <Paper sx={{ borderRadius: 2.5, overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}>
+              <Paper elevation={0} sx={{ borderRadius: 2, overflow: 'hidden', border: '1px solid #e8edf3', bgcolor: '#fff' }}>
                 <Box
                   onClick={() => setHelpOpen(!helpOpen)}
-                  sx={{ px: 2.5, py: 1.75, background: 'linear-gradient(135deg,#92711a,#c8a84b)', color: '#fff', cursor: 'pointer', userSelect: 'none' }}>
+                  sx={{ px: 2.5, py: 1.5, bgcolor: '#fafbfd', borderBottom: '1px solid #e8edf3', cursor: 'pointer', userSelect: 'none' }}>
                   <Stack direction="row" alignItems="center" spacing={1}>
-                    <HelpIcon sx={{ fontSize: 20 }} />
-                    <Typography variant="subtitle1" fontWeight={700}>Help & Guide</Typography>
-                    <Typography variant="caption" sx={{ ml: 'auto', opacity: 0.85, fontWeight: 600 }}>
-                      {helpOpen ? '▲ Collapse' : '▼ Expand'}
+                    <HelpIcon sx={{ fontSize: 18, color: '#c8a84b' }} />
+                    <Typography variant="subtitle2" fontWeight={700}>Help & Guide</Typography>
+                    <Typography variant="caption" color="text.disabled" sx={{ ml: 'auto', fontWeight: 600 }}>
+                      {helpOpen ? '▲' : '▼'}
                     </Typography>
                   </Stack>
                 </Box>
@@ -1005,8 +984,8 @@ const ArbitratorDashboard = ({ cases, hearings, stats, t, firstName, navigate, o
 
               {/* Closed Files */}
               {closedCases.length > 0 && (
-                <Paper sx={{ borderRadius: 2.5, overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}>
-                  <Box sx={{ px: 2.5, py: 1.75, bgcolor: '#f8f9fa', borderBottom: '1px solid', borderColor: 'divider' }}>
+                <Paper elevation={0} sx={{ borderRadius: 2, overflow: 'hidden', border: '1px solid #e8edf3', bgcolor: '#fff' }}>
+                  <Box sx={{ px: 2.5, py: 1.5, bgcolor: '#fafbfd', borderBottom: '1px solid #e8edf3' }}>
                     <Stack direction="row" alignItems="center" spacing={1}>
                       <ArchiveIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
                       <Typography variant="subtitle1" fontWeight={700}>Closed Files</Typography>
