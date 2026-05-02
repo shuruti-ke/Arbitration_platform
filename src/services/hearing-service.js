@@ -303,7 +303,7 @@ class HearingService {
     if (existing) return existing;
 
     const nbf = this._toUnixSeconds(hearing.startTime || hearing.START_TIME, -15 * 60);
-    const exp = this._toUnixSeconds(hearing.endTime || hearing.END_TIME, 2 * 60 * 60);
+    const exp = this._toFutureUnixSeconds(hearing.endTime || hearing.END_TIME, 2 * 60 * 60);
     const roomBody = {
       name: roomName,
       privacy: 'private',
@@ -356,7 +356,7 @@ class HearingService {
   }
 
   async createDailyMeetingToken({ dailyConfig, hearing, roomName, user, isModerator }) {
-    const exp = this._toUnixSeconds(hearing.endTime || hearing.END_TIME, 2 * 60 * 60);
+    const exp = this._toFutureUnixSeconds(hearing.endTime || hearing.END_TIME, 2 * 60 * 60);
     const userName = `${user.firstName || user.FIRST_NAME || ''} ${user.lastName || user.LAST_NAME || ''}`.trim()
       || user.email
       || user.userId;
@@ -409,6 +409,12 @@ class HearingService {
     const parsed = value ? Date.parse(value) : NaN;
     const base = Number.isNaN(parsed) ? Date.now() : parsed;
     return Math.floor((base + fallbackOffsetSeconds * 1000) / 1000);
+  }
+
+  _toFutureUnixSeconds(value, fallbackOffsetSeconds) {
+    const candidate = this._toUnixSeconds(value, fallbackOffsetSeconds);
+    const fallback = Math.floor((Date.now() + fallbackOffsetSeconds * 1000) / 1000);
+    return Math.max(candidate, fallback);
   }
 
 }
