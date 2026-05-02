@@ -34,6 +34,9 @@ import {
   Archive as ArchiveIcon,
   Download as DownloadIcon,
   OpenInNew as OpenIcon,
+  AutoAwesome as AutoAwesomeIcon,
+  Edit as EditIcon,
+  Send as SendIcon,
 } from '@mui/icons-material';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
@@ -452,6 +455,206 @@ const AdminDashboard = ({ analytics, t }) => {
   );
 };
 
+const normaliseCase = (c) => ({
+  caseId: c.CASE_ID || c.case_id || c.caseId || '',
+  title: c.TITLE || c.title || 'Untitled',
+  status: c.STATUS || c.status || 'pending',
+  caseStage: c.CASE_STAGE || c.caseStage || 'filing',
+  submissionStatus: c.SUBMISSION_STATUS || c.submissionStatus || 'draft',
+  caseType: c.CASE_TYPE || c.caseType || '',
+  paymentStatus: c.PAYMENT_STATUS || c.payment_status || c.paymentStatus || '',
+  createdAt: c.CREATED_AT || c.created_at || c.createdAt || '',
+});
+
+const workflowSteps = [
+  { key: 'filing', label: 'Filing', tab: 'overview' },
+  { key: 'response', label: 'Response', tab: 'documents' },
+  { key: 'arbitrator_appointment', label: 'Appointment', tab: 'parties' },
+  { key: 'terms_of_reference', label: 'Terms', tab: 'timeline' },
+  { key: 'hearing', label: 'Hearing', tab: 'hearings' },
+  { key: 'deliberation', label: 'Deliberation', tab: 'ai-draft' },
+  { key: 'award', label: 'Award', tab: 'award-pack' },
+  { key: 'closed', label: 'Closed', tab: 'overview' },
+];
+
+const ArbitratorDashboard = ({ cases, hearings, stats, t, firstName, navigate, openArchive }) => {
+  const normalisedCases = cases.map(normaliseCase);
+  const activeCases = normalisedCases.filter(c => !['completed', 'closed', 'terminated'].includes((c.status || '').toLowerCase()));
+  const closedCases = normalisedCases.filter(c => ['completed', 'closed', 'terminated'].includes((c.status || '').toLowerCase()));
+  const caseIds = new Set(normalisedCases.map(c => c.caseId));
+  const myHearings = (hearings || []).filter(h => caseIds.has(h.CASE_ID || h.caseId));
+  const upcomingHearings = myHearings
+    .filter(h => !['completed', 'cancelled'].includes(String(h.STATUS || h.status || '').toLowerCase()))
+    .sort((a, b) => new Date(a.START_TIME || a.startTime || 0) - new Date(b.START_TIME || b.startTime || 0))
+    .slice(0, 4);
+
+  const goCase = (caseId, tab = 'overview', action = '') => {
+    const qs = new URLSearchParams();
+    if (tab) qs.set('tab', tab);
+    if (action) qs.set('action', action);
+    navigate(`/cases/${caseId}?${qs.toString()}`);
+  };
+
+  const stageIndex = (stage) => Math.max(0, workflowSteps.findIndex(s => s.key === stage));
+  const nextAction = (c) => {
+    if ((c.submissionStatus || '').toLowerCase() === 'draft') return { label: 'Submit Filing', tab: 'overview' };
+    const stage = c.caseStage || 'filing';
+    if (stage === 'filing' || stage === 'response') return { label: 'Review File', tab: 'documents' };
+    if (stage === 'terms_of_reference') return { label: 'Set Terms', tab: 'timeline' };
+    if (stage === 'hearing') return { label: 'Manage Hearing', tab: 'hearings' };
+    if (stage === 'deliberation') return { label: 'Draft Award', tab: 'ai-draft' };
+    if (stage === 'award') return { label: 'Issue Award Pack', tab: 'award-pack' };
+    return { label: 'Open Case', tab: 'overview' };
+  };
+
+  return (
+    <Container maxWidth="xl" sx={{ mt: 3, mb: 5 }}>
+      <Paper sx={{ p: 3, mb: 3, borderLeft: 4, borderColor: 'warning.main' }}>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', md: 'center' }}>
+          <BalanceIcon color="warning" sx={{ fontSize: 44 }} />
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="h4" fontWeight={800}>{t('Arbitrator Workspace')}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {t('Welcome, {{name}}. This is your live workbench for managing proceedings, hearings, documents, deliberation, and awards.', { name: firstName })}
+            </Typography>
+          </Box>
+          <Button variant="contained" startIcon={<CasesIcon />} onClick={() => navigate('/cases/agreement')}>
+            {t('Open New Arbitration')}
+          </Button>
+        </Stack>
+      </Paper>
+
+      <Grid container spacing={2.5} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={6} md={3}><StatCard title={t('My Cases')} value={normalisedCases.length} icon={<CasesIcon fontSize="large" />} color="warning.main" /></Grid>
+        <Grid item xs={12} sm={6} md={3}><StatCard title={t('Active Proceedings')} value={activeCases.length} icon={<ActiveIcon fontSize="large" />} color="primary.main" /></Grid>
+        <Grid item xs={12} sm={6} md={3}><StatCard title={t('Upcoming Hearings')} value={upcomingHearings.length} icon={<HearingIcon fontSize="large" />} color="info.main" /></Grid>
+        <Grid item xs={12} sm={6} md={3}><StatCard title={t('Completed Awards')} value={closedCases.length || stats.completed} icon={<DoneIcon fontSize="large" />} color="success.main" /></Grid>
+      </Grid>
+
+      <Grid container spacing={3}>
+        <Grid item xs={12} lg={8}>
+          <Paper sx={{ p: 2.5 }}>
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+              <AssignmentIcon color="primary" />
+              <Typography variant="h6" fontWeight={700}>{t('Proceeding Command Center')}</Typography>
+              <Box sx={{ flex: 1 }} />
+              <Button size="small" variant="outlined" onClick={() => navigate('/cases')}>{t('All Cases')}</Button>
+            </Stack>
+
+            {activeCases.length === 0 ? (
+              <Alert severity="info">{t('No active arbitration cases are assigned to this arbitrator account yet.')}</Alert>
+            ) : (
+              <Stack spacing={2}>
+                {activeCases.map((c) => {
+                  const next = nextAction(c);
+                  const progress = Math.round(((stageIndex(c.caseStage) + 1) / workflowSteps.length) * 100);
+                  return (
+                    <Paper key={c.caseId} variant="outlined" sx={{ p: 2, borderRadius: 1 }}>
+                      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'flex-start' }}>
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                            <Typography variant="subtitle1" fontWeight={700}>{c.title}</Typography>
+                            <Chip label={c.caseId} size="small" variant="outlined" />
+                            <Chip label={t(c.status)} size="small" color={c.status === 'active' ? 'primary' : 'warning'} />
+                            <Chip label={`${t('Stage')}: ${t(c.caseStage.replace(/_/g, ' '))}`} size="small" color="info" variant="outlined" />
+                          </Stack>
+                          <Box sx={{ mt: 1.5, mb: 1 }}>
+                            <Stack direction="row" spacing={0.75} flexWrap="wrap">
+                              {workflowSteps.map((s, i) => (
+                                <Chip
+                                  key={s.key}
+                                  size="small"
+                                  label={t(s.label)}
+                                  color={i <= stageIndex(c.caseStage) ? 'primary' : 'default'}
+                                  variant={i === stageIndex(c.caseStage) ? 'filled' : 'outlined'}
+                                  onClick={() => goCase(c.caseId, s.tab)}
+                                  sx={{ mb: 0.75 }}
+                                />
+                              ))}
+                            </Stack>
+                            <LinearProgress variant="determinate" value={progress} sx={{ height: 7, borderRadius: 1 }} />
+                          </Box>
+                          <Stack direction="row" spacing={1} flexWrap="wrap">
+                            <Button size="small" variant="contained" startIcon={<ActiveIcon />} onClick={() => goCase(c.caseId, next.tab)}>
+                              {t(next.label)}
+                            </Button>
+                            <Button size="small" startIcon={<EditIcon />} onClick={() => goCase(c.caseId, 'overview', 'edit')}>{t('Edit Stage')}</Button>
+                            <Button size="small" startIcon={<GroupsIcon />} onClick={() => goCase(c.caseId, 'parties')}>{t('Parties')}</Button>
+                            <Button size="small" startIcon={<DocumentsIcon />} onClick={() => goCase(c.caseId, 'documents', 'upload')}>{t('Upload Evidence')}</Button>
+                            <Button size="small" startIcon={<HearingIcon />} onClick={() => goCase(c.caseId, 'hearings')}>{t('Hearings')}</Button>
+                            <Button size="small" startIcon={<AutoAwesomeIcon />} onClick={() => goCase(c.caseId, 'ai-draft')}>{t('AI Draft Award')}</Button>
+                            <Button size="small" startIcon={<GavelIcon />} onClick={() => goCase(c.caseId, 'award-pack')}>{t('Award Pack')}</Button>
+                          </Stack>
+                        </Box>
+                      </Stack>
+                    </Paper>
+                  );
+                })}
+              </Stack>
+            )}
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12} lg={4}>
+          <Stack spacing={2}>
+            <Paper sx={{ p: 2.5 }}>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+                <HearingIcon color="primary" />
+                <Typography variant="h6" fontWeight={700}>{t('Upcoming Hearings')}</Typography>
+              </Stack>
+              {upcomingHearings.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">{t('No upcoming hearings.')}</Typography>
+              ) : (
+                <Stack spacing={1.5}>
+                  {upcomingHearings.map((h) => {
+                    const hCaseId = h.CASE_ID || h.caseId;
+                    return (
+                      <Box key={h.HEARING_ID || h.hearingId}>
+                        <Typography variant="body2" fontWeight={700}>{h.TITLE || h.title || t('Hearing')}</Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">{hCaseId}</Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">{h.START_TIME || h.startTime || '—'}</Typography>
+                        <Button size="small" sx={{ mt: 0.5 }} onClick={() => goCase(hCaseId, 'hearings')}>{t('Open Hearing Room')}</Button>
+                      </Box>
+                    );
+                  })}
+                </Stack>
+              )}
+              <Button fullWidth variant="outlined" sx={{ mt: 2 }} onClick={() => navigate('/hearings')}>{t('Schedule / Manage Hearings')}</Button>
+            </Paper>
+
+            <Paper sx={{ p: 2.5 }}>
+              <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>{t('Arbitration Tools')}</Typography>
+              <Stack spacing={1}>
+                <Button fullWidth variant="contained" startIcon={<SendIcon />} onClick={() => navigate('/cases/agreement')}>{t('Start New Case')}</Button>
+                <Button fullWidth variant="outlined" startIcon={<LibraryIcon />} onClick={() => navigate('/documents')}>{t('Document Library')}</Button>
+                <Button fullWidth variant="outlined" startIcon={<PaymentIcon />} onClick={() => navigate('/payments')}>{t('Fees & Account')}</Button>
+                <Button fullWidth variant="outlined" startIcon={<AnalyticsIcon />} onClick={() => navigate('/analytics')}>{t('Analytics')}</Button>
+              </Stack>
+            </Paper>
+
+            <Paper sx={{ p: 2.5 }}>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                <ArchiveIcon color="action" />
+                <Typography variant="h6" fontWeight={700}>{t('Closed Files')}</Typography>
+                <Chip label={closedCases.length} size="small" />
+              </Stack>
+              {closedCases.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">{t('No closed cases yet.')}</Typography>
+              ) : closedCases.slice(0, 4).map(c => (
+                <Box key={c.caseId} sx={{ py: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+                  <Typography variant="body2" fontWeight={600}>{c.title}</Typography>
+                  <Button size="small" onClick={() => openArchive(c)}>{t('Browse File')}</Button>
+                  <Button size="small" onClick={() => goCase(c.caseId, 'overview')}>{t('Open')}</Button>
+                </Box>
+              ))}
+            </Paper>
+          </Stack>
+        </Grid>
+      </Grid>
+    </Container>
+  );
+};
+
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -461,6 +664,7 @@ const Dashboard = () => {
   const [analytics, setAnalytics] = useState({});
   const [recentCases, setRecentCases] = useState([]);
   const [closedCases, setClosedCases] = useState([]);
+  const [hearings, setHearings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const isAdmin = (user?.role || '').toLowerCase() === 'admin';
@@ -508,9 +712,12 @@ const Dashboard = () => {
           const casesRes = await apiService.getCases();
           const allCases = casesRes.data.cases || [];
           const CLOSED_STATUSES = ['completed', 'closed', 'terminated'];
-          setRecentCases(allCases.filter(c => !CLOSED_STATUSES.includes((c.STATUS || c.status || '').toLowerCase())).slice(0, 5));
+          const activeRows = allCases.filter(c => !CLOSED_STATUSES.includes((c.STATUS || c.status || '').toLowerCase()));
+          setRecentCases(isArbitrator ? activeRows : activeRows.slice(0, 5));
           if (isArbitrator) {
             setClosedCases(allCases.filter(c => CLOSED_STATUSES.includes((c.STATUS || c.status || '').toLowerCase())));
+            const hearingsRes = await apiService.getHearings().catch(() => ({ data: { hearings: [] } }));
+            setHearings(hearingsRes.data.hearings || []);
           }
         }
         setError(null);
@@ -546,6 +753,23 @@ const Dashboard = () => {
   const role = (user?.role || user?.ROLE || 'party').toLowerCase();
   const roleContent = ROLE_CONTENT[role] || ROLE_CONTENT.party;
   const firstName = user?.firstName || user?.FIRST_NAME || user?.email?.split('@')[0] || 'User';
+
+  if (isArbitrator) {
+    return (
+      <>
+        {error && <Alert severity="warning" sx={{ m: 2 }}>{error}</Alert>}
+        <ArbitratorDashboard
+          cases={[...recentCases, ...closedCases]}
+          hearings={hearings}
+          stats={stats}
+          t={t}
+          firstName={firstName}
+          navigate={navigate}
+          openArchive={openArchive}
+        />
+      </>
+    );
+  }
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>

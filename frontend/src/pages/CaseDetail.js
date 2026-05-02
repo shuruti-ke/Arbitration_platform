@@ -23,7 +23,7 @@ import {
   ContentCopy as CopyIcon,
   AutoAwesome as AutoAwesomeIcon,
 } from '@mui/icons-material';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import { apiService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -51,6 +51,7 @@ const codeKey = (value) => String(value || '').trim().toLowerCase();
 const CaseDetail = () => {
   const { caseId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const { t } = useLanguage();
   const [tab, setTab] = useState(0);
@@ -83,6 +84,17 @@ const CaseDetail = () => {
   const [aiAwardDraft, setAiAwardDraft] = useState(null);
   const [aiAwardLoading, setAiAwardLoading] = useState(false);
   const [aiAwardError, setAiAwardError] = useState(null);
+  const tabSlugs = React.useMemo(() => ({
+    overview: 0,
+    parties: 1,
+    counsel: 2,
+    documents: 3,
+    hearings: 4,
+    timeline: 5,
+    audit: 6,
+    'award-pack': 7,
+    'ai-draft': 8,
+  }), []);
 
   const load = async () => {
     try {
@@ -100,6 +112,23 @@ const CaseDetail = () => {
   };
 
   useEffect(() => { load(); }, [caseId]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const targetTab = params.get('tab');
+    const action = params.get('action');
+    if (targetTab && Object.prototype.hasOwnProperty.call(tabSlugs, targetTab)) {
+      const nextTab = tabSlugs[targetTab];
+      setTab(nextTab);
+      if (nextTab === 8 && user?.role === 'arbitrator') loadAiAwardDraft();
+    }
+    if (action === 'edit' && data) {
+      openEdit();
+    }
+    if (action === 'upload' && data) {
+      openUploadDialog('evidence');
+    }
+  }, [location.search, data]);
 
   const openEdit = () => {
     const c = data.case;
