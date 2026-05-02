@@ -1,5 +1,5 @@
 // src/components/Navigation.js
-import React from 'react';
+import React, { cloneElement } from 'react';
 import { AppBar, Toolbar, Typography, IconButton, Chip, Box, Tooltip } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -43,8 +43,20 @@ const roleColors = {
 
 const NavIcon = ({ to, icon, label }) => (
   <Tooltip title={label} arrow>
-    <IconButton color="inherit" component={Link} to={to} size="medium">
-      {icon}
+    <IconButton
+      component={Link}
+      to={to}
+      size="small"
+      sx={{
+        color: 'text.secondary',
+        borderRadius: 1.5,
+        p: 0.875,
+        transition: 'all 140ms ease',
+        '&:hover': { color: 'primary.main', bgcolor: 'action.hover' },
+        '&.active': { color: 'primary.main', bgcolor: '#e8f0fe' },
+      }}
+    >
+      {cloneElement(icon, { sx: { fontSize: 20 } })}
     </IconButton>
   </Tooltip>
 );
@@ -73,32 +85,52 @@ const Navigation = () => {
   const role = (user?.role || '').toLowerCase();
 
   return (
-    <AppBar position="static">
-      <Toolbar variant="dense" sx={{ gap: 0.5 }}>
-        <Typography variant="subtitle1" fontWeight={700} sx={{ mr: 1, whiteSpace: 'nowrap' }}>
-          {t('Arbitration Platform')}
-        </Typography>
+    <AppBar position="sticky" sx={{ top: 0, zIndex: 1100 }}>
+      <Toolbar variant="dense" sx={{ gap: 0.5, minHeight: 52, px: { xs: 1.5, md: 2.5 } }}>
+        {/* Brand */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2, flexShrink: 0 }}>
+          <Box sx={{
+            width: 28, height: 28, borderRadius: 1,
+            background: 'linear-gradient(135deg,#1565c0,#1976d2)',
+            display: 'grid', placeItems: 'center', flexShrink: 0,
+          }}>
+            <DashboardIcon sx={{ fontSize: 16, color: '#fff' }} />
+          </Box>
+          <Typography variant="subtitle2" fontWeight={800} sx={{ whiteSpace: 'nowrap', color: 'text.primary', letterSpacing: '-0.01em' }}>
+            Rafiki Arbitration
+          </Typography>
+        </Box>
 
-        {NAV_ITEMS.filter(item => item.roles.includes(role)).map(item => (
-          <NavIcon key={item.to} to={item.to} icon={item.icon} label={t(item.labelKey)} />
-        ))}
+        {/* Nav icons */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, flexWrap: 'nowrap', overflow: 'hidden' }}>
+          {NAV_ITEMS.filter(item => item.roles.includes(role)).map(item => (
+            <NavIcon key={item.to} to={item.to} icon={item.icon} label={t(item.labelKey)} />
+          ))}
+        </Box>
 
         <Box sx={{ flexGrow: 1 }} />
 
+        {/* User info */}
         {user && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="body2" sx={{ opacity: 0.9, whiteSpace: 'nowrap' }}>
-              {user.firstName} {user.lastName}
-            </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+            <Box sx={{ textAlign: 'right', display: { xs: 'none', sm: 'block' } }}>
+              <Typography variant="caption" fontWeight={700} color="text.primary" display="block" sx={{ lineHeight: 1.2 }}>
+                {user.firstName} {user.lastName}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.68rem' }}>
+                {roleLabelKey(user.role)}
+              </Typography>
+            </Box>
             <Chip
               label={t(roleLabelKey(user.role))}
               size="small"
               color={roleColors[user.role] || 'default'}
-              sx={{ color: 'white', fontWeight: 'bold' }}
+              sx={{ fontWeight: 700, display: { xs: 'flex', sm: 'none' } }}
             />
             <Tooltip title={t('Logout')} arrow>
-              <IconButton color="inherit" onClick={logout}>
-                <LogoutIcon />
+              <IconButton onClick={logout} size="small"
+                sx={{ color: 'text.secondary', borderRadius: 1.5, '&:hover': { color: 'error.main', bgcolor: '#fef2f2' } }}>
+                <LogoutIcon sx={{ fontSize: 18 }} />
               </IconButton>
             </Tooltip>
           </Box>
