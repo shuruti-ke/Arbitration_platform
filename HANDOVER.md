@@ -1,67 +1,218 @@
 # Platform Handover Document
 
-**Last updated:** 2026-04-23
-**Platform:** Nairobi Centre for International Arbitration (NCIA) Case Management System
+**Last updated:** 2026-05-02  
+**Platform name:** Rafiki Arbitration  
+**Public URL:** https://arbitration-platform.vercel.app  
 **Repository:** https://github.com/shuruti-ke/Arbitration_platform
 
 ---
 
-## Live Deployment
+## Current Live Deployment
 
-| Layer | Provider | URL / Address |
-|---|---|---|
-| Frontend | Vercel | https://arbitration-platform.vercel.app |
-| Backend API | Oracle Cloud (Always Free) | http://152.70.201.154:3000 |
-| Database | Neon (Serverless Postgres) | See `.env.oracle` on VM |
-| API proxy | Vercel rewrites (`vercel.json`) | `/api/*` → Oracle VM |
+| Layer | Provider | URL / Address | Notes |
+|---|---|---|---|
+| Frontend | Vercel | https://arbitration-platform.vercel.app | Production alias for the React app |
+| Backend API | OVH VPS | https://vps-5968ce23.vps.ovh.us | Vercel rewrites `/api/*` here |
+| Backend host IP | OVH VPS-2 | 135.148.120.31 | Ubuntu 24.04 reinstall completed 2026-05-02 |
+| Database | Neon Postgres | `DATABASE_URL` in `.env.oracle` on OVH | Production data store |
+| Video provider | Daily.co | Embedded Daily rooms | Jitsi fallback removed |
+| AI provider | OpenAI / configured fallbacks | API keys in backend env | Used by AI draft award and intelligence features |
 
----
+`vercel.json` currently rewrites:
 
-## Infrastructure
-
-### Oracle VM (Backend)
-- **Instance:** VM.Standard.E2.1.Micro — 1 OCPU, 1 GB RAM (Always Free)
-- **OS:** Oracle Linux
-- **User:** `opc`
-- **Home dir:** `/home/opc/arbitration-platform/`
-- **Node.js:** v20.20.2 via NVM (`source /home/opc/.nvm/nvm.sh`)
-- **Process manager:** PM2 (process ID 0, name `arbitration-backend`)
-- **Entry point:** `src/index.js`
-- **Env file:** `/home/opc/arbitration-platform/.env.oracle`
-
-> **No git on VM.** Deploy by SCP'ing changed files directly, then restart PM2.
-
-### SSH Access
-- **Key file:** `C:\Users\shuru\Downloads\ssh-key-2026-04-14 (1).key`
-- **Connect:**
-  ```bash
-  ssh -i "C:\Users\shuru\Downloads\ssh-key-2026-04-14 (1).key" -o StrictHostKeyChecking=no opc@152.70.201.154
-  ```
-- **SCP a file:**
-  ```bash
-  scp -i "C:\Users\shuru\Downloads\ssh-key-2026-04-14 (1).key" -o StrictHostKeyChecking=no src/index.js opc@152.70.201.154:/home/opc/arbitration-platform/src/index.js
-  ```
-- **Restart backend:**
-  ```bash
-  ssh -i "C:\Users\shuru\Downloads\ssh-key-2026-04-14 (1).key" -o StrictHostKeyChecking=no opc@152.70.201.154 "source /home/opc/.nvm/nvm.sh && pm2 restart arbitration-backend && pm2 status"
-  ```
-
-### Frontend Deploy
-Push to `main` on GitHub — Vercel auto-deploys on every push. No manual step needed.
+```json
+"/api/:path*" -> "https://vps-5968ce23.vps.ovh.us/api/:path*"
+```
 
 ---
 
-## Backend Environment Variables (`.env.oracle`)
+## 2026-05-02 Update Summary
+
+### Infrastructure
+- Migrated the live backend route away from the old Oracle VM to the new OVH VPS.
+- New OVH VPS details:
+  - **Plan:** VPS-2
+  - **Location:** US-EAST-VA / Virginia
+  - **vCPU:** 6
+  - **RAM:** 12 GB
+  - **Storage:** 100 GB NVMe
+  - **OS:** Ubuntu 24.04
+  - **IPv4:** `135.148.120.31`
+  - **Hostname:** `vps-5968ce23.vps.ovh.us`
+  - **SSH user:** `ubuntu`
+- Backend app directory on OVH:
+  - `/home/ubuntu/arbitration-platform`
+- PM2 process:
+  - `arbitration-backend`
+- Backend should be managed from the app directory:
+
+```bash
+cd /home/ubuntu/arbitration-platform
+pm2 status
+pm2 logs arbitration-backend --lines 80
+pm2 restart arbitration-backend
+```
+
+### Frontend and Branding
+- Login page now uses the name **Rafiki Arbitration**.
+- Login hero text was replaced with the Lady Justice image:
+  - `frontend/public/login-justice.jpg`
+- Added login tagline:
+  - `An advanced AI enabled arbitration platform using RafikiAi`
+- Removed:
+  - `Your role is detected automatically from your credentials.`
+- Production deploy completed and aliased to:
+  - https://arbitration-platform.vercel.app
+
+### Hearings and Video
+- Replaced Jitsi/JaaS with embedded Daily.co meeting rooms.
+- Jitsi fallback was removed from backend and frontend.
+- Vercel headers now allow Daily camera, microphone, display capture, frames, websocket, media, and API connections.
+- Daily meeting joins are embedded in the platform so users can access the platform while in a meeting.
+- Daily room creation enables:
+  - private rooms
+  - cloud recording
+  - transcription storage where supported by the Daily account
+  - live captions UI
+  - screen sharing
+  - chat
+  - prejoin disabled
+  - camera/microphone initially allowed
+- Fixed Daily joins for old/expired hearing records by ensuring token and room expiry are always pushed into the future.
+
+### Database and Migrations
+- Neon remains the production database.
+- Migration runner added/updated:
+  - `scripts/run-migrations.js`
+- Current migration list:
+  - `scripts/migrate-security-tables.sql`
+  - `scripts/migrate-tax-and-settings.sql`
+  - `scripts/migrate-ai-award-drafts.sql`
+- AI award drafts table added:
+
+```sql
+ai_award_drafts (
+  id,
+  draft_id,
+  case_id,
+  arbitrator_id,
+  prompt_version,
+  source_snapshot_hash,
+  draft_text,
+  draft_json,
+  status,
+  created_at,
+  reviewed_at
+)
+```
+
+- Indexes added:
+  - `idx_ai_award_drafts_case_arbitrator`
+  - `idx_ai_award_drafts_snapshot`
+- The migration runner requires `DATABASE_URL` and loads `.env.oracle`.
+
+### Backend Fixes and Hardening
+- Fixed Neon named-parameter conversion so PostgreSQL casts like `::text[]` are not broken.
+- `/api/auth/me` now handles stale/deleted-user tokens without throwing avoidable 500s.
+- User creation no longer reports success when the production DB insert fails.
+- Admin seeding startup race was addressed.
+- Comprehensive/system tests were hardened so request failures can fail the test process instead of being logged as a false pass.
+- Payment rendering guard added so missing case data does not crash the frontend.
+
+### Arbitrator Workspace
+- Arbitrator dashboard was converted from a mostly static landing page into a more actionable workspace.
+- Added proceeding command center, case controls, quick actions, hearing actions, award pack access, and AI draft award entry points.
+- Fixed `GavelIcon is not defined` crash.
+- Improved case overview UX:
+  - stronger hierarchy
+  - case progress
+  - clearer financial/date details
+  - better action sections
+  - better empty states
+  - clearer AI Draft Award label
+
+### AI Draft Award
+- Added arbitrator-only AI draft award flow.
+- Route is case-specific:
+  - `/api/cases/:caseId/ai-award-draft`
+- Only the assigned arbitrator should see and generate the draft.
+- Purpose: assist the arbitrator in preparing the actual arbitral award. The draft is advisory and must be independently reviewed, edited, and adopted by the arbitrator.
+- Requires an AI provider key in backend env. If no provider is configured, the UI shows `No AI provider configured`.
+
+---
+
+## Backend Environment Variables
+
+Production env lives on the OVH server in:
+
+```bash
+/home/ubuntu/arbitration-platform/.env.oracle
+```
+
+Do not commit secret values. Required/important keys include:
 
 | Variable | Purpose |
 |---|---|
-| `JWT_SECRET` | 256-bit random hex — server refuses to start without it |
+| `NODE_ENV` | `production` |
+| `PORT` | Backend port, normally `3000` |
+| `JWT_SECRET` | Required signing secret |
 | `DATABASE_URL` | Neon Postgres connection string |
 | `CORS_ORIGIN` | `https://arbitration-platform.vercel.app` |
 | `OPENAI_API_KEY` | Primary AI provider |
-| `QWEN_API_KEY` | Fallback AI (DashScope/Alibaba) |
-| `NVIDIA_API_KEY` | Second fallback AI |
-| `NODE_ENV` | `production` |
+| `QWEN_API_KEY` | Optional AI fallback |
+| `NVIDIA_API_KEY` | Optional AI fallback |
+| `DAILY_API_KEY` | Daily.co REST API key |
+| `DAILY_DOMAIN` | Daily domain, for example `rafikihr.daily.co` |
+| `DAILY_AUTO_RECORD` | Daily recording behavior flag |
+| `DAILY_AUTO_TRANSCRIBE` | Daily transcription behavior flag |
+| `DAILY_CLOSE_TAB_ON_EXIT` | Daily exit behavior flag |
+
+Known Daily env check on OVH showed these keys present:
+
+```bash
+DAILY_API_KEY=set
+DAILY_DOMAIN=set
+DAILY_AUTO_RECORD=set
+DAILY_AUTO_TRANSCRIBE=set
+DAILY_CLOSE_TAB_ON_EXIT=set
+```
+
+---
+
+## Database
+
+### Production Database
+- Provider: Neon Serverless Postgres
+- Connection: `DATABASE_URL` in OVH `.env.oracle`
+- Backend DB service: `src/services/neon-database-service.js`
+
+### Key Tables
+
+| Table | Purpose |
+|---|---|
+| `users` | Platform users and roles |
+| `cases` | Arbitration matters |
+| `parties` | Case parties |
+| `case_counsel` | Counsel assignments |
+| `documents` | Case document records |
+| `hearings` | Hearing records |
+| `hearing_participants` | Join/participant tracking |
+| `payments` | Invoice/proof/payment workflow |
+| `token_blacklist` | Revoked JWT token hashes |
+| `award_hashes` | Tamper-evident award verification hashes |
+| `case_agreements` | Arbitration agreement records |
+| `tax_settings` | Tax/payment settings |
+| `ai_award_drafts` | Arbitrator-only AI draft award records |
+
+### Run Migrations
+
+From the backend app directory on OVH:
+
+```bash
+cd /home/ubuntu/arbitration-platform
+node scripts/run-migrations.js
+pm2 restart arbitration-backend
+```
 
 ---
 
@@ -71,137 +222,140 @@ Push to `main` on GitHub — Vercel auto-deploys on every push. No manual step n
 
 | Role | Access |
 |---|---|
-| `admin` | Full access — user management, case assignment, payments, reports |
+| `admin` | Full access, users, case assignment, payments, reports |
 | `secretariat` | Case management, hearings, documents |
-| `arbitrator` | Assigned cases only, hearings, documents, payments |
-| `counsel` | Party/counsel cases only, documents |
+| `arbitrator` | Assigned cases, hearings, documents, awards, AI draft award |
+| `counsel` | Party/counsel cases and documents |
+| `party` | Own cases, documents, hearings where allowed |
 
 ### Key Workflows
-1. **Case intake** → claimant submits → secretariat reviews → admin assigns arbitrator
-2. **Payment** → admin issues invoice → arbitrator uploads proof → admin approves → case activates
-3. **Hearings** → secretariat schedules → Jitsi video link generated → parties join
-4. **Awards** → arbitrator drafts → hash stored in DB (`award_hashes` table) for tamper verification
-5. **Compliance** → gap map checks platform workflows vs Kenya Arb Act Cap. 49; arbitrability check calls AI for legal analysis
 
-### Authentication
-- Tokens stored in `localStorage`, sent as `Authorization: Bearer` header on every request
-- HttpOnly cookies also set (bonus layer; Vercel proxy does not reliably forward them)
-- Access token: 1-hour expiry; refresh token: 7 days
-- Token blacklist persisted in `token_blacklist` table (Neon DB) — survives restarts
-- **Rate limit:** 5 failed logins per email/IP per 15 minutes → 429
-
----
-
-## Database (Neon Postgres)
-
-Key tables:
-
-| Table | Purpose |
-|---|---|
-| `cases` | All arbitration cases |
-| `users` | Platform users with roles |
-| `documents` | Case documents (base64 stored in DB) |
-| `payments` | Payment lifecycle: invoiced → proof_uploaded → paid |
-| `hearings` | Scheduled hearings |
-| `token_blacklist` | Revoked JWT tokens (SHA-256 hashed) |
-| `award_hashes` | Tamper-evident award verification hashes |
-| `case_agreements` | Signed arbitration agreements |
-
-Security migration already applied: `scripts/migrate-security-tables.sql`
-
----
-
-## Security Hardening (Pentest Remediations — 2026-04)
-
-All 16 of 19 pentest findings remediated. F-017 is pending.
-
-| ID | Finding | Status |
-|---|---|---|
-| F-001 | JWT_SECRET enforcement | ✅ Done — server exits if missing/default |
-| F-002 | Login rate limiting | ✅ Done — 5 attempts/15 min per email+IP |
-| F-003 | CORS wildcard | ✅ Done — `CORS_ORIGIN` required at startup |
-| F-004 | Token blacklist on logout | ✅ Done — persisted to DB |
-| F-005 | Unauthenticated endpoints | ✅ Done — auth added to 9 routes |
-| F-006 | BOLA on documents | ✅ Done — party/counsel participant check |
-| F-007 | AI error detail leak | ✅ Done — stripped from 500 responses |
-| F-008 | Weak password policy | ✅ Done — 12-char minimum |
-| F-009 | Milestone auth bypass | ✅ Done — arbitrator must be assigned to case |
-| F-010 | Missing CSP header | ✅ Done — Content-Security-Policy on all responses |
-| F-011 | Award hash volatility | ✅ Done — hashes persisted to DB |
-| F-012 | Unbounded list queries | ✅ Done — LIMIT/OFFSET on all list endpoints |
-| F-013 | JWT in localStorage | ✅ Done — Bearer header used; cookies as bonus layer |
-| F-014 | Input validation | ✅ Already compliant |
-| F-015 | Health endpoint info leak | ✅ Done — unauthenticated gets `{"status":"OK"}` only |
-| F-016 | File type validation | ✅ Done — magic-byte check via `file-type` |
-| F-017 | Admin credentials in git history | ⚠️ PENDING — run `git filter-repo`, rotate admin password |
-
----
-
-## Planned Infrastructure Upgrade
-
-`ignore/retry-create-instance.ps1` polls OCI to claim a **VM.Standard.A1.Flex** Always Free instance (4 OCPUs / 24 GB ARM). When it succeeds:
-
-1. Provision Node.js + NVM + PM2 on new instance
-2. Copy `.env.oracle` to new VM
-3. SCP all source files
-4. Update `vercel.json` rewrite destination to new IP
-5. Verify health endpoint, then decommission E2.1.Micro
+1. Case intake -> claimant submits -> secretariat/admin review -> arbitrator assignment.
+2. Payments -> invoice/proof/approval workflow.
+3. Hearings -> scheduled in platform -> Daily room created/joined inside platform.
+4. Evidence/documents -> uploaded and tied to case records.
+5. AI draft award -> assigned arbitrator generates advisory award draft from case materials.
+6. Award pack -> arbitrator prepares final award artifacts.
+7. Audit/timeline -> case actions visible in case tabs.
 
 ---
 
 ## Platform Pages
 
-| Page | Route | Roles | Description |
+| Page | Route | Roles | Notes |
 |---|---|---|---|
-| Dashboard | `/` | All | Role-tailored summary, payment/case stats |
-| Cases | `/cases` | All | Case list, create, submit |
-| Documents | `/documents` | All | Upload, AI analysis, extract text |
-| Hearings | `/hearings` | All | Schedule, join via Jitsi |
-| Compliance | `/compliance` | All | Gap map, legal sources, AI arbitrability check |
-| Payments | `/payments` | Admin, Arbitrator | Invoice, proof upload, approve |
-| Intelligence | `/intelligence` | Admin, Secretariat, Arbitrator | AI case analysis, admin reports |
-| IP Arbitration | `/ip-arbitration` | Admin, Secretariat, Arbitrator, Counsel | IP-specific workflows |
-| Court Filing | `/court-filing` | Admin, Secretariat, Arbitrator, Counsel | Compliance check for court submissions |
-| Training | `/training` | All | AI-generated training modules + exam |
-| Users | `/users` | Admin | Manage users, roles, passwords |
-| Analytics | `/analytics` | All | Case and platform analytics |
+| Dashboard | `/` | All | Role-tailored workspace |
+| Cases | `/cases` | All | Case list and creation |
+| Case Detail | `/cases/:caseId` | Authorized case users | Overview, parties, counsel, docs, hearings, audit, award pack, AI draft |
+| Documents | `/documents` | All | Upload and manage documents |
+| Hearings | `/hearings` | All | Schedule/manage/join Daily meetings |
+| Payments | `/payments` | Admin, Arbitrator | Invoice and payment proof workflows |
+| Intelligence | `/intelligence` | Admin, Secretariat, Arbitrator | AI-assisted analysis |
+| Compliance | `/compliance` | All | Compliance/gap map/legal analysis |
+| Users | `/users` | Admin | User management |
+| Analytics | `/analytics` | All | Platform analytics |
+| Login | `/login` | Public | Rafiki Arbitration branded sign-in |
 
 ---
 
-## Common Operations
+## Deployment Operations
 
-### Deploy a backend change
+### Frontend
+
+Production frontend is deployed through Vercel.
+
 ```bash
-# 1. Edit src/index.js (or other src file) locally
-# 2. SCP to VM
-scp -i "C:\Users\shuru\Downloads\ssh-key-2026-04-14 (1).key" -o StrictHostKeyChecking=no src/index.js opc@152.70.201.154:/home/opc/arbitration-platform/src/index.js
-
-# 3. Restart
-ssh -i "C:\Users\shuru\Downloads\ssh-key-2026-04-14 (1).key" -o StrictHostKeyChecking=no opc@152.70.201.154 "source /home/opc/.nvm/nvm.sh && pm2 restart arbitration-backend"
+cd C:\Users\shuru\Documents\AIProjects\Arbitration_Platform
+npm run build --prefix frontend
+git push origin main
+vercel --prod --yes
 ```
 
-### Check backend logs
+Vercel project:
+
 ```bash
-ssh -i "C:\Users\shuru\Downloads\ssh-key-2026-04-14 (1).key" -o StrictHostKeyChecking=no opc@152.70.201.154 "source /home/opc/.nvm/nvm.sh && pm2 logs arbitration-backend --lines 50"
+vercel ls
+vercel env ls
+vercel logs
 ```
 
-### Deploy frontend
+### Backend on OVH
+
+Use curl/small-file updates where possible because the VM is sensitive and should not be overloaded by heavy operations.
+
 ```bash
-git push origin main   # Vercel auto-deploys in ~1 minute
+ssh -i .\ovh-vps-135-148-120-31_ed25519 ubuntu@135.148.120.31
+cd /home/ubuntu/arbitration-platform
+pm2 status
+pm2 logs arbitration-backend --lines 80
+pm2 restart arbitration-backend
 ```
 
-### Rotate JWT_SECRET
-```bash
-# Generate new secret locally
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+Health check:
 
-# Update on VM (replace NEW_VALUE)
-ssh -i "C:\Users\shuru\Downloads\ssh-key-2026-04-14 (1).key" -o StrictHostKeyChecking=no opc@152.70.201.154 \
-  "sed -i 's/^JWT_SECRET=.*/JWT_SECRET=NEW_VALUE/' /home/opc/arbitration-platform/.env.oracle && source /home/opc/.nvm/nvm.sh && pm2 restart arbitration-backend"
-```
-
-### Check VM health
 ```bash
 curl https://arbitration-platform.vercel.app/api/health
-# Expected: {"status":"OK"}
 ```
+
+Expected unauthenticated response:
+
+```json
+{"status":"OK"}
+```
+
+### Backend Deploy Note
+
+The old handover said there was no git on the VM and to SCP files to Oracle. That is no longer the live deployment path. The live backend is OVH. Prefer small, targeted file transfers or curl-based updates, then restart PM2.
+
+---
+
+## Security and Reliability Notes
+
+- `JWT_SECRET` is required; backend must not run with a default value.
+- `CORS_ORIGIN` should remain locked to the Vercel production domain.
+- Do not restore production memory fallbacks for DB writes. Production DB failures should fail loudly.
+- Keep Neon migrations explicit and committed.
+- Keep Daily/Jitsi split clean: Jitsi has been removed from the active hearing flow.
+- Keep the Vercel CSP and Permissions-Policy in sync with Daily requirements.
+- Monitor PM2 logs after deploys.
+- Bundle size remains above CRA recommendations; code splitting is still a future improvement.
+
+### Open Security Item
+
+| ID | Finding | Status |
+|---|---|---|
+| F-017 | Admin credentials in git history | Pending: run history cleanup and rotate affected credentials |
+
+---
+
+## Recent Commit Log
+
+Latest relevant commits on `main`:
+
+| Commit | Summary |
+|---|---|
+| `21cc1dc` | Update login branding to Rafiki Arbitration |
+| `b007cac` | Replace login headline with justice image |
+| `68dcf52` | Allow Daily joins for expired hearing records |
+| `69967f9` | Remove Jitsi fallback from hearings |
+| `1285d27` | Refine case overview card layout |
+| `0bc0a4d` | Implement login and arbitrator UX improvements |
+| `d618c7e` | Improve case overview UX |
+| `a75df63` | Polish arbitrator workspace UI |
+| `98de3af` | Guard payments rendering against missing case data |
+| `21ee8c8` | Fix arbitrator dashboard gavel icon import |
+| `c77fd33` | Make arbitrator dashboard actionable |
+| `2e5a3e0` | Replace Jitsi hearings with Daily dock |
+| `2a9f059` | Add arbitrator-only AI draft awards |
+| `0f3eac4` | Migrate backend routing to OVH VPS |
+
+---
+
+## Immediate Next Checks
+
+1. Verify `/api/health` through Vercel after every backend restart.
+2. Verify login with an arbitrator account.
+3. Open an assigned case and confirm the AI Draft Award tab is visible only to the arbitrator.
+4. Join a Daily hearing from inside the platform and confirm microphone/camera permissions.
+5. Run migrations after any DB schema pull/deploy.
+6. Check PM2 logs for 5xx errors after deploys.
