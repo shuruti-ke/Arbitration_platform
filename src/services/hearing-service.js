@@ -275,6 +275,147 @@ class HearingService {
     return `${jitsiBaseUrl}/${jitsiRoom}`;
   }
 
+  getDailyRoomName(hearing) {
+    const existingRoom = hearing.jitsiRoom || hearing.JITSI_ROOM || hearing.dailyRoom || hearing.DAILY_ROOM;
+    const fallback = `arb-${hearing.caseId || hearing.CASE_ID}-${hearing.hearingId || hearing.HEARING_ID}`;
+    return String(existingRoom || fallback)
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 120);
+  }
+
+  async getDailyJoinUrl({ dailyConfig, hearing, user, isModerator }) {
+    if (!dailyConfig || !dailyConfig.apiKey) {
+      return null;
+    }
+
+    const roomName = this.getDailyRoomName(hearing);
+    const room = await this.ensureDailyRoom({ dailyConfig, hearing, roomName });
+    const token = await this.createDailyMeetingToken({ dailyConfig, hearing, roomName, user, isModerator });
+    return token ? `${room.url}?t=${encodeURIComponent(token)}` : room.url;
+  }
+
+  async ensureDailyRoom({ dailyConfig, hearing, roomName }) {
+    const existing = await this.dailyRequest(dailyConfig, `/rooms/${encodeURIComponent(roomName)}`, {
+      method: 'GET',
+      tolerate404: true
+    });
+    if (existing) return existing;
+
+    const nbf = this._toUnixSeconds(hearing.startTime || hearing.START_TIME, -15 * 60);
+    const exp = this._toUnixSeconds(hearing.endTime || hearing.END_TIME, 2 * 60 * 60);
+    const roomBody = {
+      name: roomName,
+      privacy: 'private',
+      properties: {
+        nbf,
+        exp,
+        eject_at_room_exp: true,
+        enable_prejoin_ui: false,
+        enable_live_captions_ui: true,
+        enable_people_ui: true,
+        enable_screenshare: true,
+        enable_chat: true,
+        enable_recording: 'cloud',
+        enable_transcription_storage: true,
+        start_video_off: false,
+        start_audio_off: false,
+        permissions: {
+          hasPresence: true,
+          canSend: true,
+          canReceive: {},
+          canAdmin: false
+        }
+      }
+    };
+
+    return this.dailyRequest(dailyConfig, '/rooms', {
+      method: 'POST',
+      body: roomBody
+    });
+  }
+
+  async createDailyMeetingToken({ dailyConfig, hearing, roomName, user, isModerator }) {
+    const exp = this._toUnixSeconds(hearing.endTime || hearing.END_TIME, 2 * 60 * 60);
+    const userName = `${user.firstName || user.FIRST_NAME || ''} ${user.lastName || user.LAST_NAME || ''}`.trim()
+      || user.email
+      || user.userId;
+    const body = {
+      properties: {
+        room_name: roomName,
+        exp,
+        eject_at_token_exp: true,
+        is_owner: !!isModerator,
+        user_name: userName,
+        user_id: String(user.userId || user.USER_ID || '').slice(0, 36),
+        enable_prejoin_ui: false,
+        enable_live_captions_ui: true,
+        enable_recording: 'cloud',
+        enable_recording_ui: !!isModerator,
+        start_video_off: false,
+        start_audio_off: false,
+        close_tab_on_exit: dailyConfig.closeTabOnExit !== false,
+        permissions: {
+          hasPresence: true,
+          canSend: true,
+          canReceive: {},
+          canAdmin: isModerator ? ['participants', 'transcription'] : false
+        }
+      }
+    };
+
+    if (isModerator && dailyConfig.autoRecord) {
+      body.properties.start_cloud_recording = true;
+      body.properties.start_cloud_recording_opts = {
+        type: 'cloud',
+        dataOutputs: ['event-json', 'transcript-webvtt']
+      };
+    }
+
+    if (isModerator && dailyConfig.autoTranscribe) {
+      body.properties.auto_start_transcription = true;
+    }
+
+    const token = await this.dailyRequest(dailyConfig, '/meeting-tokens', {
+      method: 'POST',
+      body
+    });
+    return token && token.token;
+  }
+
+  async dailyRequest(dailyConfig, path, { method = 'GET', body, tolerate404 = false } = {}) {
+    const res = await fetch(`https://api.daily.co/v1${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${dailyConfig.apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+
+    if (res.status === 404 && tolerate404) return null;
+    const text = await res.text();
+    let payload = null;
+    if (text) {
+      try { payload = JSON.parse(text); } catch { payload = { error: text }; }
+    }
+
+    if (!res.ok) {
+      const message = payload && (payload.error || payload.info) ? (payload.error || payload.info) : `Daily API ${res.status}`;
+      throw new Error(`Daily API request failed: ${message}`);
+    }
+
+    return payload || {};
+  }
+
+  _toUnixSeconds(value, fallbackOffsetSeconds) {
+    const parsed = value ? Date.parse(value) : NaN;
+    const base = Number.isNaN(parsed) ? Date.now() : parsed;
+    return Math.floor((base + fallbackOffsetSeconds * 1000) / 1000);
+  }
+
   generateJaaSJwt({ appId, apiKeyId, privateKey, user, room, isModerator = false }) {
     if (!appId || !apiKeyId || !privateKey) return null;
     try {

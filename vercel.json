@@ -1,4 +1,19 @@
 {
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(self \"https://*.daily.co\"), microphone=(self \"https://*.daily.co\"), display-capture=(self \"https://*.daily.co\"), geolocation=()"
+        },
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.daily.co; connect-src 'self' https://api.openai.com https://dashscope.aliyuncs.com https://api.daily.co https://*.daily.co wss://*.daily.co; frame-src https://*.daily.co; media-src 'self' blob: https://*.daily.co; frame-ancestors 'none';"
+        }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",

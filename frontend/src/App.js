@@ -28,6 +28,7 @@ import Operator from './pages/Operator';
 import Navigation from './components/Navigation';
 import OfflineBanner from './components/OfflineBanner';
 import TosAcceptanceModal from './components/TosAcceptanceModal';
+import MeetingDock from './components/MeetingDock';
 import './styles/App.css';
 
 const buildTheme = (mode, direction) =>
@@ -109,6 +110,7 @@ const AppRoutes = () => {
         <Route path="/operator" element={<ProtectedRoute roles={['admin']}><Operator /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      {user && <MeetingDock />}
       <TosAcceptanceModal open={showTos} onAccept={() => setShowTos(false)} />
     </>
   );

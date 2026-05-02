@@ -139,6 +139,15 @@ const config = {
     appId: normalizeJaasAppId(process.env.JAAS_APP_ID || ''),
     apiKeyId: normalizeJaasApiKeyId(process.env.JAAS_APP_ID || '', process.env.JAAS_API_KEY_ID || ''),
     privateKey: reconstructedPrivateKey || process.env.JAAS_PRIVATE_KEY || ''
+  },
+
+  // Daily.co video hearings configuration
+  daily: {
+    apiKey: process.env.DAILY_API_KEY || '',
+    domain: (process.env.DAILY_DOMAIN || '').replace(/^https?:\/\//, '').replace(/\/+$/, ''),
+    autoRecord: String(process.env.DAILY_AUTO_RECORD || 'true').toLowerCase() !== 'false',
+    autoTranscribe: String(process.env.DAILY_AUTO_TRANSCRIBE || 'true').toLowerCase() !== 'false',
+    closeTabOnExit: String(process.env.DAILY_CLOSE_TAB_ON_EXIT || 'true').toLowerCase() !== 'false'
   }
 };
 

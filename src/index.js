@@ -632,10 +632,10 @@ function createServer(services) {
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('X-XSS-Protection', '1; mode=block');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.setHeader('Permissions-Policy', 'camera=(self "https://*.daily.co"), microphone=(self "https://*.daily.co"), display-capture=(self "https://*.daily.co"), geolocation=()');
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     // F-010: Content-Security-Policy
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.openai.com https://dashscope.aliyuncs.com; frame-ancestors 'none';");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.daily.co; connect-src 'self' https://api.openai.com https://dashscope.aliyuncs.com https://api.daily.co https://*.daily.co wss://*.daily.co; frame-src https://*.daily.co; media-src 'self' blob: https://*.daily.co; frame-ancestors 'none';");
 
     try {
       // --- GET /api/health ---
@@ -1746,11 +1746,12 @@ score is 0-100.`;
         const hearingId = path.split('/api/hearings/')[1];
         const hearing = await hearingService.getHearing(hearingId);
         if (!hearing) return sendJSON(res, 404, { error: 'Hearing not found' });
-        const jitsiUrl = hearingService.getJitsiRoomUrl(
-          config.jitsi.baseUrl,
-          hearing.jitsiRoom || hearing.JITSI_ROOM
-        );
-        return sendJSON(res, 200, { hearing, jitsiUrl });
+        const roomName = hearingService.getDailyRoomName(hearing);
+        const videoProvider = config.daily.apiKey ? 'daily' : 'jitsi';
+        const videoUrl = videoProvider === 'daily'
+          ? `https://${config.daily.domain || 'daily.co'}/${roomName}`
+          : hearingService.getJitsiRoomUrl(config.jitsi.baseUrl, hearing.jitsiRoom || hearing.JITSI_ROOM);
+        return sendJSON(res, 200, { hearing, videoProvider, videoUrl, jitsiUrl: videoUrl });
       }
 
       // --- GET /api/hearings/case/:caseId ---
@@ -1804,11 +1805,21 @@ score is 0-100.`;
         await hearingService.addParticipant(hearingId, user.userId, user.role);
         const jitsiRoom = hearing.jitsiRoom || hearing.JITSI_ROOM;
         const isModerator = ['admin', 'secretariat', 'arbitrator'].includes(user.role);
-        let jitsiUrl;
-        if (config.jitsi.appId && config.jitsi.apiKeyId && config.jitsi.privateKey) {
+        let videoUrl;
+        let videoProvider = 'jitsi';
+        if (config.daily.apiKey) {
+          const userProfile = await userService.findById(user.userId);
+          videoUrl = await hearingService.getDailyJoinUrl({
+            dailyConfig: config.daily,
+            hearing,
+            user: userProfile || user,
+            isModerator
+          });
+          videoProvider = 'daily';
+        } else if (config.jitsi.appId && config.jitsi.apiKeyId && config.jitsi.privateKey) {
           // Use JaaS authenticated URL with platform branding
           const userProfile = await userService.findById(user.userId);
-          jitsiUrl = hearingService.getJaaSRoomUrl({
+          videoUrl = hearingService.getJaaSRoomUrl({
             appId: config.jitsi.appId,
             apiKeyId: config.jitsi.apiKeyId,
             privateKey: config.jitsi.privateKey,
@@ -1817,10 +1828,10 @@ score is 0-100.`;
             isModerator
           });
         } else {
-          jitsiUrl = hearingService.getJitsiRoomUrl(config.jitsi.baseUrl, jitsiRoom);
+          videoUrl = hearingService.getJitsiRoomUrl(config.jitsi.baseUrl, jitsiRoom);
         }
-        await auditTrail.logEvent({ type: 'hearing_join', userId: user.userId, action: 'join', details: { hearingId } });
-        return sendJSON(res, 200, { success: true, jitsiUrl, jitsiRoom });
+        await auditTrail.logEvent({ type: 'hearing_join', userId: user.userId, action: 'join', details: { hearingId, videoProvider } });
+        return sendJSON(res, 200, { success: true, videoProvider, videoUrl, jitsiUrl: videoUrl, jitsiRoom });
       }
 
       // =============================================

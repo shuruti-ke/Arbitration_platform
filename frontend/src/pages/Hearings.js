@@ -22,6 +22,7 @@ import { useAuth } from '../context/AuthContext';
 import apiService from '../services/api';
 import { getApiErrorMessage } from '../services/apiErrors';
 import { useLanguage } from '../context/LanguageContext';
+import { openMeetingDock } from '../components/MeetingDock';
 
 const statusColor = (status) => {
   switch (status) {
@@ -134,7 +135,11 @@ const Hearings = () => {
   const handleJoin = async (hearingId) => {
     try {
       const res = await apiService.joinHearing(hearingId);
-      setJoinUrl(res.data.jitsiUrl);
+      const hearing = hearings.find(h => (h.HEARING_ID || h.hearingId) === hearingId);
+      const title = hearing ? (hearing.TITLE || hearing.title || t('Hearing room')) : t('Hearing room');
+      const url = res.data.videoUrl || res.data.jitsiUrl;
+      openMeetingDock({ url, title });
+      setJoinUrl(url);
     } catch (err) {
       setError(getApiErrorMessage(err, t('Failed to join hearing.')));
     }
@@ -213,10 +218,7 @@ const Hearings = () => {
 
       {joinUrl && (
         <Alert severity="info" sx={{ mb: 2 }} onClose={() => setJoinUrl(null)}>
-          {t('Hearing room ready.')} {' '}
-          <a href={joinUrl} target="_blank" rel="noopener noreferrer">
-            {t('Click here to join')}
-          </a>
+          {t('Hearing room is open in the platform meeting dock. You can keep using the platform while it runs.')}
         </Alert>
       )}
 

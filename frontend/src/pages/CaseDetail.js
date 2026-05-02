@@ -29,6 +29,7 @@ import { apiService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { buildProofOfServicePdf } from '../utils/proofOfServicePdf';
+import { openMeetingDock } from '../components/MeetingDock';
 
 const Field = ({ label, value }) => (
   <Box sx={{ mb: 1.5 }}>
@@ -383,7 +384,9 @@ const CaseDetail = () => {
     setJoiningHearing(hearingId);
     try {
       const res = await apiService.joinHearing(hearingId);
-      window.open(res.data.jitsiUrl, '_blank');
+      const hearing = hearings.find(h => (h.HEARING_ID || h.hearingId) === hearingId);
+      const title = hearing ? (hearing.TITLE || hearing.title || t('Hearing room')) : t('Hearing room');
+      openMeetingDock({ url: res.data.videoUrl || res.data.jitsiUrl, title });
     } catch (err) {
       setError(err.response?.data?.error || t('Failed to join hearing.'));
     } finally {
