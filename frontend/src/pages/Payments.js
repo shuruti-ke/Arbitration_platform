@@ -409,7 +409,7 @@ const Payments = () => {
 
         {/* Summary stat pills */}
         <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
-          {isAdmin ? [
+          {(isAdmin ? [
             { label: 'Awaiting Invoice', value: pendingCases.length,                                color: '#FFF176' },
             { label: 'Invoiced',         value: payments.filter(p => v(p,'status')==='invoiced').length, color: '#80DEEA' },
             { label: 'Proof Pending',    value: proofPending,                                      color: '#CE93D8' },
@@ -419,8 +419,8 @@ const Payments = () => {
             { label: 'Invoices',         value: payments.length,                                   color: '#80DEEA' },
             { label: 'Awaiting Payment', value: payments.filter(p=>v(p,'status')==='invoiced').length, color: '#FFF176' },
             { label: 'Paid',             value: matched.length,                                    color: '#A5D6A7' },
-          ].map(stat => (
-            <Paper key={stat.label} sx={{ px: 2.5, py: 1.5, background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(4px)', color: '#fff', textAlign: 'center' }}>
+          ]).map(stat => (
+            <Paper key={stat.label} sx={{ px: 2.5, py: 1.5, background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(4px)', color: '#fff', textAlign: 'center', border: 'none' }}>
               <Typography variant="h4" fontWeight={700} sx={{ color: stat.color }}>{stat.value}</Typography>
               <Typography variant="caption">{stat.label}</Typography>
             </Paper>

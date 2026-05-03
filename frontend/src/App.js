@@ -90,13 +90,12 @@ const buildTheme = (mode, direction) =>
         },
       },
       MuiPaper: {
-        defaultProps: { elevation: 0 },
         styleOverrides: {
           root: ({ ownerState }) => ({
+            borderRadius: 8,
             ...(ownerState.elevation === 0 && {
               border: `1px solid ${mode === 'dark' ? '#334155' : '#e8edf3'}`,
             }),
-            borderRadius: 8,
           }),
         },
       },
@@ -104,7 +103,6 @@ const buildTheme = (mode, direction) =>
         defaultProps: { elevation: 0 },
         styleOverrides: {
           root: {
-            border: `1px solid ${mode === 'dark' ? '#334155' : '#e8edf3'}`,
             borderRadius: 8,
           },
         },
