@@ -191,12 +191,11 @@ const GradientStatCard = ({ title, value, subtitle, icon, gradient, accentColor 
   </Paper>
 );
 
-const AdminDashboard = ({ analytics, t }) => {
+const AdminDashboard = ({ analytics, pendingCases, payments, t }) => {
   const navigate = useNavigate();
   const casesByStatus = analytics.casesByStatus || [];
   const usersByRole = analytics.usersByRole || [];
   const recentActivity = analytics.recentActivity || [];
-  const paymentStats = analytics.paymentStats || [];
 
   const getCount = (arr, key, val) => {
     const row = arr.find(r => (r[key.toUpperCase()] || r[key] || '').toLowerCase() === val.toLowerCase());
@@ -206,259 +205,310 @@ const AdminDashboard = ({ analytics, t }) => {
   const activeCases = getCount(casesByStatus, 'status', 'active');
   const pendingPayment = getCount(casesByStatus, 'status', 'pending_payment');
   const completedCases = getCount(casesByStatus, 'status', 'completed') + getCount(casesByStatus, 'status', 'closed');
-  const pendingInvoices = analytics.pendingInvoicesCount || 0;
   const totalRevenue = analytics.totalRevenue || 0;
-  const proofPending = getCount(paymentStats, 'status', 'proof_uploaded');
-
-  const totalArbitrators = getCount(usersByRole, 'role', 'arbitrator');
-  const totalParties = getCount(usersByRole, 'role', 'party') + getCount(usersByRole, 'role', 'counsel');
 
   const fmtCurrency = (v) => `KES ${Number(v || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
   const statusColors = { active: '#4CAF50', pending_payment: '#FF9800', completed: '#2196F3', closed: '#9E9E9E', pending: '#FF9800' };
 
+  const invoiceQueue = (pendingCases || []).filter(c => (c.STATUS || c.status || '').toLowerCase() === 'pending_payment');
+  const proofQueue = (payments || []).filter(p => (p.STATUS || p.status || '').toLowerCase() === 'proof_uploaded');
+
+  const kpiCards = [
+    { label: 'Active Cases',       value: activeCases,               color: '#1565c0', icon: <CasesIcon sx={{ fontSize: 28 }} /> },
+    { label: 'Pending Payment',    value: pendingPayment,            color: '#e65100', icon: <PaymentIcon sx={{ fontSize: 28 }} /> },
+    { label: 'Completed Cases',    value: completedCases,            color: '#2e7d32', icon: <DoneIcon sx={{ fontSize: 28 }} /> },
+    { label: 'Total Revenue',      value: fmtCurrency(totalRevenue), color: '#6a1b9a', icon: <TrendingIcon sx={{ fontSize: 28 }} /> },
+  ];
+
   return (
-    <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-      {/* Header */}
-      <Paper sx={{
-        p: 3, mb: 3, color: '#fff',
-        background: 'linear-gradient(135deg, #0d1b2a 0%, #1a237e 45%, #283593 100%)',
-        boxShadow: '0 12px 40px rgba(13,27,42,0.4)',
-        borderRadius: 3,
-        position: 'relative', overflow: 'hidden',
-      }}>
-        <Box sx={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 80% 50%, rgba(255,255,255,0.06), transparent 50%)', pointerEvents: 'none' }} />
-        <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
-          <AdminIcon sx={{ fontSize: 44 }} />
-          <Box>
-            <Typography variant="h4" fontWeight={800} sx={{ letterSpacing: '-0.03em' }}>
-              Platform Overview
-            </Typography>
-            <Typography variant="body2" sx={{ opacity: 0.8, mt: 0.25 }}>
-              Aggregate operational view — case details are confidential and accessible only to participants.
-            </Typography>
-          </Box>
-        </Stack>
+    <Box sx={{ bgcolor: '#f7f9fc', minHeight: '100vh', pb: 6 }}>
 
-        {/* Urgent Alerts */}
-        {(pendingInvoices > 0 || proofPending > 0) && (
-          <Stack direction="row" spacing={1} flexWrap="wrap">
-            {pendingInvoices > 0 && (
-              <Chip
-                icon={<AlertIcon />}
-                label={`${pendingInvoices} case${pendingInvoices > 1 ? 's' : ''} awaiting invoice`}
-                color="warning"
-                sx={{ fontWeight: 600, cursor: 'pointer' }}
+      {/* ── Compact header ──────────────────────────────────────────────── */}
+      <Box sx={{ bgcolor: '#fff', borderBottom: '1px solid #e8edf3', px: { xs: 2, sm: 3, md: 4 }, py: 2 }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} md={7}>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Box sx={{
+                width: 44, height: 44, borderRadius: 1.5,
+                background: 'linear-gradient(135deg,#b71c1c,#c62828)',
+                display: 'grid', placeItems: 'center', flexShrink: 0,
+              }}>
+                <AdminIcon sx={{ fontSize: 24, color: '#fff' }} />
+              </Box>
+              <Box>
+                <Typography variant="overline" sx={{ color: 'text.disabled', letterSpacing: 1.5, fontSize: 10, lineHeight: 1 }}>
+                  ADMIN PORTAL
+                </Typography>
+                <Typography variant="h6" fontWeight={800} sx={{ lineHeight: 1.2 }}>
+                  Admin Control Centre
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Financial & operational view — case contents are private
+                </Typography>
+              </Box>
+            </Stack>
+          </Grid>
+          <Grid item xs={12} md={5}>
+            <Stack direction="row" spacing={1} justifyContent={{ md: 'flex-end' }}>
+              <Button variant="contained" size="medium" startIcon={<PaymentIcon />}
                 onClick={() => navigate('/payments')}
-              />
-            )}
-            {proofPending > 0 && (
-              <Chip
-                icon={<PendingActIcon />}
-                label={`${proofPending} payment proof${proofPending > 1 ? 's' : ''} pending review`}
-                color="error"
-                sx={{ fontWeight: 600, cursor: 'pointer' }}
-                onClick={() => navigate('/payments')}
-              />
-            )}
-          </Stack>
+                sx={{ fontWeight: 700, boxShadow: 'none', '&:hover': { boxShadow: 'none' } }}>
+                Payments
+              </Button>
+              <Button variant="outlined" size="medium" startIcon={<UsersIcon />}
+                onClick={() => navigate('/users')}>
+                Users
+              </Button>
+            </Stack>
+          </Grid>
+        </Grid>
+      </Box>
+
+      <Container maxWidth="xl" sx={{ mt: 3, position: 'relative', zIndex: 1 }}>
+
+        {/* Privacy wall notice */}
+        <Alert severity="info" sx={{ mb: 2.5, borderRadius: 2 }}>
+          <strong>Privacy Wall:</strong> As admin you can see case ID, title, payment status, and the arbitrator who submitted it. You cannot access case content, party details, documents, or hearing information — those are confidential to case participants.
+        </Alert>
+
+        {/* Action Required */}
+        {(invoiceQueue.length > 0 || proofQueue.length > 0) && (
+          <Paper elevation={0} sx={{ border: '1px solid #e8edf3', borderRadius: 2, overflow: 'hidden', mb: 2.5 }}>
+            <Box sx={{ px: 3, py: 1.75, bgcolor: '#fff8e1', borderBottom: '1px solid #ffe082' }}>
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <AlertIcon sx={{ color: '#e65100', fontSize: 20 }} />
+                <Typography variant="subtitle1" fontWeight={800} sx={{ color: '#e65100' }}>Action Required</Typography>
+                <Chip label={invoiceQueue.length + proofQueue.length} size="small" color="warning" sx={{ ml: 1, fontWeight: 700 }} />
+              </Stack>
+            </Box>
+            <Box sx={{ p: 2.5 }}>
+              <Grid container spacing={2.5}>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.25 }}>Cases Awaiting Invoice</Typography>
+                  {invoiceQueue.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">None pending.</Typography>
+                  ) : (
+                    <Stack spacing={1}>
+                      {invoiceQueue.map((c, i) => {
+                        const caseId = c.CASE_ID || c.case_id || c.caseId || '—';
+                        const title = c.TITLE || c.title || 'Untitled';
+                        const createdBy = c.CREATED_BY || c.created_by || c.createdBy || '—';
+                        const date = c.CREATED_AT || c.created_at ? new Date(c.CREATED_AT || c.created_at).toLocaleDateString() : '—';
+                        return (
+                          <Box key={caseId + i} sx={{ p: 1.5, borderRadius: 1.5, border: '1px solid #ffe082', bgcolor: '#fffde7', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              <Typography variant="body2" fontWeight={700} noWrap>{title}</Typography>
+                              <Typography variant="caption" color="text.secondary">{caseId} · Arbitrator: {createdBy} · {date}</Typography>
+                            </Box>
+                            <Button size="small" variant="contained" color="warning" disableElevation
+                              onClick={() => navigate('/payments')}
+                              sx={{ fontWeight: 700, fontSize: 11, py: 0.4, flexShrink: 0 }}>
+                              Issue Invoice
+                            </Button>
+                          </Box>
+                        );
+                      })}
+                    </Stack>
+                  )}
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.25 }}>Payment Proofs to Review</Typography>
+                  {proofQueue.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">None pending.</Typography>
+                  ) : (
+                    <Stack spacing={1}>
+                      {proofQueue.map((p, i) => {
+                        const caseId = p.CASE_ID || p.case_id || p.caseId || '—';
+                        const amount = p.AMOUNT || p.amount ? fmtCurrency(p.AMOUNT || p.amount) : null;
+                        const date = p.UPDATED_AT || p.updated_at || p.CREATED_AT || p.created_at
+                          ? new Date(p.UPDATED_AT || p.updated_at || p.CREATED_AT || p.created_at).toLocaleDateString() : '—';
+                        return (
+                          <Box key={caseId + i} sx={{ p: 1.5, borderRadius: 1.5, border: '1px solid #ce93d8', bgcolor: '#f3e5f5', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              <Typography variant="body2" fontWeight={700} noWrap>Case {caseId}</Typography>
+                              <Typography variant="caption" color="text.secondary">{amount ? `${amount} · ` : ''}Uploaded: {date}</Typography>
+                            </Box>
+                            <Button size="small" variant="contained" disableElevation
+                              onClick={() => navigate('/payments')}
+                              sx={{ fontWeight: 700, fontSize: 11, py: 0.4, flexShrink: 0, bgcolor: '#6a1b9a', '&:hover': { bgcolor: '#4a148c' } }}>
+                              Review & Approve
+                            </Button>
+                          </Box>
+                        );
+                      })}
+                    </Stack>
+                  )}
+                </Grid>
+              </Grid>
+            </Box>
+          </Paper>
         )}
-      </Paper>
 
-      {/* KPI Row */}
-      <Grid container spacing={2.5} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <GradientStatCard
-            title="Active Cases"
-            value={activeCases}
-            subtitle="Currently in proceedings"
-            icon={<CasesIcon sx={{ fontSize: 80 }} />}
-            gradient="linear-gradient(135deg, #1565C0 0%, #1976d2 100%)"
-            accentColor="#1976d2"
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <GradientStatCard
-            title="Pending Payment"
-            value={pendingPayment}
-            subtitle="Awaiting invoice or proof"
-            icon={<PaymentIcon sx={{ fontSize: 80 }} />}
-            gradient="linear-gradient(135deg, #E65100 0%, #F57C00 100%)"
-            accentColor="#F57C00"
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <GradientStatCard
-            title="Completed Cases"
-            value={completedCases}
-            subtitle="Awards issued"
-            icon={<DoneIcon sx={{ fontSize: 80 }} />}
-            gradient="linear-gradient(135deg, #2E7D32 0%, #43A047 100%)"
-            accentColor="#43A047"
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <GradientStatCard
-            title="Total Revenue"
-            value={fmtCurrency(totalRevenue)}
-            subtitle="Platform fees collected"
-            icon={<TrendingIcon sx={{ fontSize: 80 }} />}
-            gradient="linear-gradient(135deg, #4A148C 0%, #7B1FA2 100%)"
-            accentColor="#7B1FA2"
-          />
-        </Grid>
-      </Grid>
+        {(invoiceQueue.length === 0 && proofQueue.length === 0) && (
+          <Alert severity="success" sx={{ mb: 2.5, borderRadius: 2 }}>All caught up! No invoices to issue and no payment proofs awaiting review.</Alert>
+        )}
 
-      <Grid container spacing={3}>
-        {/* Case Status Breakdown */}
-        <Grid item xs={12} md={5}>
-          <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3, height: '100%' }}>
-            <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>Case Status Breakdown</Typography>
-            {casesByStatus.length === 0 ? (
-              <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>No case data available.</Typography>
-            ) : (
-              <Stack spacing={1.5}>
-                {casesByStatus.map((row, i) => {
-                  const status = row.STATUS || row.status || 'unknown';
-                  const count = parseInt(row.CNT || row.cnt || 0);
-                  const total = casesByStatus.reduce((s, r) => s + parseInt(r.CNT || r.cnt || 0), 0);
-                  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-                  const color = statusColors[status.toLowerCase()] || '#9E9E9E';
-                  return (
-                    <Box key={i}>
-                      <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
-                        <Typography variant="body2" textTransform="capitalize">{status.replace(/_/g, ' ')}</Typography>
-                        <Typography variant="body2" fontWeight={700}>{count} ({pct}%)</Typography>
-                      </Stack>
-                      <LinearProgress
-                        variant="determinate"
-                        value={pct}
-                        sx={{
-                          height: 8, borderRadius: 4,
-                          bgcolor: `${color}22`,
-                          '& .MuiLinearProgress-bar': { bgcolor: color, borderRadius: 4 }
-                        }}
-                      />
-                    </Box>
-                  );
-                })}
-              </Stack>
-            )}
-          </Paper>
+        {/* KPI Row */}
+        <Grid container spacing={2} sx={{ mb: 2.5 }}>
+          {kpiCards.map((card) => (
+            <Grid item xs={6} md={3} key={card.label}>
+              <Paper elevation={0} sx={{
+                p: 2, borderRadius: 2, border: '1px solid #e8edf3', bgcolor: '#fff',
+                borderTop: `3px solid ${card.color}`,
+              }}>
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                  <Box sx={{ color: card.color }}>{card.icon}</Box>
+                  <Box>
+                    <Typography variant="h4" fontWeight={800} sx={{ lineHeight: 1 }}>{card.value}</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>{card.label}</Typography>
+                  </Box>
+                </Stack>
+              </Paper>
+            </Grid>
+          ))}
         </Grid>
 
-        {/* Platform Users */}
-        <Grid item xs={12} md={3}>
-          <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3, height: '100%' }}>
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
-              <UsersIcon color="primary" />
-              <Typography variant="h6" fontWeight={700}>Platform Users</Typography>
-            </Stack>
-            <Typography variant="h3" fontWeight={800} color="primary.main">{analytics.totalUsers || 0}</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Active accounts</Typography>
-            <Divider sx={{ mb: 2 }} />
-            <Stack spacing={1.5}>
-              {usersByRole.map((row, i) => {
-                const r = row.ROLE || row.role || '';
-                const cnt = parseInt(row.CNT || row.cnt || 0);
-                const roleColor = { admin: 'error', arbitrator: 'warning', secretariat: 'info', counsel: 'secondary', party: 'default' };
-                return (
-                  <Stack key={i} direction="row" justifyContent="space-between" alignItems="center">
-                    <Chip size="small" label={r} color={roleColor[r] || 'default'} variant="outlined" />
-                    <Typography variant="body2" fontWeight={700}>{cnt}</Typography>
-                  </Stack>
-                );
-              })}
-            </Stack>
-            <Button fullWidth variant="outlined" size="small" sx={{ mt: 2 }} component={Link} to="/users" startIcon={<UsersIcon />}>
-              Manage Users
-            </Button>
-          </Paper>
-        </Grid>
-
-        {/* Quick Actions + Recent Activity */}
-        <Grid item xs={12} md={4}>
-          <Stack spacing={2}>
-            <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3 }}>
-              <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>Quick Actions</Typography>
-              <Stack spacing={1}>
-                <Button fullWidth variant="contained" startIcon={<PaymentIcon />} component={Link} to="/payments" color="primary">
-                  Account Management
-                </Button>
-                <Button fullWidth variant="outlined" startIcon={<UsersIcon />} component={Link} to="/users">
-                  Register New Arbitrator
-                </Button>
-                <Button fullWidth variant="outlined" startIcon={<AnalyticsIcon />} component={Link} to="/analytics">
-                  View Analytics
-                </Button>
-                <Button fullWidth variant="outlined" startIcon={<LibraryIcon />} component={Link} to="/documents">
-                  Document Library
-                </Button>
-              </Stack>
-            </Paper>
-
-            <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3 }}>
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
-                <TimelineIcon color="action" />
-                <Typography variant="h6" fontWeight={700}>Recent Activity</Typography>
-              </Stack>
-              {recentActivity.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">No recent activity.</Typography>
-              ) : (
-                <Stack spacing={1}>
-                  {recentActivity.slice(0, 6).map((log, i) => {
-                    const action = log.ACTION || log.action || '';
-                    const type = log.EVENT_TYPE || log.event_type || '';
-                    const date = log.CREATED_AT || log.created_at;
-                    return (
-                      <Box key={i} sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-                        <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'primary.main', mt: 0.75, flexShrink: 0 }} />
-                        <Box>
-                          <Typography variant="caption" fontWeight={600} textTransform="capitalize">
-                            {(type || action).replace(/_/g, ' ')}
-                          </Typography>
-                          <Typography variant="caption" display="block" color="text.secondary">
-                            {date ? new Date(date).toLocaleString() : ''}
-                          </Typography>
+        <Grid container spacing={3}>
+          {/* Case Status Breakdown */}
+          <Grid item xs={12} lg={5}>
+            <Paper elevation={0} sx={{ borderRadius: 2, overflow: 'hidden', border: '1px solid #e8edf3', bgcolor: '#fff', height: '100%' }}>
+              <Box sx={{ px: 2.5, py: 1.5, bgcolor: '#fafbfd', borderBottom: '1px solid #e8edf3' }}>
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  <AnalyticsIcon sx={{ fontSize: 18, color: '#1565c0' }} />
+                  <Typography variant="subtitle2" fontWeight={700}>Case Status Breakdown</Typography>
+                </Stack>
+              </Box>
+              <Box sx={{ p: 2.5 }}>
+                {casesByStatus.length === 0 ? (
+                  <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>No case data available.</Typography>
+                ) : (
+                  <Stack spacing={1.5}>
+                    {casesByStatus.map((row, i) => {
+                      const status = row.STATUS || row.status || 'unknown';
+                      const count = parseInt(row.CNT || row.cnt || 0);
+                      const total = casesByStatus.reduce((s, r) => s + parseInt(r.CNT || r.cnt || 0), 0);
+                      const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                      const color = statusColors[status.toLowerCase()] || '#9E9E9E';
+                      return (
+                        <Box key={i}>
+                          <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                            <Typography variant="body2" textTransform="capitalize">{status.replace(/_/g, ' ')}</Typography>
+                            <Typography variant="body2" fontWeight={700}>{count} ({pct}%)</Typography>
+                          </Stack>
+                          <LinearProgress
+                            variant="determinate" value={pct}
+                            sx={{ height: 8, borderRadius: 4, bgcolor: `${color}22`, '& .MuiLinearProgress-bar': { bgcolor: color, borderRadius: 4 } }}
+                          />
                         </Box>
-                      </Box>
+                      );
+                    })}
+                  </Stack>
+                )}
+                <Typography variant="caption" color="text.disabled" sx={{ mt: 2, display: 'block' }}>
+                  Aggregate counts only — no case content
+                </Typography>
+              </Box>
+            </Paper>
+          </Grid>
+
+          {/* Platform Users */}
+          <Grid item xs={12} lg={3}>
+            <Paper elevation={0} sx={{ borderRadius: 2, overflow: 'hidden', border: '1px solid #e8edf3', bgcolor: '#fff', height: '100%' }}>
+              <Box sx={{ px: 2.5, py: 1.5, bgcolor: '#fafbfd', borderBottom: '1px solid #e8edf3' }}>
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  <UsersIcon sx={{ fontSize: 18, color: 'primary.main' }} />
+                  <Typography variant="subtitle2" fontWeight={700}>Platform Users</Typography>
+                </Stack>
+              </Box>
+              <Box sx={{ p: 2.5 }}>
+                <Typography variant="h3" fontWeight={800} color="primary.main">{analytics.totalUsers || 0}</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Active accounts</Typography>
+                <Divider sx={{ mb: 2 }} />
+                <Stack spacing={1.5}>
+                  {usersByRole.map((row, i) => {
+                    const r = row.ROLE || row.role || '';
+                    const cnt = parseInt(row.CNT || row.cnt || 0);
+                    const roleColor = { admin: 'error', arbitrator: 'warning', secretariat: 'info', counsel: 'secondary', party: 'default' };
+                    return (
+                      <Stack key={i} direction="row" justifyContent="space-between" alignItems="center">
+                        <Chip size="small" label={r} color={roleColor[r] || 'default'} variant="outlined" />
+                        <Typography variant="body2" fontWeight={700}>{cnt}</Typography>
+                      </Stack>
                     );
                   })}
                 </Stack>
-              )}
+                <Button fullWidth variant="outlined" size="small" sx={{ mt: 2 }} onClick={() => navigate('/users')} startIcon={<UsersIcon />}>
+                  Manage Users
+                </Button>
+              </Box>
             </Paper>
-          </Stack>
-        </Grid>
+          </Grid>
 
-        {/* Payment Summary */}
-        <Grid item xs={12}>
-          <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3 }}>
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
-              <PaymentIcon color="primary" />
-              <Typography variant="h6" fontWeight={700}>Payment Summary</Typography>
-              <Box sx={{ flex: 1 }} />
-              <Button size="small" variant="outlined" component={Link} to="/payments">Full Payment Dashboard</Button>
+          {/* Quick Actions + Recent Activity */}
+          <Grid item xs={12} lg={4}>
+            <Stack spacing={2}>
+              <Paper elevation={0} sx={{ borderRadius: 2, overflow: 'hidden', border: '1px solid #e8edf3', bgcolor: '#fff' }}>
+                <Box sx={{ px: 2.5, py: 1.5, bgcolor: '#fafbfd', borderBottom: '1px solid #e8edf3' }}>
+                  <Typography variant="subtitle2" fontWeight={700}>Quick Actions</Typography>
+                </Box>
+                <Box sx={{ p: 2 }}>
+                  <Stack spacing={1}>
+                    <Button fullWidth variant="contained" startIcon={<PaymentIcon />} onClick={() => navigate('/payments')} disableElevation>
+                      Payments & Invoices
+                    </Button>
+                    <Button fullWidth variant="outlined" startIcon={<UsersIcon />} onClick={() => navigate('/users')}>
+                      Manage Users
+                    </Button>
+                    <Button fullWidth variant="outlined" startIcon={<AnalyticsIcon />} onClick={() => navigate('/analytics')}>
+                      View Analytics
+                    </Button>
+                    <Button fullWidth variant="outlined" startIcon={<LibraryIcon />} onClick={() => navigate('/documents')}>
+                      Document Library
+                    </Button>
+                  </Stack>
+                </Box>
+              </Paper>
+
+              <Paper elevation={0} sx={{ borderRadius: 2, overflow: 'hidden', border: '1px solid #e8edf3', bgcolor: '#fff' }}>
+                <Box sx={{ px: 2.5, py: 1.5, bgcolor: '#fafbfd', borderBottom: '1px solid #e8edf3' }}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <TimelineIcon sx={{ fontSize: 18, color: 'action.active' }} />
+                    <Typography variant="subtitle2" fontWeight={700}>Recent Activity</Typography>
+                  </Stack>
+                </Box>
+                <Box sx={{ p: 2 }}>
+                  {recentActivity.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">No recent activity.</Typography>
+                  ) : (
+                    <Stack spacing={1}>
+                      {recentActivity.slice(0, 6).map((log, i) => {
+                        const action = log.ACTION || log.action || '';
+                        const type = log.EVENT_TYPE || log.event_type || '';
+                        const date = log.CREATED_AT || log.created_at;
+                        return (
+                          <Box key={i} sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                            <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'primary.main', mt: 0.75, flexShrink: 0 }} />
+                            <Box>
+                              <Typography variant="caption" fontWeight={600} textTransform="capitalize">
+                                {(type || action).replace(/_/g, ' ')}
+                              </Typography>
+                              <Typography variant="caption" display="block" color="text.secondary">
+                                {date ? new Date(date).toLocaleString() : ''}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        );
+                      })}
+                    </Stack>
+                  )}
+                </Box>
+              </Paper>
             </Stack>
-            <Grid container spacing={2}>
-              {[
-                { label: 'Pending Invoice', count: pendingInvoices, color: '#FF9800', desc: 'Cases awaiting invoice from you' },
-                { label: 'Invoiced', count: getCount(paymentStats, 'status', 'invoiced'), color: '#2196F3', desc: 'Waiting for arbitrator payment' },
-                { label: 'Proof Uploaded', count: proofPending, color: '#9C27B0', desc: 'Ready for your review & approval' },
-                { label: 'Paid & Active', count: getCount(paymentStats, 'status', 'paid'), color: '#4CAF50', desc: 'Completed payments' },
-              ].map((item, i) => (
-                <Grid item xs={6} sm={3} key={i}>
-                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: `${item.color}11`, borderRadius: 2, border: `1px solid ${item.color}33` }}>
-                    <Typography variant="h3" fontWeight={800} sx={{ color: item.color }}>{item.count}</Typography>
-                    <Typography variant="subtitle2" fontWeight={700}>{item.label}</Typography>
-                    <Typography variant="caption" color="text.secondary">{item.desc}</Typography>
-                  </Paper>
-                </Grid>
-              ))}
-            </Grid>
-          </Paper>
+          </Grid>
         </Grid>
-      </Grid>
-    </Container>
+      </Container>
+    </Box>
   );
 };
 
@@ -484,7 +534,7 @@ const workflowSteps = [
   { key: 'closed', label: 'Closed', tab: 'overview' },
 ];
 
-const ArbitratorDashboard = ({ cases, hearings, stats, t, firstName, navigate, openArchive }) => {
+const ArbitratorDashboard = ({ cases, hearings, payments, stats, t, firstName, navigate, openArchive }) => {
   const [caseSearch, setCaseSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('all');
   const [moreAnchor, setMoreAnchor] = useState(null);
@@ -889,6 +939,65 @@ const ArbitratorDashboard = ({ cases, hearings, stats, t, firstName, navigate, o
                 </Box>
               </Paper>
 
+              {/* Billing & Payments */}
+              {(() => {
+                const BILLING_STAGES = [
+                  { key: 'pending_payment', label: 'Awaiting Invoice', desc: 'Case submitted — waiting for admin to issue invoice', color: '#e65100', action: null },
+                  { key: 'invoiced',        label: 'Invoice Received', desc: 'Invoice issued — upload your proof of payment',     color: '#0277bd', action: { label: 'Pay Now', to: '/payments' } },
+                  { key: 'proof_uploaded',  label: 'Proof Submitted',  desc: 'Payment proof uploaded — awaiting receipt',         color: '#6a1b9a', action: null },
+                  { key: 'paid',            label: 'Receipt Issued',   desc: 'Case activated — you may proceed',                  color: '#2e7d32', action: null },
+                ];
+                const myPayments = payments || [];
+                const stageCounts = BILLING_STAGES.map(stage => ({
+                  ...stage,
+                  count: myPayments.filter(p => (p.STATUS || p.status || '').toLowerCase() === stage.key).length,
+                }));
+                const invoicedCount = stageCounts.find(s => s.key === 'invoiced')?.count || 0;
+                return (
+                  <Paper elevation={0} sx={{ borderRadius: 2, overflow: 'hidden', border: '1px solid #e8edf3', bgcolor: '#fff' }}>
+                    <Box sx={{ px: 2.5, py: 1.5, bgcolor: '#fafbfd', borderBottom: '1px solid #e8edf3' }}>
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <PaymentIcon sx={{ fontSize: 18, color: '#e65100' }} />
+                        <Typography variant="subtitle2" fontWeight={700}>Billing & Payments</Typography>
+                      </Stack>
+                    </Box>
+                    <Box sx={{ p: 2 }}>
+                      {invoicedCount > 0 && (
+                        <Alert severity="warning" sx={{ mb: 1.5, borderRadius: 1.5 }}
+                          action={<Button size="small" color="warning" variant="outlined" onClick={() => navigate('/payments')}>Upload Proof</Button>}>
+                          {invoicedCount} invoice{invoicedCount > 1 ? 's' : ''} awaiting your payment proof.
+                        </Alert>
+                      )}
+                      <Stack spacing={1}>
+                        {stageCounts.map(stage => (
+                          <Box key={stage.key} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 0.75 }}>
+                            <Chip
+                              label={stage.count}
+                              size="small"
+                              sx={{ fontWeight: 700, minWidth: 32, bgcolor: stage.count > 0 ? stage.color + '20' : 'action.hover', color: stage.count > 0 ? stage.color : 'text.disabled', border: `1px solid ${stage.count > 0 ? stage.color + '40' : 'transparent'}` }}
+                            />
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              <Typography variant="body2" fontWeight={700} sx={{ color: stage.count > 0 ? stage.color : 'text.disabled' }}>{stage.label}</Typography>
+                              <Typography variant="caption" color="text.secondary" noWrap>{stage.desc}</Typography>
+                            </Box>
+                            {stage.action && stage.count > 0 && (
+                              <Button size="small" variant="outlined" sx={{ fontSize: 11, py: 0.3, borderRadius: 1, borderColor: stage.color, color: stage.color, '&:hover': { borderColor: stage.color, bgcolor: stage.color + '10' } }}
+                                onClick={() => navigate(stage.action.to)}>
+                                {stage.action.label}
+                              </Button>
+                            )}
+                          </Box>
+                        ))}
+                      </Stack>
+                      <Button fullWidth variant="outlined" size="small" sx={{ mt: 1.5, borderRadius: 1.5 }}
+                        startIcon={<PaymentIcon />} onClick={() => navigate('/payments')}>
+                        View Full Account
+                      </Button>
+                    </Box>
+                  </Paper>
+                );
+              })()}
+
               {/* Quick Navigation */}
               <Paper elevation={0} sx={{ borderRadius: 2, overflow: 'hidden', border: '1px solid #e8edf3', bgcolor: '#fff' }}>
                 <Box sx={{ px: 2.5, py: 1.5, bgcolor: '#fafbfd', borderBottom: '1px solid #e8edf3' }}>
@@ -1028,6 +1137,8 @@ const Dashboard = () => {
   const [recentCases, setRecentCases] = useState([]);
   const [closedCases, setClosedCases] = useState([]);
   const [hearings, setHearings] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [pendingCasesForAdmin, setPendingCasesForAdmin] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const isAdmin = (user?.role || '').toLowerCase() === 'admin';
@@ -1071,6 +1182,15 @@ const Dashboard = () => {
 
         setStats({ total: active + completed + pending, active, completed, pending, documents: analyticsData.totalDocuments || 0 });
 
+        if (isAdmin) {
+          const [casesRes, paymentsRes] = await Promise.all([
+            apiService.getCases().catch(() => ({ data: { cases: [] } })),
+            apiService.request('GET', '/payments').catch(() => ({ data: { payments: [] } })),
+          ]);
+          setPendingCasesForAdmin(casesRes.data?.cases || []);
+          setPayments(paymentsRes.data?.payments || paymentsRes.data || []);
+        }
+
         if (!isAdmin) {
           const casesRes = await apiService.getCases();
           const allCases = casesRes.data.cases || [];
@@ -1081,6 +1201,8 @@ const Dashboard = () => {
             setClosedCases(allCases.filter(c => CLOSED_STATUSES.includes((c.STATUS || c.status || '').toLowerCase())));
             const hearingsRes = await apiService.getHearings().catch(() => ({ data: { hearings: [] } }));
             setHearings(hearingsRes.data.hearings || []);
+            const paymentsRes = await apiService.request('GET', '/payments').catch(() => ({ data: { payments: [] } }));
+            setPayments(paymentsRes.data?.payments || paymentsRes.data || []);
           }
         }
         setError(null);
@@ -1101,7 +1223,7 @@ const Dashboard = () => {
     return (
       <>
         {error && <Alert severity="warning" sx={{ m: 2 }}>{error}</Alert>}
-        <AdminDashboard analytics={analytics} t={t} />
+        <AdminDashboard analytics={analytics} pendingCases={pendingCasesForAdmin} payments={payments} t={t} />
       </>
     );
   }
@@ -1124,6 +1246,7 @@ const Dashboard = () => {
         <ArbitratorDashboard
           cases={[...recentCases, ...closedCases]}
           hearings={hearings}
+          payments={payments}
           stats={stats}
           t={t}
           firstName={firstName}
