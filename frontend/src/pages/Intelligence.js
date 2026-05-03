@@ -195,6 +195,20 @@ const Intelligence = () => {
 
       <Grid container spacing={3}>
         <Grid item xs={12} lg={7}>
+          {isAdmin ? (
+            <Paper sx={{ p: 3, height: '100%' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+                <PsychologyIcon color="disabled" />
+                <Typography variant="h6">{t('AI Companion')}</Typography>
+              </Box>
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                {t('Case-specific AI analysis is restricted to arbitrators and legal counsel. Administrators have access to platform-level intelligence reports only.')}
+              </Alert>
+              <Typography variant="body2" color="text.secondary">
+                {t('Use the Admin Reports panel on the right to generate platform-wide intelligence briefings, commercial analytics, and export-ready reports.')}
+              </Typography>
+            </Paper>
+          ) : (
           <Paper sx={{ p: 3, height: '100%' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
               <PsychologyIcon color="primary" />
@@ -347,6 +361,7 @@ const Intelligence = () => {
               <Alert severity="info">{t('Generate a case analysis to populate the companion view.')}</Alert>
             )}
           </Paper>
+          )}
         </Grid>
 
         <Grid item xs={12} lg={5}>

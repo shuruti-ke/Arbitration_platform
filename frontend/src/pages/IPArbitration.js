@@ -27,6 +27,7 @@ import {
 import { apiService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { Info as InfoIcon } from '@mui/icons-material';
 
 const IP_SUBTYPES = [
   { value: 'patent', label: 'Patent', icon: <ScienceIcon />, color: '#1976d2', description: 'Inventions, processes, products and compositions of matter.' },
@@ -154,6 +155,7 @@ const RoyaltyCalculator = () => {
 
 const IPArbitration = () => {
   const { user } = useAuth();
+  const isAdmin = (user?.role || '').toLowerCase() === 'admin';
   const navigate = useNavigate();
   const [tab, setTab] = useState(0);
   const [cases, setCases] = useState([]);
@@ -204,10 +206,18 @@ const IPArbitration = () => {
             Specialist tools, guidance, and case management for Intellectual Property disputes
           </Typography>
         </Box>
-        <Button variant="contained" startIcon={<GavelIcon />} onClick={() => navigate('/cases/agreement')}>
-          New IP Case
-        </Button>
+        {!isAdmin && (
+          <Button variant="contained" startIcon={<GavelIcon />} onClick={() => navigate('/cases/agreement')}>
+            New IP Case
+          </Button>
+        )}
       </Box>
+
+      {isAdmin && (
+        <Alert severity="info" icon={<InfoIcon />} sx={{ mb: 2 }}>
+          You are viewing the IP Arbitration Centre in <strong>platform overview mode</strong>. Case filing and case-specific management are available to arbitrators and counsel only.
+        </Alert>
+      )}
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={tab} onChange={(_, v) => setTab(v)}>

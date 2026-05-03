@@ -272,12 +272,12 @@ const Hearings = () => {
                       {t('Delete')}
                     </Button>
                   )}
-                  {type === 'virtual' && status !== 'cancelled' && (
+                  {type === 'virtual' && status !== 'cancelled' && !hasRole('admin') && (
                     <Button size="small" variant="contained" startIcon={<VideoIcon />} onClick={() => handleJoin(hId)}>
                       {t('Join')}
                     </Button>
                   )}
-                  {transcriptSupported && status !== 'cancelled' && (
+                  {transcriptSupported && status !== 'cancelled' && !hasRole('admin') && (
                     transcribingId === hId ? (
                       <Button size="small" color="error" startIcon={<MicOffIcon />} onClick={stopTranscription}>
                         {t('Stop Transcription')}
